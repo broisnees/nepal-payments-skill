@@ -1,0 +1,52 @@
+---
+title: Use the adapters directly
+description: Copy the Nepal Payments adapter for TypeScript, Python, Java, Kotlin, PHP or Go into your server and call initiate() and verify() without any agent.
+---
+
+import { Tabs, TabItem, Code, Aside } from "@astrojs/starlight/components";
+import { snippets } from "../../../data/site";
+
+Each language has the same shape: build the configured providers from environment variables, call `initiate()` to start a payment, then call `verify()` from your return handler with the values you stored. All amounts are integer **paisa** (1 NPR = 100 paisa).
+
+## 1. Copy the adapter
+
+| Language | Copy | Notes |
+|---|---|---|
+| TypeScript | `scripts/ts/src/` | Keep `core.ts`, `index.ts` and the providers you need. Files import each other with `.ts` extensions; rewrite to `.js` for NodeNext or extensionless for bundlers if your tsconfig lacks `allowImportingTsExtensions`. |
+| Python | `scripts/python/nepal_payments/` | Stdlib only. Add `cryptography` for connectIPS. |
+| Java | `scripts/java/src/main/java/np/payments/` | JDK 17+, no dependencies, blocking and thread-safe. |
+| Kotlin | `scripts/kotlin/src/main/kotlin/np/payments/` | kotlin-stdlib only, `suspend` API. Server side only, never inside an Android app. |
+| PHP | `scripts/php/src/` | Namespace `NepalPayments`. Register it in your PSR-4 autoload. |
+| Go | `scripts/go/payments/` | Stdlib only. Copy into your module, for example `internal/payments/`, and fix the import path. |
+
+## 2. Configure
+
+Set the environment variables for each provider you want. A provider is enabled when its required variables are present. The full list is in [Environment variables](/docs/guides/env/).
+
+```bash
+ESEWA_ENV=sandbox
+ESEWA_PRODUCT_CODE=EPAYTEST
+ESEWA_SECRET_KEY='8gBm/:&EnhH.1/q'
+KHALTI_SECRET_KEY=...            # from test-admin.khalti.com
+KHALTI_WEBSITE_URL=https://shop.example.com
+```
+
+## 3. Initiate and verify
+
+<Tabs syncKey="lang">
+  {snippets.map((s) => (
+    <TabItem label={s.label}>
+      <Code code={s.code} lang={s.lang} />
+    </TabItem>
+  ))}
+</Tabs>
+
+`initiate()` returns either a **redirect** (send the browser to `url`) or a **form** (render an auto-submitting POST; every port has a `renderAutoSubmitForm` helper). Store the `providerRef` it returns on the attempt: Khalti's `pidx`, NPS's `ProcessId` and IME Pay's token are needed by `verify()`.
+
+<Aside type="danger" title="Never fulfil from the callback alone">
+  Pass the amount and ids from your database into `verify()`, then apply the result with `decideTransition` and a guarded `UPDATE`. Fulfil only when the new status is `paid`. [Production architecture](/docs/guides/architecture/) has the table schema, the return handler and the reconciliation job.
+</Aside>
+
+## 4. Wire the routes
+
+Every framework needs the same five routes. [Web frameworks](/docs/guides/web/) has complete handlers for Express, Hono, Next.js, FastAPI, Django, Laravel, Spring Boot and Ktor, plus notes for Go `net/http`, chi and Gin. Mobile apps reuse those routes; see [Mobile apps](/docs/guides/mobile/).

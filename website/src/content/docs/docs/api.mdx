@@ -1,0 +1,118 @@
+---
+title: Adapter API
+description: The PaymentAdapter interface shared by every Nepal Payments adapter, its inputs and results, the normalized payment statuses and the decideTransition state machine.
+---
+
+Every provider implements the same interface in all six languages. This page uses the TypeScript names. Python uses `snake_case` (`amount_paisa`, `order_id_from_callback`) and Go uses exported names (`AmountPaisa`, `OrderIDFromCallback`, with a `context.Context` first argument on network calls). Java, Kotlin and PHP keep the TypeScript names.
+
+## PaymentAdapter
+
+```ts
+interface PaymentAdapter {
+  readonly id: ProviderId; // "esewa" | "khalti" | "fonepay" | "connectips" | "cybersource" | "nps" | "imepay"
+  initiate(input: InitiateInput): Promise<InitiateResult>;
+  /** Server-to-server confirmation. Never trust callback params alone. */
+  verify(input: VerifyInput): Promise<VerifyResult>;
+  /** Extract YOUR order id from return-URL params so you can load the attempt. */
+  orderIdFromCallback(params: Record<string, string>): string | null;
+}
+```
+
+Providers add their own methods on top, for example eSewa's `intentBook` / `intentVerify`, Khalti refunds, Fonepay Dynamic QR and NPS's instrument list. Each provider page documents them.
+
+## Inputs
+
+```ts
+interface InitiateInput {
+  orderId: string;      // unique per payment ATTEMPT, [A-Za-z0-9-]; newOrderId() fits every provider
+  amountPaisa: number;  // integer paisa, computed server-side
+  description: string;
+  returnUrl: string;    // your server route
+  failureUrl?: string;  // defaults to returnUrl
+  customer?: { name?: string; email?: string; phone?: string };
+}
+
+interface VerifyInput {
+  orderId: string;
+  amountPaisa: number;            // the amount YOU stored for this attempt
+  providerRef?: string | null;    // from initiate(): Khalti pidx, NPS ProcessId, IME Pay token
+  callback?: Record<string, string>; // raw params the provider sent to your return URL
+}
+```
+
+## Results
+
+```ts
+type InitiateResult =
+  | { kind: "redirect"; url: string; providerRef?: string; expiresAt?: string; raw?: unknown }
+  | { kind: "form"; action: string; method: "POST"; fields: Record<string, string>;
+      enctype?: "multipart/form-data"; providerRef?: string };
+
+interface VerifyResult {
+  provider: ProviderId;
+  status: PaymentStatus;
+  orderId: string;
+  amountPaisa: number | null;   // what the PROVIDER says was paid
+  transactionId: string | null; // the provider's id; support and refunds need it
+  raw: unknown;                 // untouched provider response for audit logs
+}
+```
+
+## Payment statuses
+
+Every provider status maps onto exactly one of these:
+
+| Status | Meaning | Fulfil? |
+|---|---|---|
+| `paid` | Money captured | Yes, once |
+| `pending` | Not settled yet; re-check later | No |
+| `failed` | Declined or errored; retry with a new order id | No |
+| `canceled` | The payer backed out | No |
+| `expired` | The session timed out before payment | No |
+| `refunded` / `partially_refunded` | Money returned | No |
+| `not_found` | The provider has no record (never started, or wrong environment) | No |
+| `unknown` | Anything unmapped; treat like pending and alert | No |
+
+Attempts also have an `initiated` status: created, but the provider hasn't been heard from yet.
+
+## decideTransition
+
+A pure function that turns a `verify()` result into the next stored status. Apply `next` with a conditional `UPDATE ... WHERE status = prev`, and fulfil only when `next === "paid"`.
+
+```ts
+decideTransition(prev, result, storedAmountPaisa, attemptAgeMs, sessionWindowMs = 3_600_000): {
+  next: AttemptStatus | null; // null = write nothing
+  reviewRequired: boolean;    // amount mismatch, or "paid" without an amount: alert a human
+  latePaid: boolean;          // paid after the attempt was closed: recover and alert
+  reason: string;
+}
+```
+
+| Language | Call |
+|---|---|
+| TypeScript, Kotlin | `decideTransition(...)` |
+| Python | `decide_transition(prev, status, amount_paisa, stored_amount_paisa, attempt_age_s)` |
+| Java, PHP | `StateMachine.decideTransition(...)` / `StateMachine::decideTransition(...)` |
+| Go | `payments.DecideTransition(prev, result, storedAmountPaisa, attemptAge, sessionWindow)` |
+
+## Errors
+
+Adapters throw `PaymentError` (`PaymentException` in Java, Kotlin and PHP) with a `provider`, a machine-readable `code` and, where it applies, an `httpStatus`. Common codes:
+
+| Code | When |
+|---|---|
+| `invalid_amount` | The amount is not a positive integer in paisa |
+| `invalid_order_id` | The order id breaks the provider's charset or length rule |
+| `invalid_signature` | A callback signature doesn't verify |
+| `callback_mismatch` | The callback or status is for a different order |
+| `malformed_callback` | The callback data can't be decoded (HTTP 400) |
+| `network_error` | The provider couldn't be reached after retries |
+| `unauthorized` | The provider rejected your credentials (401) |
+| `http_<status>` / `<provider>_<code>` | The provider returned an error body |
+
+## Helpers
+
+- `newOrderId(prefix = "P")`: at most 20 characters of `[0-9A-Z]`, which fits every provider's id rules.
+- `paisaToRupees(12345)` returns `"123.45"`; `rupeesToPaisa("1,000.0")` returns `100000`. Money stays integer paisa everywhere else.
+- `renderAutoSubmitForm(result)`: the HTML for a `kind: "form"` result.
+- `paymentsConfigFromEnv()`: builds the config from [environment variables](/docs/guides/env/).
