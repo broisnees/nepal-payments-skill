@@ -86,6 +86,8 @@ export default function TimeChart({ t, series, height = 220, bucket, yFormat, yM
             ticks: { show: true, stroke: axis, width: 1, size: 4 },
             border: { show: true, stroke: axis, width: 1 },
             values: (_u, splits) => splits.map((v) => (bucket === "day" ? formatDay(v) : formatHM(v))),
+            // Daily data gets whole-day ticks only; otherwise a short range repeats each date at noon.
+            incrs: bucket === "day" ? [86_400_000, 2 * 86_400_000, 7 * 86_400_000, 14 * 86_400_000, 30 * 86_400_000] : undefined,
             space: 64,
           },
           {
