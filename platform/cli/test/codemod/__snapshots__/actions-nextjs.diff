@@ -1,0 +1,32 @@
+--- /dev/null
++++ b/app/paynp/actions/route.ts
+@@ -0,0 +1,5 @@
++// POST /paynp/actions: refunds and re-checks from the paynp dashboard, signed with PAYNP_ACTION_SECRET. Written by `paynp init`.
++import { paynp } from "@/paynp";
++import { actions } from "@/paynp-actions";
++
++export const POST = paynp.actionHandler(actions);
+
+--- /dev/null
++++ b/paynp-actions.ts
+@@ -0,0 +1,20 @@
++// What the paynp dashboard's "Re-check" and "Send refund" buttons run on this server. Written by `paynp init`.
++// paynp signs each request with PAYNP_ACTION_SECRET (dashboard: Settings, Action endpoint); the route checks the
++// signature, the timestamp and replays before it calls these.
++import type { ActionHandlerOptions } from "@paynp/sdk";
++import { gateway } from "./paynp";
++import { settle } from "./payments";
++import { getAttempt } from "./store";
++
++export const actions: ActionHandlerOptions = {
++  // Re-check: ask eSewa again, the same call the reconcile job makes.
++  async recheck(a) {
++    const attempt = getAttempt(a.attemptId);
++    if (!attempt) return { ok: false, error: "no such payment attempt on this server" };
++    const outcome = await gateway.confirmPayment({ attemptId: attempt.id, amountPaisa: attempt.amountPaisa, providerRef: attempt.providerRef, params: {} });
++    settle(attempt, outcome);
++    return { status: outcome.status };
++  },
++  // Send refund: eSewa has no refund API, so the dashboard shows a manual checklist instead and this stays out.
++  // async refund(a) { /* refund a.refund?.amountPaisa of a.providerRef */ return { refundRef: "..." }; },
++};

@@ -2,6 +2,7 @@
 // on the skill's adapters. Exact diffs (file snapshots under __snapshots__), idempotency, git safety,
 // dry run, tsc on the edited apps, and the edited Express app against eSewa's real sandbox.
 import { spawn, type ChildProcess } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -10,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { run } from "../../src/cli.ts";
 import { unifiedDiff } from "../../src/codemod/diff.ts";
-import { applyPlan, planWiring, type Plan } from "../../src/codemod/plan.ts";
+import { applyPlan, planActionRoute, planWiring, type Plan } from "../../src/codemod/plan.ts";
 import { parseEnv } from "../../src/envfile.ts";
 import type { StackId } from "../../src/stacks.ts";
 import type { Io } from "../../src/ui.ts";
@@ -118,6 +119,77 @@ describe("planWiring on the blog apps", () => {
     const plan = planWiring(dir, { stack: "express" });
     expect(plan.changes).toEqual([]);
     expect(plan.manual[0]).toContain("paynp.ts exists and was not written by paynp init");
+  });
+});
+
+/** The blog's Hono app as a Worker: export default app, no node server, a wrangler config. */
+function honoWorkersApp(): string {
+  const files = blogFiles("hono");
+  const server = files["server.ts"]
+    .replace('import { serve } from "@hono/node-server";\n', "")
+    .replace(/serve\(\{ fetch: app\.fetch[^\n]*\n/, "export default app;\n")
+    .replace("startReconcileLoop(gateway);\n", "");
+  return blogApp("hono", { extra: { "server.ts": server, "wrangler.jsonc": '{ "name": "shop", "main": "server.ts" }\n' } });
+}
+
+describe("planActionRoute (opt-in POST /paynp/actions)", () => {
+  const cases: [string, () => string, StackId][] = [
+    ...FRAMEWORKS.map((fw) => [fw, () => blogApp(fw), fw] as [string, () => string, StackId]),
+    ["hono-workers", honoWorkersApp, "hono"],
+  ];
+
+  it.each(cases)("%s: exact edits on top of the wiring, then a second run changes nothing", async (name, make, stack) => {
+    const dir = make();
+    const wiring = planWiring(dir, { stack });
+    // Planned on top of the unwritten wiring (what --dry-run shows) or after it is written: the same edits.
+    const onTop = planActionRoute(dir, { stack }, wiring);
+    applyPlan(dir, wiring);
+    const plan = planActionRoute(dir, { stack, wrote: wiring.changes.map((c) => c.file) });
+    await expect(diffOf(plan)).toMatchFileSnapshot(snap(`actions-${name}`));
+    expect(onTop.changes.map((c) => [c.rel, c.after])).toEqual(plan.changes.map((c) => [c.rel, c.after]));
+    expect(plan.manual).toEqual([]);
+    expect(plan.changes.map((c) => c.rel)).toContain("paynp-actions.ts");
+    applyPlan(dir, plan);
+
+    const again = planActionRoute(dir, { stack });
+    expect(again.changes).toEqual([]);
+    expect(again.already).toEqual([stack === "nextjs" ? "app/paynp/actions/route.ts" : "server.ts"]);
+    expect(planWiring(dir, { stack }).changes).toEqual([]);
+  });
+
+  it("Khalti: the actions file points at the refund callback in the SDK README", () => {
+    const dir = blogApp("express", { gateway: "khalti" });
+    const wiring = planWiring(dir, { stack: "express" });
+    applyPlan(dir, wiring);
+    const file = planActionRoute(dir, { stack: "express", wrote: wiring.changes.map((c) => c.file) }).changes.find((c) => c.rel === "paynp-actions.ts")!;
+    expect(file.after).toContain("// Send refund: Khalti has a refund API: the @paynp/sdk README has a working refund callback to paste here.");
+  });
+
+  it("adapters, several paynp files or no app: a manual step instead of an edit", () => {
+    const dir = adapterApp();
+    applyPlan(dir, planWiring(dir, { stack: "express" }));
+    const plan = planActionRoute(dir, { stack: "express" });
+    expect(plan.changes).toEqual([]);
+    expect(plan.manual[0]).toContain("Action route: for the nepal-payments adapters, add it by hand");
+
+    const noApp = mkdtempSync(join(tmpdir(), "paynp-codemod-noapp-"));
+    write(noApp, { ...blogFiles("express"), "server.ts": 'import * as gateway from "./esewa";\nexport const go = () => gateway.startPayment;\n', "package.json": "{}" });
+    commitAll(noApp);
+    applyPlan(noApp, planWiring(noApp, { stack: "express" }));
+    const p2 = planActionRoute(noApp, { stack: "express" });
+    expect(p2.changes).toEqual([]);
+    expect(p2.manual[0]).toContain("no top-level `const app = express()` found");
+  });
+
+  it("an uncommitted server file is not edited and nothing is created", () => {
+    const dir = blogApp("express");
+    applyPlan(dir, planWiring(dir, { stack: "express" }));
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "wired");
+    writeFileSync(join(dir, "server.ts"), readFileSync(join(dir, "server.ts"), "utf8") + "// wip\n");
+    const plan = planActionRoute(dir, { stack: "express" });
+    expect(plan.changes).toEqual([]);
+    expect(plan.skipped).toEqual([{ rel: "server.ts", reason: "has uncommitted changes (commit or stash them, or rerun with --force)" }]);
   });
 });
 
@@ -246,6 +318,77 @@ describe("paynp init", () => {
     expect(existsSync(join(dir, "paynp.ts"))).toBe(false);
   });
 
+  it("interactive: the action route is a second, opt-in question; y adds it and the .env placeholder", async () => {
+    await login();
+    const dir = blogApp("express");
+    const r = io(["1", "", "y"], true);
+    expect(await run(["init", "--skip-install"], { io: r.io, cwd: dir })).toBe(0);
+    const out = r.text();
+    expect(out).toContain("Apply these changes? [Y/n] ");
+    expect(out).toContain("Optional: a route for refunds and re-checks from the dashboard (POST /paynp/actions)");
+    expect(out).toContain('+app.post("/paynp/actions", express.raw({ type: "application/json" }), paynp.nodeActionHandler(actions));');
+    expect(out).toContain("+PAYNP_ACTION_SECRET=");
+    expect(out).toContain("Add the /paynp/actions route? [y/N] ");
+    expect(out).toContain("  created paynp-actions.ts: the recheck (and refund) callbacks the action route runs");
+    expect(out).toContain("  edited  .env: PAYNP_ACTION_SECRET placeholder");
+    expect(out).toContain("1. Deploy, then in the dashboard open Settings, Action endpoint and enter https://<your site>/paynp/actions.");
+    const env = readFileSync(join(dir, ".env"), "utf8");
+    expect(env).toContain("# Refunds and re-checks from the paynp dashboard. Copy the secret from Settings, Action endpoint (shown once).\n");
+    expect(parseEnv(env)).toMatchObject({ PAYNP_ACTION_SECRET: "" });
+    expect(parseEnv(env).PAYNP_KEY).toMatch(/^pnp_test_/);
+    expect(readFileSync(join(dir, "server.ts"), "utf8")).toContain('app.post("/paynp/actions"');
+
+    // A second run: nothing to change, and the placeholder is not added twice.
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "paynp");
+    const r2 = io(["1"], true);
+    expect(await run(["init", "--skip-install"], { io: r2.io, cwd: dir })).toBe(0);
+    expect(r2.text()).not.toContain("Add the /paynp/actions route?");
+    expect(tree(dir)).toBe("");
+  });
+
+  it("interactive: an empty answer leaves the action route out", async () => {
+    await login();
+    const dir = blogApp("fastify");
+    const r = io(["1", "", ""], true);
+    expect(await run(["init", "--skip-install"], { io: r.io, cwd: dir })).toBe(0);
+    expect(r.text()).toContain("Left it out. paynp init --actions adds it later.");
+    expect(existsSync(join(dir, "paynp-actions.ts"))).toBe(false);
+    expect(readFileSync(join(dir, ".env"), "utf8")).not.toContain("PAYNP_ACTION_SECRET");
+  });
+
+  it("--yes leaves it out with a hint; --yes --actions adds it; --no-actions says nothing", async () => {
+    await login();
+    const a = blogApp("hono");
+    const r = io();
+    expect(await run(["init", "--yes", "--skip-install"], { io: r.io, cwd: a })).toBe(0);
+    expect(r.text()).toContain("Refunds and re-checks from the dashboard: rerun paynp init --actions to add the /paynp/actions route");
+    expect(existsSync(join(a, "paynp-actions.ts"))).toBe(false);
+
+    const b = blogApp("nextjs");
+    const r2 = io();
+    expect(await run(["init", "--yes", "--actions", "--skip-install"], { io: r2.io, cwd: b })).toBe(0);
+    expect(r2.text()).toContain("Added the action route:");
+    expect(readFileSync(join(b, "app/paynp/actions/route.ts"), "utf8")).toContain("export const POST = paynp.actionHandler(actions);");
+    expect(parseEnv(readFileSync(join(b, ".env"), "utf8"))).toHaveProperty("PAYNP_ACTION_SECRET", "");
+
+    const c = blogApp("express");
+    const r3 = io();
+    expect(await run(["init", "--yes", "--no-actions", "--skip-install"], { io: r3.io, cwd: c })).toBe(0);
+    expect(r3.text()).not.toMatch(/paynp\/actions/);
+  });
+
+  it("--dry-run shows the action route diff on top of the wiring diff, and writes nothing", async () => {
+    const dir = blogApp("express");
+    const r = io();
+    expect(await run(["init", "--dry-run"], { io: r.io, cwd: dir })).toBe(0);
+    const out = r.text();
+    expect(out.indexOf("+++ b/paynp.ts")).toBeLessThan(out.indexOf("+++ b/paynp-actions.ts"));
+    expect(out).toContain('-import { gateway } from "./paynp";\n+import { gateway, paynp } from "./paynp";');
+    expect(out).toContain("Dry run: nothing written. paynp init --actions adds this route.");
+    expect(tree(dir)).toBe("");
+  });
+
   it("Python, PHP, Go, Java and Kotlin keep the printed snippet and say the code is not edited", async () => {
     const cases: [Record<string, string>, string][] = [
       [{ "requirements.txt": "Django==5.2\n" }, "paynp has no Python SDK yet, so init does not edit Django code. Add this yourself:"],
@@ -286,6 +429,17 @@ describe.skipIf(SKIP_DEPS)("the edited apps typecheck", () => {
     linkDeps(dir, nm);
     tsc(dir); // the blog's code typechecks as published
     applyPlan(dir, planWiring(dir, { stack: (w === "adapters" ? "express" : w) as StackId }));
+    expect(() => tsc(dir)).not.toThrow();
+  }, 120_000);
+
+  it.each([...FRAMEWORKS, "hono-workers" as const])("%s with the action route", (w) => {
+    const dir = w === "hono-workers" ? honoWorkersApp() : blogApp(w);
+    const stack = (w === "hono-workers" ? "hono" : w) as StackId;
+    linkDeps(dir, nm);
+    if (w === "hono-workers") write(dir, { "cloudflare-workers.d.ts": 'declare module "cloudflare:workers" { export const env: Record<string, unknown>; }\n' });
+    const wiring = planWiring(dir, { stack });
+    applyPlan(dir, wiring);
+    applyPlan(dir, planActionRoute(dir, { stack, wrote: wiring.changes.map((c) => c.file) }));
     expect(() => tsc(dir)).not.toThrow();
   }, 120_000);
 });
@@ -381,6 +535,115 @@ describe.skipIf(SKIP_SANDBOX)("the edited Express app against eSewa's sandbox", 
     expect(by("error").data).toMatchObject({ reason: "bad_signature" });
   }, 120_000);
 });
+
+describe.skipIf(SKIP_DEPS)("init --actions, then doctor, on the blog's Express app, end to end", () => {
+  let api: MockApi;
+  let app: ChildProcess | undefined;
+  let nm: string;
+  beforeAll(async () => {
+    nm = depsDir();
+    process.env.PAYNP_NO_BROWSER = "1";
+    process.env.XDG_CONFIG_HOME = mkdtempSync(join(tmpdir(), "paynp-home-"));
+    delete process.env.PAYNP_ACTION_SECRET;
+    api = await startMockApi();
+  }, 600_000);
+  afterAll(() => {
+    app?.kill();
+    api?.close();
+    delete process.env.XDG_CONFIG_HOME;
+  });
+
+  it("the route answers signed actions only, the recheck reaches the app's own store, doctor reports both halves", async () => {
+    const dir = blogApp("express");
+    linkDeps(dir, nm);
+    expect(await run(["login", "--endpoint", api.url], { io: io().io, cwd: dir })).toBe(0);
+    const r = io();
+    expect(await run(["init", "--yes", "--actions", "--skip-install", "--endpoint", api.url], { io: r.io, cwd: dir })).toBe(0);
+    expect(r.text()).toContain("Wired paynp into 3 files:");
+    expect(r.text()).toContain("Added the action route:");
+
+    // Doctor right after init: wired, but the action secret is still the empty placeholder. Not critical: exit 0.
+    const d1 = io();
+    expect(await run(["doctor", "--endpoint", api.url], { io: d1.io, cwd: dir })).toBe(0);
+    expect(d1.text()).toContain("WARNING   Action route without PAYNP_ACTION_SECRET  action_route_without_secret, server.ts");
+    expect(d1.text()).toContain("ok        Every gateway import goes through paynp (payments.ts, paynp-actions.ts, server.ts).");
+    expect(d1.text()).toContain("Live traffic  (could not load)");
+
+    // The secret from the dashboard goes into .env.
+    const secret = "whsec_e2e_" + Date.now();
+    writeFileSync(join(dir, ".env"), readFileSync(join(dir, ".env"), "utf8").replace("PAYNP_ACTION_SECRET=\n", `PAYNP_ACTION_SECRET=${secret}\n`));
+    const env = parseEnv(readFileSync(join(dir, ".env"), "utf8"));
+    expect(env.PAYNP_ACTION_SECRET).toBe(secret);
+
+    const port = await freePort();
+    const base = `http://localhost:${port}`;
+    app = spawn(process.execPath, [join(nm, "tsx", "dist", "cli.mjs"), "server.ts"], {
+      cwd: dir,
+      env: { ...process.env, ...env, PORT: String(port), BASE_URL: base },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let log = "";
+    app.stdout!.on("data", (d) => (log += d));
+    app.stderr!.on("data", (d) => (log += d));
+    await until(async () => (await fetch(base + "/").catch(() => null))?.ok === true, 30_000, () => log);
+
+    const page = await (await fetch(base + "/pay/demo", { method: "POST" })).text();
+    const attemptId = /name="transaction_uuid"[^>]*value="([^"]+)"/.exec(page)?.[1];
+    expect(attemptId).toMatch(/^[0-9a-f]{20}$/);
+
+    const send = async (body: object, opts: { secret?: string; ts?: number } = {}) => {
+      const text = JSON.stringify(body);
+      const ts = opts.ts ?? Math.floor(Date.now() / 1000);
+      const sig = createHmac("sha256", opts.secret ?? secret).update(`${ts}.${text}`).digest("hex");
+      const res = await fetch(`${base}/paynp/actions`, { method: "POST", headers: { "content-type": "application/json", "x-paynp-signature": `sha256=${sig}`, "x-paynp-timestamp": String(ts) }, body: text });
+      return [res.status, await res.json()] as const;
+    };
+    expect(await send({ id: "act_e2e_ping", kind: "ping" })).toEqual([200, { ok: true }]);
+    expect(await send({ id: "act_e2e_bad", kind: "ping" }, { secret: "wrong" })).toEqual([401, { ok: false, error: "bad signature" }]);
+    expect((await send({ id: "act_e2e_old", kind: "ping" }, { ts: Math.floor(Date.now() / 1000) - 600 }))[0]).toBe(401);
+    const refund = await send({ id: "act_e2e_refund", kind: "refund", attempt_id: attemptId, gateway: "esewa", amount_paisa: 10000, refund: { amount_paisa: 10000, reason: "duplicate" } });
+    expect(refund[0]).toBe(200);
+    expect(refund[1]).toMatchObject({ ok: false, error: expect.stringContaining("no refund handler") });
+    expect(await send({ id: "act_e2e_nobody", kind: "recheck", attempt_id: "0000", gateway: "esewa" })).toEqual([200, { ok: false, error: "no such payment attempt on this server" }]);
+    expect((await send({ id: "act_e2e_nobody", kind: "recheck", attempt_id: "0000", gateway: "esewa" }))[0]).toBe(409);
+
+    if (!SKIP_SANDBOX) {
+      // The real recheck: the app's own confirmPayment against eSewa's sandbox, then settle().
+      // eSewa's sandbox times out now and then; the module then throws and the answer is ok: false. A retry is a new action.
+      let id = "";
+      let last: readonly [number, { ok: boolean; error?: string }] = [0, { ok: false }];
+      for (let i = 1; i <= 3 && !last[1].ok; i++) {
+        id = `act_e2e_recheck_${i}`;
+        last = await send({ id, kind: "recheck", attempt_id: attemptId, gateway: "esewa", amount_paisa: 10000 });
+        expect(last[0]).toBe(200);
+      }
+      expect(last[1]).toMatchObject({ ok: true });
+      await until(() => api.state.events.some((e) => e.attempt_id === attemptId && e.data?.action_id === id), 20_000, () => log);
+      const tagged = api.state.events.find((e) => e.data?.action_id === id)!;
+      expect(tagged).toMatchObject({ type: "reconcile.checked", gateway: "esewa", data: { source: "manual" } });
+      // the wrapped module reported its own status call, with the sandbox host it saw
+      expect(api.state.events.find((e) => e.attempt_id === attemptId && e.type === "gateway.request")?.data).toMatchObject({ op: "status", gw_env: "sandbox" });
+    }
+
+    // Doctor again: the secret is set; the server now has a critical finding for live traffic.
+    api.state.doctor[`${readLinkProject(dir)}|live`] = {
+      env: "live", critical: 1, warnings: 0, passed: [],
+      findings: [{ code: "sandbox_gateway_in_live", severity: "critical", gateway: "esewa", title: "Live payments are going to a sandbox gateway", why: "w", fix: "f", docs_url: "d", count: 2, first_seen: Date.now() - 60_000, last_seen: Date.now() - 30_000, example_attempt: attemptId, resolved_at: null }],
+    };
+    const d2 = io();
+    expect(await run(["doctor", "--endpoint", api.url], { io: d2.io, cwd: dir })).toBe(1);
+    expect(d2.text()).toContain("The action route (server.ts) has PAYNP_ACTION_SECRET.");
+    expect(d2.text()).toContain("CRITICAL  Live payments are going to a sandbox gateway  sandbox_gateway_in_live");
+    expect(d2.text()).toContain(`e.g. attempt ${attemptId}`);
+    const j = io();
+    expect(await run(["doctor", "--json", "--endpoint", api.url], { io: j.io, cwd: dir })).toBe(1);
+    expect(JSON.parse(j.text())).toMatchObject({ critical: 1, warnings: 0, server: { state: "ok", critical: 1 } });
+  }, 180_000);
+});
+
+function readLinkProject(dir: string): string {
+  return JSON.parse(readFileSync(join(dir, ".paynp", "project.json"), "utf8")).project;
+}
 
 function unescape(s: string): string {
   return s.replaceAll("&quot;", '"').replaceAll("&#39;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");

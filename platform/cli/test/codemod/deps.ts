@@ -2,7 +2,7 @@
 // (npm's cache makes reinstalls offline). Fixtures symlink its node_modules, so tsc and tsx see the
 // same packages a real app would. PAYNP_SKIP_DEPS=1 skips the tests that need them.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -38,7 +38,10 @@ export function depsDir(): string {
   // @paynp/sdk is this repo's SDK build. Its exports map only has an "import" condition, which a CommonJS
   // app (the blog's `npm init -y` setup, run by tsx) cannot resolve, so the package.json here adds
   // "default" next to it. Node 22.12+ then loads the ESM build through require().
-  if (!existsSync(join(SDK_DIR, "dist", "index.js"))) execFileSync("npm", ["run", "build"], { cwd: SDK_DIR, stdio: "inherit" });
+  const dist = join(SDK_DIR, "dist", "index.js");
+  const srcDir = join(SDK_DIR, "src");
+  const stale = !existsSync(dist) || readdirSync(srcDir).some((f) => statSync(join(srcDir, f)).mtimeMs > statSync(dist).mtimeMs);
+  if (stale) execFileSync("npm", ["run", "build"], { cwd: SDK_DIR, stdio: "inherit" });
   const link = join(dir, "node_modules", "@paynp", "sdk");
   const sdkPkg = JSON.parse(readFileSync(join(SDK_DIR, "package.json"), "utf8"));
   const root = sdkPkg.exports?.["."] ?? {};

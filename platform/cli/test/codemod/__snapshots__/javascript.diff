@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/paynp.mjs
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,10 @@
 +// Reports every eSewa payment step to paynp: start, return, status checks, errors.
 +// Written by `paynp init`. The routes import `gateway` from here instead of './esewa.mjs'.
 +import { createPaynp } from '@paynp/sdk'
@@ -8,6 +8,9 @@
 +
 +export const paynp = createPaynp({ key: process.env.PAYNP_KEY })
 +export const gateway = paynp.wrapGateway('esewa', esewa)
++
++// To find payments by the buyer's phone or email in the dashboard, pass who paid (paynp keeps both only hashed):
++// export const gateway = paynp.wrapGateway('esewa', esewa, { customer: (input) => ({ phone: input.phone, email: input.email }) })
 
 --- a/server.mjs
 +++ b/server.mjs

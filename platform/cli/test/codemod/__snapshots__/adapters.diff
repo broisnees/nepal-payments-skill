@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/src/server/paynp.ts
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,28 @@
 +// Reports every payment step of the nepal-payments adapters to paynp: initiate, verify, errors.
 +// Written by `paynp init`. Same exports as "./payments/index.ts", with every adapter wrapped.
 +import { createPaynp } from "@paynp/sdk";
@@ -26,6 +26,9 @@
 +    adapter: (id) => paynp.wrapAdapter(payments.adapter(id)),
 +  };
 +}
++
++// To find payments by the buyer's phone or email in the dashboard, pass who paid (paynp keeps both only hashed):
++// paynp.wrapAdapter(adapter, { customer: (input) => input.customer });
 
 --- a/src/server/checkout.ts
 +++ b/src/server/checkout.ts
