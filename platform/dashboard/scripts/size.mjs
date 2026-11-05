@@ -36,8 +36,13 @@ function route(name, extra = []) {
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
 const e = route("__none__");
 console.log(`entry (index.html + JS + CSS): ${kb(e.total)} gzipped`);
-for (const [r, extra] of [["Overview", ["TimeChart"]], ["Payments", []], ["PaymentDetail", []], ["Live", []], ["Analytics", ["TimeChart"]], ["SignIn", []]]) {
-  console.log(`/${r.toLowerCase()} first load: ${kb(route(r, extra).total)} gzipped`);
+const routes = [["Overview", ["TimeChart"]], ["Payments", []], ["PaymentDetail", ["ops"]], ["Live", []], ["Analytics", ["TimeChart"]], ["SignIn", []], ["Support", ["ops"]], ["Refunds", ["ops"]], ["Reconcile", ["TimeChart", "ops"]], ["GoLive", ["ops"]], ["Exports", ["ops"]], ["Settings", []], ["Alerts", []]];
+let heaviest = ["", 0];
+for (const [r, extra] of routes) {
+  const t = route(r, extra).total;
+  if (t > heaviest[1]) heaviest = [r, t];
+  console.log(`/${r.toLowerCase()} first load: ${kb(t)} gzipped`);
 }
+console.log(`heaviest route: /${heaviest[0].toLowerCase()} at ${kb(heaviest[1])} (budget 150 KB)`);
 const fonts = files.filter((f) => /inter-latin-opsz-normal|jetbrains-mono-latin-wght-normal/.test(f));
 console.log(`fonts used by Latin text (woff2, already compressed): ${kb(fonts.reduce((s, f) => s + readFileSync(join(assets, f)).length, 0))}`);

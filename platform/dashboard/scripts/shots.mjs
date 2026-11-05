@@ -33,6 +33,29 @@ const pages = [
   ["settings-sessions", `${P}/settings/sessions`],
   ["settings-tokens", `${P}/settings/tokens`],
   ["switcher", `${P}/overview`, { click: "Storefront" }],
+  ["payment-detail-duplicate", `${P}/refunds`, { clickCase: "Paid twice", openRefund: true }],
+  ["payment-detail-mark-refund", `${P}/payments?status=paid`, { clickFirst: "paid", click: "Mark for refund" }],
+  ["payment-detail-status-link", `${P}/payments?status=paid`, { clickFirst: "paid", click: "Send status link", then: "Create link" }],
+  ["support-empty", `${P}/support`],
+  ["support-phone", `${P}/support?q=9841234567`],
+  ["support-none", `${P}/support?q=HT-99999`],
+  ["refunds", `${P}/refunds`],
+  ["refunds-case-failed", `${P}/refunds`, { clickCase: "Failed" }],
+  ["refunds-case-done", `${P}/refunds`, { clickCase: "Refunded" }],
+  ["refunds-test-no-endpoint", "/p/prj_storefront/test/refunds"],
+  ["refunds-empty", "/p/prj_books/live/refunds"],
+  ["reconcile", `${P}/reconcile`],
+  ["reconcile-missing", `${P}/reconcile?tab=missing`],
+  ["reconcile-mapping", `${P}/reconcile`, { upload: "scripts/fixtures/bank-export.csv" }],
+  ["reconcile-empty", "/p/prj_storefront/test/reconcile"],
+  ["go-live", `${P}/go-live`],
+  ["go-live-test", "/p/prj_storefront/test/go-live"],
+  ["go-live-ready", "/p/prj_books/live/go-live"],
+  ["exports", `${P}/exports`],
+  ["alerts-double-payment", `${P}/alerts/rules`, { click: "New rule", then: "Double payment" }],
+  ["alerts-paid-not-fulfilled", `${P}/alerts/rules`, { click: "New rule", then: "Paid but not fulfilled" }],
+  ["settings-actions", `${P}/settings/actions`],
+  ["settings-actions-new", "/p/prj_storefront/test/settings/actions"],
 ];
 
 const views = [
@@ -76,6 +99,7 @@ for (const [vname, viewport] of views) {
       await sleep(900);
       if (opts.clickFirst) {
         await page.evaluate(() => document.querySelector("tbody tr.clickable a")?.click());
+        if (opts.click) await sleep(600);
         await sleep(1200);
         if (opts.expand) {
           await page.evaluate(() => {
@@ -84,6 +108,20 @@ for (const [vname, viewport] of views) {
           });
           await sleep(400);
         }
+      }
+      if (opts.clickCase) {
+        await page.evaluate((t) => [...document.querySelectorAll(".case-row")].find((a) => a.textContent.includes(t))?.click(), opts.clickCase);
+        await sleep(700);
+      }
+      if (opts.openRefund) {
+        // From a duplicate case, open the payment that should be refunded.
+        await page.evaluate(() => [...document.querySelectorAll(".pay-card")].find((a) => a.dataset.role === "refund")?.click());
+        await sleep(1200);
+      }
+      if (opts.upload) {
+        const input = await page.$("input[type=file]");
+        await input.uploadFile(opts.upload);
+        await sleep(1500);
       }
       if (opts.click) {
         await clickText(page, opts.click);
