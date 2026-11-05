@@ -1,0 +1,252 @@
+---
+title: "eSewa Payment Gateway Integration: Step by Step in Any Framework"
+description: "Build eSewa ePay v2 checkout in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: signed form, verified callback, status API and sandbox."
+label: eSewa
+provider: esewa
+published: 2026-11-05
+order: 10
+stack: true
+stackTitle: "eSewa Payment Gateway Integration in {stack}: Step by Step"
+stackDescription: "Integrate eSewa ePay v2 in {stack}: signed form, verified callback, status API, reconciliation and sandbox testing, with code you can run."
+faq:
+  - q: "Is uat.esewa.com.np still the eSewa sandbox?"
+    a: "No. uat.esewa.com.np no longer resolves. The sandbox form is https://rc-epay.esewa.com.np/api/epay/main/v2/form and the sandbox status API is https://rc.esewa.com.np/api/epay/transaction/status/."
+  - q: "What are the eSewa sandbox credentials?"
+    a: "Product code EPAYTEST and secret key 8gBm/:&EnhH.1/q for the merchant. To pay, log in with eSewa ID 9806800001 to 9806800005, password Nepal@123 and OTP token 123456."
+  - q: "Why does eSewa return ES104 Invalid payload signature?"
+    a: "The string you signed differs from the fields you posted. The usual cause is formatting the amount twice, for example signing total_amount=110 and posting 110.0. Format the amount once and use that exact string in the form and in the signature."
+  - q: "Can I mark an order paid from the eSewa success redirect?"
+    a: "No. The redirect only says the buyer came back. Verify the signature on the data parameter, then call the status API with the total you stored. Only status COMPLETE means the money moved."
+  - q: "Can I create the eSewa signature in React or the browser?"
+    a: "No. Signing needs the secret key, and anything sent to the browser is public. Anyone holding the key can sign any amount. Sign on your server and send the browser only the finished form."
+  - q: "Does eSewa ePay v2 have webhooks or a refund API?"
+    a: "No. ePay v2 has no webhook and no refund API. Refunds happen through eSewa and show up as FULL_REFUND or PARTIAL_REFUND in the status API. A scheduled job that re-checks open payments covers both."
+  - q: "How do I integrate eSewa in a Flutter or React Native app?"
+    a: "Use eSewa's Intent flow, which eSewa now recommends over its deprecated Android, iOS and Flutter SDKs. Your server books the payment, the app opens the returned deeplink, and your server confirms with the Intent status API."
+---
+
+import CodeGroup from "../../components/blog/CodeGroup.astro";
+import Note from "../../components/blog/Note.astro";
+import { app, gatewayNames, part, whole } from "../../data/blog-code";
+import { esewa, vectors } from "../../data/blog-code/esewa";
+
+export const code = app(gatewayNames("esewa", "eSewa", "Esewa"));
+
+By the end of this guide you'll have a checkout that takes eSewa payments and marks an order paid only after eSewa confirms the money moved. Pick your framework above and the whole guide switches to it, and the code runs as-is against eSewa's public sandbox, so you can pay with a test account in about 20 minutes.
+
+I tested every block on this page against eSewa's sandbox in November 2026: the form is accepted, the status API answers, and a forged callback is rejected.
+
+## How an eSewa payment works
+
+eSewa's web checkout is called **ePay v2**. Your server never asks eSewa for a payment link. It builds an HTML form, signs it, and the buyer's browser posts that form to eSewa:
+
+<ol class="steps">
+  <li>Your server creates a <strong>payment attempt</strong> in your database, then signs three fields (<code>total_amount</code>, <code>transaction_uuid</code>, <code>product_code</code>) with your secret key.</li>
+  <li>The browser auto-submits the signed form to eSewa. The buyer logs in and confirms.</li>
+  <li>eSewa sends the buyer back to your return URL. On success it appends <code>?data=</code>, a base64 JSON receipt signed with the same key. On failure it appends nothing.</li>
+  <li>Your server checks the receipt's signature, then asks eSewa's <strong>status API</strong> what happened. That answer, not the redirect, decides whether the order is paid.</li>
+</ol>
+
+Three rules fall out of this, and most broken eSewa integrations break one of them:
+
+- **Sign on the server.** The secret key never reaches the browser or a mobile app.
+- **A redirect is not a payment.** Anyone can type your return URL into a browser. Only the status API proves payment.
+- **Use your own numbers.** Check the amount you stored, never one from the callback.
+
+## What you need
+
+Nothing to start. eSewa publishes sandbox credentials, and the code below defaults to them:
+
+| | Sandbox | Production |
+|---|---|---|
+| Product code | `EPAYTEST` | from eSewa after merchant onboarding |
+| Secret key | `8gBm/:&EnhH.1/q` | from eSewa |
+| Form URL | `rc-epay.esewa.com.np/api/epay/main/v2/form` | `epay.esewa.com.np/api/epay/main/v2/form` |
+| Status API | `rc.esewa.com.np/api/epay/transaction/status/` | `esewa.com.np/api/epay/transaction/status/` |
+
+For production, apply at [merchant.esewa.com.np](https://merchant.esewa.com.np) and set three environment variables:
+
+```bash
+ESEWA_ENV=production
+ESEWA_PRODUCT_CODE=your-product-code
+ESEWA_SECRET_KEY='your-secret-key'
+```
+
+<Note type="warn" title="Most eSewa tutorials use a dead host">
+  They point at <code>uat.esewa.com.np</code>, which no longer resolves. The sandbox lives on the <code>rc</code> hosts above.
+</Note>
+
+## Set up the project
+
+Create the project and install the framework. The commands below match the stack you picked.
+
+<CodeGroup by="fw" blocks={code.setup} />
+
+## Step 1: Store payment attempts
+
+Every click on "Pay" creates a **payment attempt**: one row with its own id, the amount, and a status that starts at `initiated`. The order can have several attempts (the buyer cancels and tries again), and each attempt's id is what eSewa sees as `transaction_uuid`, so it is never reused.
+
+In production this is a table:
+
+```sql
+CREATE TABLE payment_attempts (
+  id            VARCHAR(20) PRIMARY KEY,   -- sent to eSewa as transaction_uuid
+  order_id      VARCHAR(64) NOT NULL,
+  amount_paisa  BIGINT      NOT NULL,      -- what we charge, in paisa (Rs 100 = 10000)
+  status        VARCHAR(16) NOT NULL,      -- initiated, pending, paid, failed, canceled, expired
+  provider_ref  VARCHAR(64),               -- eSewa's ref_id once paid
+  created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+To keep this guide runnable with zero setup, the store below keeps attempts in memory (or in a JSON file for PHP, which forgets everything between requests). Swap its functions for queries when you move to a database. The function that matters is `transition`: it changes the status only if the current status is one you expect, in one atomic step. That single rule is what stops an order from being fulfilled twice when the buyer refreshes the return page.
+
+<CodeGroup by="lang" blocks={code.store} />
+
+Next, the types every gateway module speaks, plus `settle`. `settle` takes eSewa's answer and applies it: `paid` moves the attempt to paid and fulfils the order exactly once, `pending` waits, and `not_found` is left for the reconcile job in step 4.
+
+<CodeGroup by="lang" blocks={code.types} />
+
+## Step 2: Write the eSewa module
+
+This file is the only eSewa-specific code in the project. It exports two functions: `startPayment`, which builds the signed form, and `confirmPayment`, which decides what happened. It's the same file for every framework in your language.
+
+### Configuration
+
+The module reads three environment variables and falls back to the public sandbox credentials. Two details here save hours of debugging later:
+
+- Config tools and HTML templates sometimes store `&` as `&amp;`. The sandbox key contains an `&`, so the module undoes that.
+- Amounts arrive in paisa and leave as rupee text, formatted **once** by a single function. eSewa signs the exact text it receives, so `100` and `100.0` are different signatures.
+
+<CodeGroup by="lang" blocks={part(esewa, "config")} />
+
+### Signing
+
+eSewa's signature is HMAC-SHA256 over a comma-separated `name=value` list, in the order named by `signed_field_names`, encoded as standard base64 (not hex). For a Rs 100 payment the signed text is:
+
+```text
+total_amount=100,transaction_uuid=11-201-13,product_code=EPAYTEST
+```
+
+<CodeGroup by="lang" blocks={part(esewa, "sign")} />
+
+Check your signing code against these vectors before you touch the sandbox. **The example signatures in eSewa's own docs don't reproduce with the documented key**, so don't test against them.
+
+<table>
+  <thead><tr><th>Key</th><th>Message</th><th>Signature</th></tr></thead>
+  <tbody>
+    {vectors.map((v) => (
+      <tr><td><code>{v.key}</code></td><td><code>{v.message}</code></td><td><code>{v.signature}</code></td></tr>
+    ))}
+  </tbody>
+</table>
+
+From a terminal:
+
+```bash
+printf '%s' 'total_amount=100,transaction_uuid=11-201-13,product_code=EPAYTEST' \
+  | openssl dgst -sha256 -hmac '8gBm/:&EnhH.1/q' -binary | base64
+# 5DZywcrTKD0gia/rsSMcrRHmJl+4Tbol6S+lWgdJ94E=
+```
+
+### Starting a payment
+
+`startPayment` returns the form. eSewa requires all of these fields, even the ones you don't use:
+
+| Field | Value |
+|---|---|
+| `amount` | The price before tax and charges |
+| `tax_amount`, `product_service_charge`, `product_delivery_charge` | `0` when unused. Leaving one out fails with `ES200`. |
+| `total_amount` | The sum of the four above, or eSewa answers `ES704` |
+| `transaction_uuid` | The attempt id: letters, digits and `-`, unique per attempt |
+| `product_code` | `EPAYTEST` in the sandbox |
+| `success_url`, `failure_url` | Your return route. No query string, because eSewa appends `?data=` |
+| `signed_field_names` | `total_amount,transaction_uuid,product_code` |
+| `signature` | From the signing step |
+
+Both URLs point to the same route, `/pay/return/<attemptId>`. eSewa's failure redirect carries no parameters at all, so the attempt id has to live in the path.
+
+<CodeGroup by="lang" blocks={part(esewa, "start")} />
+
+### Confirming a payment
+
+`confirmPayment` runs in two places: on the return route, with whatever eSewa appended, and in the reconcile job, with nothing. It works the same way in both:
+
+1. If there's a `data` receipt, decode it, rebuild the signed message from the receipt's **own** `signed_field_names`, and compare signatures in constant time. Then check that the receipt is for this attempt. A forged or mismatched receipt throws `PaymentError`, and the route answers 400.
+2. Ask the status API, sending the total **you stored**. A wrong total comes back as `NOT_FOUND` rather than an error, so this call is also the amount check.
+3. Map eSewa's status to ours.
+
+| eSewa status | Means | Our status |
+|---|---|---|
+| `COMPLETE` | Paid | `paid` |
+| `PENDING` | Started, not finished | `pending` |
+| `AMBIGUOUS` | Stuck mid-payment at eSewa; check again later | `pending` |
+| `NOT_FOUND` | Never paid, session expired, or wrong total | `not_found` |
+| `CANCELED` | Canceled or reversed by eSewa | `canceled` |
+| `FULL_REFUND`, `PARTIAL_REFUND` | Refunded through eSewa | `refunded` |
+
+Two quirks are handled here. A `+` in the base64 receipt can arrive as a space after query parsing, and eSewa sometimes formats `total_amount` with a thousands separator (`"1,000.0"`). Sources disagree on whether that comma is signed, so the module tries both.
+
+<CodeGroup by="lang" blocks={part(esewa, "confirm")} />
+
+<details class="full-file">
+  <summary>The whole eSewa module in one block</summary>
+  <CodeGroup by="lang" blocks={whole(esewa, ["config", "sign", "start", "confirm"])} />
+</details>
+
+## Step 3: Add the routes
+
+Four routes connect it all. None of them mention eSewa: they call `startPayment` and `confirmPayment` on whichever gateway module you import, so adding Khalti later means importing a second module, not writing new routes.
+
+- `GET /` shows a demo order and a Pay button.
+- `POST /pay/{orderId}` creates an attempt, calls `startPayment`, and sends back a page that auto-posts the form to eSewa.
+- `GET` and `POST /pay/return/{attemptId}` collect everything eSewa sent, call `confirmPayment` with the **stored** amount, apply the answer with `settle`, and redirect to the order. It accepts POST too because other gateways post back, and frameworks with CSRF protection exempt this one route for the same reason.
+- `GET /orders/{orderId}` shows the order's payment status.
+
+<CodeGroup by="fw" blocks={code.routes} />
+
+## Step 4: Catch payments the redirect missed
+
+Buyers close the tab after paying, lose signal, or never get redirected. ePay v2 has no webhook, so nothing tells your server. The reconcile job fixes that: every minute it finds attempts still open after two minutes and runs `confirmPayment` on them with no callback data. Paid ones get settled; attempts eSewa still doesn't know after an hour are marked `expired`. eSewa fails any payment not completed within 15 minutes of login, so an hour is a safe margin. Anything still open after three days drops out of the loop: the job logs it as needing manual review, because a payment that old needs a person, not another status call.
+
+<CodeGroup by="lang" blocks={code.reconcile} />
+
+## Step 5: Pay in the sandbox
+
+Start the server with the run command from the setup step, then:
+
+<ol class="steps">
+  <li>Open the app and click <strong>Pay with eSewa</strong>. You land on eSewa's sandbox login.</li>
+  <li>Log in with eSewa ID <code>9806800001</code> (up to <code>9806800005</code>), password <code>Nepal@123</code>, and token <code>123456</code>. The login page has a reCAPTCHA, so this step is manual.</li>
+  <li>Confirm the payment. eSewa redirects to <code>/pay/return/&lt;attemptId&gt;?data=...</code>, and your server verifies and settles it.</li>
+  <li>The order page shows <strong>paid</strong>, and the server log prints the fulfilment line once. Refresh the return URL as often as you like: it never prints again.</li>
+</ol>
+
+To test the failure path, click Pay and then cancel on eSewa. You come back with no `data`, the status API answers `NOT_FOUND`, and the attempt stays open until the reconcile job expires it.
+
+## Common eSewa errors
+
+| Error | Cause | Fix |
+|---|---|---|
+| `ES104 Invalid payload signature` | The signed text differs from the posted fields, often `110` signed and `110.0` posted. | Format the amount once and reuse the string. |
+| `ES704 Invalid total transaction amount` | `total_amount` isn't the sum of the four amount fields. | Send `0` for unused charges and recompute. |
+| `ES200 tax_amount field is required` | A required field is missing. | Send every field, `0` where unused. |
+| `Duplicate transaction UUID` | An attempt id was reused. | Create a new attempt per click. |
+| HTTP 409 from the form URL | The request body was JSON. | Post `application/x-www-form-urlencoded` from a browser form. |
+| Status API says `NOT_FOUND` after paying | Wrong `total_amount`, usually missing tax or charges. | Send the full total you stored. |
+| Every signature fails with the right key | The key was stored as `8gBm/:&amp;EnhH.1/q`. | Turn `&amp;` back into `&`. |
+| `{"code":0,"error_message":"Service is currently unavailable"}` | eSewa outage. | Nothing to fix. The route answers 502 and the reconcile job retries. |
+
+## Going live
+
+1. Get your live product code and secret key from eSewa merchant onboarding.
+2. Set `ESEWA_ENV=production`, `ESEWA_PRODUCT_CODE` and `ESEWA_SECRET_KEY` on the server. The module switches both URLs and refuses to start without real credentials.
+3. Replace the store with your database. Keep `transition` atomic: an `UPDATE ... WHERE id = ? AND status IN (...)` that reports how many rows changed.
+4. Run the reconcile job from a scheduler (cron, a queue worker, or the framework's scheduler) instead of the web process.
+5. Make one real low-value payment end to end, then refund it from the eSewa merchant portal and watch the status API report `FULL_REFUND`.
+
+## eSewa in React, Vue or a mobile app
+
+**React, Vue, Svelte or any SPA:** the frontend never signs anything. It POSTs the order id to your server's `/pay/{orderId}` route and lets the browser follow the auto-post page, or fetches the form fields as JSON and submits a form it builds itself. Tutorials that compute the signature inside a React component ship your secret key to every visitor.
+
+**Flutter, React Native, Android, iOS:** use eSewa's **Intent** flow, which eSewa recommends in place of its deprecated mobile SDKs. Your server books the payment and gets a deeplink back, the app opens it, and your server confirms with the Intent status API. The `esewa_flutter_sdk` package on pub.dev is unofficial and discontinued. The [eSewa reference](/docs/providers/esewa/reference/#6-intent-payment-mobile-app-to-app) covers Intent end to end, or open the checkout in a WebView and keep everything above unchanged.
