@@ -79,13 +79,26 @@ describe.skipIf(process.env.PAYNP_SKIP_SANDBOX === "1")("eSewa sandbox, real mod
     expect(evs.map((e) => e.type)).toEqual(["payment.started", "payment.redirected", "gateway.request", "reconcile.checked"]);
     const [started, redirected, request, reconciled] = evs;
     expect(started).toMatchObject({ gateway: "esewa", amount_paisa: 10000, status: "initiated" });
-    expect(redirected.data).toEqual({ method: "POST", endpoint: "/api/epay/main/v2/form" });
-    expect(request.data).toEqual({ op: "status", method: "GET", endpoint: "/api/epay/transaction/status/", http_status: 200 });
+    expect(started.data).toEqual({ return_https: false });
+    expect(redirected.data).toEqual({ method: "POST", endpoint: "/api/epay/main/v2/form", gw_env: "sandbox" });
+    expect(request.data).toEqual({ op: "status", method: "GET", endpoint: "/api/epay/transaction/status/", http_status: 200, gw_env: "sandbox" });
     expect(request.duration_ms).toBeGreaterThan(0);
     expect(reconciled.data?.source).toBe("reconcile");
     expect(reconciled.status).toBe(outcome.status === "pending" ? "pending" : undefined);
     expect(ingest.invalid).toEqual([]);
     console.log(`sandbox: status API took ${request.duration_ms} ms, outcome ${outcome.status}`);
+  }, 60_000);
+
+  it("blog module with a customer getter and an https return URL: started carries both, eSewa still accepts the form", async () => {
+    const gateway = paynp.wrapGateway("esewa", blog, { customer: () => ({ phone: "9806800001", name: "Test Buyer" }) });
+    const attemptId = hex();
+    const start = await gateway.startPayment({ attemptId, amountPaisa: 10000, returnUrl: `https://shop.example.com/pay/return/${attemptId}`, description: "Order demo" });
+    const res = await fetch(FORM_URL, { method: "POST", body: new URLSearchParams(start.fields), redirect: "manual" });
+    expect(res.status).toBe(302);
+    await paynp.flush();
+    const evs = byTime(ingest.events.filter((e) => e.attempt_id === attemptId));
+    expect(evs[0]).toMatchObject({ type: "payment.started", customer: { phone: "9806800001", name: "Test Buyer" }, data: { return_https: true } });
+    expect(evs[1].data?.gw_env).toBe("sandbox");
   }, 60_000);
 
   it("blog module: a forged ?data= is rejected with the module's own PaymentError, no status call", async () => {
@@ -136,7 +149,8 @@ describe.skipIf(process.env.PAYNP_SKIP_SANDBOX === "1")("eSewa sandbox, real mod
     await paynp.flush();
     const evs = byTime(ingest.events.filter((e) => e.attempt_id === orderId));
     expect(evs.map((e) => e.type)).toEqual(["payment.started", "payment.redirected", "gateway.request", "reconcile.checked"]);
-    expect(evs[2].data).toMatchObject({ op: "status", endpoint: "/api/epay/transaction/status/", http_status: 200 });
+    expect(evs[2].data).toMatchObject({ op: "status", endpoint: "/api/epay/transaction/status/", http_status: 200, gw_env: "sandbox" });
+    expect(evs[0].data).toEqual({ return_https: false });
     expect(evs[3].data).toMatchObject({ source: "reconcile", provider_status: "NOT_FOUND" });
     expect(v.status).toBe("not_found");
   }, 60_000);

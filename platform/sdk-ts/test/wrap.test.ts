@@ -105,7 +105,8 @@ describe("wrapGateway", () => {
     const [started, redirected] = byTime(ingest!.events);
     expect(types(ingest!.events)).toEqual(["payment.started", "payment.redirected"]);
     expect(started).toMatchObject({ attempt_id: "att1", gateway: "esewa", amount_paisa: 10000, status: "initiated" });
-    expect(redirected.data).toEqual({ method: "POST", endpoint: "/api/epay/main/v2/form" });
+    expect(redirected.data).toEqual({ method: "POST", endpoint: "/api/epay/main/v2/form", gw_env: "sandbox" });
+    expect(started.data).toEqual({ return_https: false });
     expect(started.sdk).toEqual({ name: "@paynp/sdk", version: "0.1.0", lang: "ts" });
     expect(ingest!.invalid).toEqual([]);
   });
@@ -309,7 +310,7 @@ describe("wrapAdapter", () => {
     const evs = byTime(ingest!.events);
     // This adapter made no HTTP call, so there is no gateway.request; the status lands on the callback.
     expect(evs.map((e) => e.type)).toEqual(["payment.started", "payment.redirected", "callback.received"]);
-    expect(evs[1].data).toEqual({ method: "GET", endpoint: "/", provider_ref: "PIDX1" });
+    expect(evs[1].data).toEqual({ method: "GET", endpoint: "/", provider_ref: "PIDX1", gw_env: "sandbox" });
     expect(evs[2]).toMatchObject({ status: "paid", data: { source: "return", provider_ref: "TXN9", provider_status: "Completed" } });
   });
 
