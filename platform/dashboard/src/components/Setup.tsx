@@ -63,27 +63,39 @@ export function SetupEmpty({ title }: { title?: string }) {
       </div>
       <div className="empty-steps">
         <div className="empty-step">
-          <span className="step-n">01</span>
-          <h3>Link the app</h3>
-          <p className="hint">Detects the stack, creates a test key and writes PAYNP_KEY to .env.</p>
-          <Command cmd="npx paynp init" />
-        </div>
-        <div className="empty-step">
-          <span className="step-n">02</span>
-          <h3>Wrap the gateway</h3>
-          <p className="hint">Three lines around the eSewa, Khalti or Fonepay module already in the app.</p>
-          <CodeBlock code={WIRING} />
-        </div>
-        <div className="empty-step">
-          <span className="step-n">03</span>
-          <h3>Check it works</h3>
-          <p className="hint">A synthetic eSewa payment from start to fulfilment, in the test environment.</p>
-          <div className="actions">
-            <TestPaymentButton />
+          <div className="empty-step-text">
+            <span className="step-n">01</span>
+            <h3>Link the app</h3>
+            <p className="hint">Detects the stack, creates a test key and writes PAYNP_KEY to .env.</p>
           </div>
-          <p className="hint">
-            Or run <code>npx paynp test</code>. {env === "live" && <Link className="inline-link" to={`${base}/settings/keys`}>Create a live key</Link>}
-          </p>
+          <div className="empty-step-do">
+            <Command cmd="npx paynp init" />
+          </div>
+        </div>
+        <div className="empty-step">
+          <div className="empty-step-text">
+            <span className="step-n">02</span>
+            <h3>Wrap the gateway</h3>
+            <p className="hint">Three lines around the eSewa, Khalti or Fonepay module already in the app.</p>
+          </div>
+          <div className="empty-step-do">
+            <CodeBlock code={WIRING} />
+          </div>
+        </div>
+        <div className="empty-step">
+          <div className="empty-step-text">
+            <span className="step-n">03</span>
+            <h3>Check it works</h3>
+            <p className="hint">A synthetic eSewa payment from start to fulfilment, in the test environment.</p>
+          </div>
+          <div className="empty-step-do">
+            <div className="actions">
+              <TestPaymentButton />
+            </div>
+            <p className="hint">
+              Or run <code>npx paynp test</code>. {env === "live" && <Link className="inline-link" to={`${base}/settings/keys`}>Create a live key</Link>}
+            </p>
+          </div>
         </div>
       </div>
     </section>
@@ -107,28 +119,40 @@ function LocalSetup({ title }: { title?: string }) {
       </div>
       <div className="empty-steps">
         <div className="empty-step">
-          <span className="step-n">01</span>
-          <h3>Install the SDK</h3>
-          <p className="hint">Zero dependencies. Runs on Node, Bun, Deno and edge runtimes.</p>
-          <Command cmd="npm install @paynp/sdk" />
+          <div className="empty-step-text">
+            <span className="step-n">01</span>
+            <h3>Install the SDK</h3>
+            <p className="hint">Zero dependencies. Runs on Node, Bun, Deno and edge runtimes.</p>
+          </div>
+          <div className="empty-step-do">
+            <Command cmd="npm install @paynp/sdk" />
+          </div>
         </div>
         <div className="empty-step">
-          <span className="step-n">02</span>
-          <h3>Wrap the gateway</h3>
-          <p className="hint">Three lines around the eSewa, Khalti or Fonepay module already in the app.</p>
-          <CodeBlock code={WIRING} />
+          <div className="empty-step-text">
+            <span className="step-n">02</span>
+            <h3>Wrap the gateway</h3>
+            <p className="hint">Three lines around the eSewa, Khalti or Fonepay module already in the app.</p>
+          </div>
+          <div className="empty-step-do">
+            <CodeBlock code={WIRING} />
+          </div>
         </div>
         <div className="empty-step">
-          <span className="step-n">03</span>
-          <h3>Point it here</h3>
-          <p className="hint">
-            {origin === "http://localhost:4040"
-              ? "Leave PAYNP_KEY unset and the SDK finds this server by itself whenever NODE_ENV is not production. Or say so in the app's .env:"
-              : `This server is not on the default port, so tell the app where it is. With no PAYNP_KEY, PAYNP_DEV_URL=${origin} works too.`}
-          </p>
-          <CodeBlock code={`PAYNP_ENDPOINT=${origin}`} />
-          <div className="actions">
-            <TestPaymentButton className="btn btn-secondary" />
+          <div className="empty-step-text">
+            <span className="step-n">03</span>
+            <h3>Point it here</h3>
+            <p className="hint">
+              {origin === "http://localhost:4040"
+                ? "Leave PAYNP_KEY unset and the SDK finds this server by itself whenever NODE_ENV is not production. Or say so in the app's .env:"
+                : `This server is not on the default port, so tell the app where it is. With no PAYNP_KEY, PAYNP_DEV_URL=${origin} works too.`}
+            </p>
+          </div>
+          <div className="empty-step-do">
+            <CodeBlock code={`PAYNP_ENDPOINT=${origin}`} />
+            <div className="actions">
+              <TestPaymentButton className="btn btn-secondary" />
+            </div>
           </div>
         </div>
       </div>
