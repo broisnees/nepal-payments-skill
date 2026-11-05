@@ -2573,3 +2573,24 @@ a.list-row:hover {
     border-radius: 2px;
   }
 }
+
+/* Compact gateway: official icon on a light rounded tile, then the name. Same in both themes. */
+.gw-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.gw-tile {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.gw-tile img {
+  display: block;
+}

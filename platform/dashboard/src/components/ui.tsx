@@ -79,23 +79,36 @@ export function StatusPill({ status, pulse }: { status: PaymentStatus | string; 
   );
 }
 
-/** A gateway as its official logo (name kept for screen readers and search); unknown gateways fall back to a dot and name. */
-export function Gateway({ id, size = 15 }: { id: string; size?: number }) {
-  const logo = GATEWAY_LOGOS[id];
+/**
+ * A gateway as its official icon on a small light tile, then its name. `logo` shows the full wordmark instead,
+ * for roomy places. Unknown gateways fall back to a coloured dot and the name.
+ */
+export function Gateway({ id, logo = false, size = 16 }: { id: string; logo?: boolean; size?: number }) {
+  const l = GATEWAY_LOGOS[id];
   const name = gatewayName(id);
-  if (!logo) {
+  if (!l) {
     return (
       <span className="gw" data-gw={id}>
         {name}
       </span>
     );
   }
-  const h = Math.round(size * (logo.scale ?? 1));
-  const w = Math.round(h * logo.ratio);
+  if (!logo) {
+    return (
+      <span className="gw-icon">
+        <span className="gw-tile" style={{ width: size + 4, height: size + 4 }}>
+          <img src={l.icon} alt="" width={size} height={size} decoding="async" />
+        </span>
+        {name}
+      </span>
+    );
+  }
+  const h = Math.round(size * (l.scale ?? 1));
+  const w = Math.round(h * l.ratio);
   return (
-    <span className={logo.chip ? "gw-logo gw-logo-chip" : "gw-logo"} title={name} style={{ height: h }}>
-      <img className={logo.dark ? "gw-logo-light" : undefined} src={logo.light} alt={name} width={w} height={h} decoding="async" />
-      {logo.dark && <img className="gw-logo-dark" src={logo.dark} alt="" aria-hidden="true" width={w} height={h} decoding="async" />}
+    <span className={l.chip ? "gw-logo gw-logo-chip" : "gw-logo"} title={name} style={{ height: h }}>
+      <img className={l.dark ? "gw-logo-light" : undefined} src={l.light} alt={name} width={w} height={h} decoding="async" />
+      {l.dark && <img className="gw-logo-dark" src={l.dark} alt="" aria-hidden="true" width={w} height={h} decoding="async" />}
     </span>
   );
 }
