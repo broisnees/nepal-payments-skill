@@ -1,0 +1,21 @@
+---
+import Icon from "./Icon.astro";
+
+interface Props {
+  text: string;
+  label: string;
+  variant?: "primary" | "secondary" | "icon";
+  class?: string;
+}
+
+const { text, label, variant = "secondary", class: className } = Astro.props;
+---
+
+<button type="button" class:list={["btn", `btn-${variant}`, "copy-btn", className]} data-copy={text} aria-label={variant === "icon" ? label : undefined}>
+  <span class="copy-icons" aria-hidden="true">
+    <Icon name="copy" class="i-copy" />
+    <Icon name="check" class="i-check" />
+  </span>
+  {variant !== "icon" && <span class="copy-label">{label}</span>}
+  <span class="sr-only" aria-live="polite" data-copy-status></span>
+</button>
