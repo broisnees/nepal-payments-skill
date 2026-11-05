@@ -2525,3 +2525,51 @@ a.list-row:hover {
     display: none;
   }
 }
+
+/* Gateway logos in place of the coloured dot. The dark file is the gateway's own; others get a light chip. */
+.gw-logo {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  vertical-align: middle;
+  line-height: 0;
+}
+
+.gw-logo img {
+  height: 100%;
+  width: auto;
+}
+
+.gw-logo-dark {
+  display: none;
+}
+
+:root[data-theme="dark"] .gw-logo-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .gw-logo-dark {
+  display: inline;
+}
+
+:root[data-theme="dark"] .gw-logo-chip {
+  box-sizing: content-box;
+  padding: 2px 5px;
+  background: #fff;
+  border-radius: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .gw-logo-light {
+    display: none;
+  }
+  :root:not([data-theme="light"]) .gw-logo-dark {
+    display: inline;
+  }
+  :root:not([data-theme="light"]) .gw-logo-chip {
+    box-sizing: content-box;
+    padding: 2px 5px;
+    background: #fff;
+    border-radius: 2px;
+  }
+}

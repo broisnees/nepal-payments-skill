@@ -1,4 +1,4 @@
-import type { PaymentStatus } from "@paynp/shared";
+import { GATEWAY_LOGOS, type PaymentStatus } from "@paynp/shared";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { formatFull, gatewayName, moneyParts, statusLabel } from "../lib/format.ts";
@@ -79,10 +79,23 @@ export function StatusPill({ status, pulse }: { status: PaymentStatus | string; 
   );
 }
 
-export function Gateway({ id }: { id: string }) {
+/** A gateway as its official logo (name kept for screen readers and search); unknown gateways fall back to a dot and name. */
+export function Gateway({ id, size = 15 }: { id: string; size?: number }) {
+  const logo = GATEWAY_LOGOS[id];
+  const name = gatewayName(id);
+  if (!logo) {
+    return (
+      <span className="gw" data-gw={id}>
+        {name}
+      </span>
+    );
+  }
+  const h = Math.round(size * (logo.scale ?? 1));
+  const w = Math.round(h * logo.ratio);
   return (
-    <span className="gw" data-gw={id}>
-      {gatewayName(id)}
+    <span className={logo.chip ? "gw-logo gw-logo-chip" : "gw-logo"} title={name} style={{ height: h }}>
+      <img className={logo.dark ? "gw-logo-light" : undefined} src={logo.light} alt={name} width={w} height={h} decoding="async" />
+      {logo.dark && <img className="gw-logo-dark" src={logo.dark} alt="" aria-hidden="true" width={w} height={h} decoding="async" />}
     </span>
   );
 }
