@@ -1,16 +1,21 @@
 // POST /v1/events (platform/SPEC.md sections 3 and 4).
 //
-// One D1 batch (a single transaction) per request holds, for every event:
-//   1. a read of the payment row as it was before this event,
-//   2. the payments upsert, skipped when the event id already exists (idempotency),
-//   3. INSERT OR IGNORE into events.
+// One D1 batch (a single transaction) per request holds:
+//   1. one read of the batch's payment rows as they were before the batch (the row before each later event is the
+//      previous upsert's RETURNING row),
+//   2. per event, the payments upsert, skipped when the event id already exists (idempotency),
+//   3. the events, as multi-row INSERT OR IGNORE (8 per statement), and payment_refs (ops/ingest-ops.ts).
+// Event ids repeated inside one batch are dropped before building it, so (2) sees every earlier batch's events.
 // The upsert is written so the result does not depend on arrival order; see APPLY below.
 // minute_stats are then updated from the status transitions the batch produced.
+// Statement budget (Workers free plan: 50 D1 queries per invocation): see test/ops-budget.test.ts.
 import { FINAL_STATUSES, KEY_PREFIX, MAX_BATCH_BYTES, MAX_BATCH_EVENTS, impliedStatus, validateEvent, type PaymentEvent } from "@paynp/shared";
 import type { Context } from "hono";
 import { onIngest, type IngestTransition } from "./alerts/engine.ts";
 import { toEvent, toPayment } from "./lib/rows.ts";
+import { MAX_PARAMS, afterStatements, eventOps, refStatements, type DuplicateHit } from "./ops/ingest-ops.ts";
 import { MINUTE, errorBody, now as clock, sha256Hex } from "./lib/util.ts";
+import { statusMinuteStatements } from "./status/ingest.ts";
 import type { AppEnv, EventRow, PaymentRow } from "./types.ts";
 
 const F = `(${FINAL_STATUSES.map((s) => `'${s}'`).join(",")})`;
@@ -19,24 +24,38 @@ const F = `(${FINAL_STATUSES.map((s) => `'${s}'`).join(",")})`;
 //   a) the payment is still open and the event carries a final status (a final outcome always lands, even if it is older), or
 //   b) the event is not older than the current status and it would not turn a final status back into an open one.
 // Applying (a) and (b) in any order gives the same result, so out-of-order batches converge.
-const APPLY = `(?7 IS NOT NULL AND ((payments.status NOT IN ${F} AND ?7 IN ${F}) OR (?8 >= payments.status_at AND NOT (payments.status IN ${F} AND ?7 NOT IN ${F}))))`;
+//
+// v2 (SPEC-v2 section 1): ?16 is the refunded amount of a payment.refunded event. Its status is `refunded` once the
+// cumulative refunded_paisa reaches the payment amount, otherwise it leaves the status alone. ?17 to ?20 are the
+// customer hash, mask and name and the gateway environment.
+const ST = `(CASE WHEN ?16 IS NULL THEN ?7 WHEN payments.amount_paisa IS NULL OR payments.refunded_paisa + ?16 >= payments.amount_paisa THEN 'refunded' END)`;
+const INS_ST = `COALESCE(CASE WHEN ?16 IS NOT NULL THEN 'refunded' END, ?7)`;
+const APPLY = `(${ST} IS NOT NULL AND ((payments.status NOT IN ${F} AND ${ST} IN ${F}) OR (?8 >= payments.status_at AND NOT (payments.status IN ${F} AND ${ST} NOT IN ${F}))))`;
 const HAS_REASON = `(?15 = 1 AND ?8 >= payments.reason_at)`;
 
 const UPSERT_PAYMENT = `
 INSERT INTO payments (project_id, env, attempt_id, order_id, gateway, amount_paisa, status, started_at, updated_at, finished_at,
-  provider_ref, last_reason, last_message, event_count, error_count, fulfil_count, status_at, reason_at)
-SELECT ?1, ?2, ?3, ?4, ?5, ?6, COALESCE(?7, 'initiated'), ?8, ?8, CASE WHEN ?7 IN ${F} THEN ?8 END,
-  ?9, ?10, ?11, 1, ?12, ?13, CASE WHEN ?7 IS NULL THEN 0 ELSE ?8 END, CASE WHEN ?15 = 1 THEN ?8 ELSE 0 END
+  provider_ref, last_reason, last_message, event_count, error_count, fulfil_count, status_at, reason_at,
+  refunded_paisa, customer_hash, customer_mask, customer_name, gw_env, fulfilled_at)
+SELECT ?1, ?2, ?3, ?4, ?5, ?6, COALESCE(${INS_ST}, 'initiated'), ?8, ?8, CASE WHEN ${INS_ST} IN ${F} THEN ?8 END,
+  ?9, ?10, ?11, 1, ?12, ?13, CASE WHEN ${INS_ST} IS NULL THEN 0 ELSE ?8 END, CASE WHEN ?15 = 1 THEN ?8 ELSE 0 END,
+  COALESCE(?16, 0), ?17, ?18, ?19, ?20, CASE WHEN ?13 = 1 THEN ?8 END
 WHERE NOT EXISTS (SELECT 1 FROM events WHERE project_id = ?1 AND env = ?2 AND id = ?14)
 ON CONFLICT (project_id, env, attempt_id) DO UPDATE SET
   order_id = COALESCE(payments.order_id, excluded.order_id),
   amount_paisa = COALESCE(payments.amount_paisa, excluded.amount_paisa),
-  status = CASE WHEN ${APPLY} THEN ?7 ELSE payments.status END,
+  status = CASE WHEN ${APPLY} THEN ${ST} ELSE payments.status END,
   status_at = CASE WHEN ${APPLY} THEN ?8 ELSE payments.status_at END,
   finished_at = CASE
-    WHEN ${APPLY} AND ?7 IN ${F} AND NOT (?7 = 'refunded' AND payments.finished_at IS NOT NULL) THEN ?8
-    WHEN ${APPLY} AND ?7 NOT IN ${F} THEN NULL
+    WHEN ${APPLY} AND ${ST} IN ${F} AND NOT (${ST} = 'refunded' AND payments.finished_at IS NOT NULL) THEN ?8
+    WHEN ${APPLY} AND ${ST} NOT IN ${F} THEN NULL
     ELSE payments.finished_at END,
+  refunded_paisa = payments.refunded_paisa + COALESCE(?16, 0),
+  customer_hash = COALESCE(?17, payments.customer_hash),
+  customer_mask = COALESCE(?18, payments.customer_mask),
+  customer_name = COALESCE(?19, payments.customer_name),
+  gw_env = COALESCE(?20, payments.gw_env),
+  fulfilled_at = CASE WHEN ?13 = 1 THEN COALESCE(MIN(payments.fulfilled_at, ?8), ?8) ELSE payments.fulfilled_at END,
   started_at = MIN(payments.started_at, ?8),
   updated_at = MAX(payments.updated_at, ?8),
   provider_ref = COALESCE(?9, payments.provider_ref),
@@ -48,8 +67,16 @@ ON CONFLICT (project_id, env, attempt_id) DO UPDATE SET
   fulfil_count = payments.fulfil_count + ?13
 RETURNING *`;
 
-const INSERT_EVENT = `INSERT OR IGNORE INTO events (project_id, env, id, attempt_id, type, ts, received_at, gateway, status, duration_ms, data, order_id, amount_paisa, sdk)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`;
+// ?1 project, ?2 env, ?3 received_at shared; 11 values per event, so 8 events per statement.
+const EVENT_COLS = 11;
+const EVENTS_PER_INSERT = Math.floor((MAX_PARAMS - 3) / EVENT_COLS);
+const insertEvents = (n: number) =>
+  `INSERT OR IGNORE INTO events (project_id, env, id, attempt_id, type, ts, received_at, gateway, status, duration_ms, data, order_id, amount_paisa, sdk) VALUES ` +
+  Array.from({ length: n }, (_, k) => {
+    const p = (i: number) => `?${4 + k * EVENT_COLS + i}`;
+    return `(?1, ?2, ${p(0)}, ${p(1)}, ${p(2)}, ${p(3)}, ?3, ${p(4)}, ${p(5)}, ${p(6)}, ${p(7)}, ${p(8)}, ${p(9)}, ${p(10)})`;
+  }).join(", ");
+const ATTEMPTS_PER_READ = MAX_PARAMS - 2;
 
 const UPSERT_STATS = `INSERT INTO minute_stats (project_id, env, gateway, minute, started, paid, failed, paid_amount_paisa, gw_requests, gw_errors, gw_ms_total, gw_ms_max)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
@@ -85,36 +112,59 @@ export interface IngestResult {
   /** Latest payment row per attempt after the batch. */
   payments: Map<string, PaymentRow>;
   stored: { event: EventRow; attempt_id: string }[];
+  /** Duplicate-payment refund cases this batch opened (SPEC-v2 4.1). */
+  duplicates_found: DuplicateHit[];
+}
+
+export interface IngestOptions {
+  /** The project's customer salt when the caller already has it (ingest reads it with the key). */
+  salt?: string | null;
 }
 
 /** Writes validated events for one project environment. Exported so tests and the synthetic trace can call it directly. */
-export async function ingestEvents(env: Env, projectId: string, envName: string, events: PaymentEvent[], receivedAt = clock()): Promise<IngestResult> {
+export async function ingestEvents(env: Env, projectId: string, envName: string, events: PaymentEvent[], receivedAt = clock(), opts: IngestOptions = {}): Promise<IngestResult> {
   // Process in client time order. The SQL does not depend on it; it only keeps minute_stats transitions intuitive.
-  const sorted = events.map((e, i) => ({ e, i, ts: Date.parse(e.ts) })).sort((a, b) => a.ts - b.ts || a.i - b.i);
+  const all = events.map((e, i) => ({ e, i, ts: Date.parse(e.ts) })).sort((a, b) => a.ts - b.ts || a.i - b.i);
+  const ids = new Set<string>();
+  const sorted = all.filter(({ e }) => !ids.has(e.id) && !!ids.add(e.id));
+  const ops = await eventOps(env, projectId, sorted.map((x) => x.e), (e) => impliedStatus(e) ?? null, opts.salt);
+
   const stmts: D1PreparedStatement[] = [];
+  const attempts = [...new Set(sorted.map((x) => x.e.attempt_id))];
+  for (let i = 0; i < attempts.length; i += ATTEMPTS_PER_READ) {
+    const part = attempts.slice(i, i + ATTEMPTS_PER_READ);
+    stmts.push(env.DB.prepare(`SELECT * FROM payments WHERE project_id = ? AND env = ? AND attempt_id IN (${part.map(() => "?").join(",")})`).bind(projectId, envName, ...part));
+  }
+  const reads = stmts.length;
   const rows: EventRow[] = [];
-  for (const { e, ts } of sorted) {
-    const status = impliedStatus(e) ?? null;
+  sorted.forEach(({ e, ts }, n) => {
+    const o = ops[n];
     const err = e.type === "error" || (e.type === "signature.checked" && e.data?.valid === false) ? 1 : 0;
     const ful = e.type === "payment.fulfilled" ? 1 : 0;
     const hasReason = e.data?.reason !== undefined || e.data?.message !== undefined ? 1 : 0;
     stmts.push(
-      env.DB.prepare("SELECT status, fulfil_count, finished_at, gateway, amount_paisa FROM payments WHERE project_id = ? AND env = ? AND attempt_id = ?").bind(projectId, envName, e.attempt_id),
       env.DB.prepare(UPSERT_PAYMENT).bind(
-        projectId, envName, e.attempt_id, e.order_id ?? null, e.gateway, e.amount_paisa ?? null, status, ts,
+        projectId, envName, e.attempt_id, e.order_id ?? null, e.gateway, o.amount_paisa, o.status, ts,
         e.data?.provider_ref ?? null, e.data?.reason ?? null, e.data?.message ?? null, err, ful, e.id, hasReason,
+        o.refund_paisa, o.customer?.hash ?? null, o.customer?.mask ?? null, o.customer?.name ?? null, o.gw_env,
       ),
     );
-    const row: EventRow = {
+    rows.push({
       project_id: projectId, env: envName, id: e.id, attempt_id: e.attempt_id, type: e.type, ts, received_at: receivedAt, gateway: e.gateway,
       status: e.status ?? null, duration_ms: e.duration_ms ?? null, data: e.data ? JSON.stringify(e.data) : null,
       order_id: e.order_id ?? null, amount_paisa: e.amount_paisa ?? null, sdk: e.sdk ? JSON.stringify(e.sdk) : null,
-    };
-    rows.push(row);
+    });
+  });
+  for (let i = 0; i < rows.length; i += EVENTS_PER_INSERT) {
+    const part = rows.slice(i, i + EVENTS_PER_INSERT);
     stmts.push(
-      env.DB.prepare(INSERT_EVENT).bind(row.project_id, row.env, row.id, row.attempt_id, row.type, row.ts, row.received_at, row.gateway, row.status, row.duration_ms, row.data, row.order_id, row.amount_paisa, row.sdk),
+      env.DB.prepare(insertEvents(part.length)).bind(
+        projectId, envName, receivedAt,
+        ...part.flatMap((r) => [r.id, r.attempt_id, r.type, r.ts, r.gateway, r.status, r.duration_ms, r.data, r.order_id, r.amount_paisa, r.sdk]),
+      ),
     );
   }
+  stmts.push(...refStatements(env, projectId, envName, sorted.map((x) => x.e), ops));
   const results = stmts.length ? await env.DB.batch(stmts) : [];
 
   const deltas = new Map<string, StatDelta>();
@@ -126,15 +176,19 @@ export async function ingestEvents(env: Env, projectId: string, envName: string,
     return d;
   };
 
-  const out: IngestResult = { accepted: 0, duplicates: 0, transitions: [], payments: new Map(), stored: [] };
+  // The row before each event: the pre-batch row, then whatever the previous accepted event of the attempt returned.
+  const current = new Map<string, PaymentRow>();
+  for (let i = 0; i < reads; i++) for (const r of results[i].results as PaymentRow[]) current.set(r.attempt_id, r);
+
+  const out: IngestResult = { accepted: 0, duplicates: all.length - sorted.length, transitions: [], payments: new Map(), stored: [], duplicates_found: [] };
   sorted.forEach(({ e, ts }, n) => {
-    const old = (results[n * 3].results[0] ?? null) as Pick<PaymentRow, "status" | "fulfil_count" | "finished_at" | "gateway" | "amount_paisa"> | null;
-    const payment = results[n * 3 + 1].results[0] as PaymentRow | undefined;
-    const inserted = (results[n * 3 + 2].meta.changes ?? 0) > 0;
-    if (!inserted || !payment) {
+    const old = current.get(e.attempt_id) ?? null;
+    const payment = results[reads + n].results[0] as PaymentRow | undefined;
+    if (!payment) {
       out.duplicates++;
       return;
     }
+    current.set(e.attempt_id, payment);
     out.accepted++;
     out.stored.push({ event: rows[n], attempt_id: e.attempt_id });
     out.payments.set(e.attempt_id, payment);
@@ -169,7 +223,14 @@ export async function ingestEvents(env: Env, projectId: string, envName: string,
   for (const d of deltas.values()) {
     after.push(env.DB.prepare(UPSERT_STATS).bind(projectId, envName, d.gateway, d.minute, d.started, d.paid, d.failed, d.paid_amount_paisa, d.gw_requests, d.gw_errors, d.gw_ms_total, d.gw_ms_max));
   }
-  if (after.length) await env.DB.batch(after);
+  after.push(...statusMinuteStatements(env, projectId, envName, out.transitions));
+  const opsAfter = afterStatements(env, projectId, envName, out.transitions, receivedAt);
+  const opsStart = after.length;
+  after.push(...opsAfter.statements);
+  if (after.length) {
+    const res = await env.DB.batch(after);
+    out.duplicates_found = opsAfter.apply(res.slice(opsStart));
+  }
   return out;
 }
 
@@ -205,9 +266,9 @@ export async function handleIngest(c: Context<AppEnv>): Promise<Response> {
   const key = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   const m = KEY_RE.exec(key);
   if (!m) return c.json(errorBody("unauthorized", `expected Authorization: Bearer ${KEY_PREFIX.test}...`), 401);
-  const row = await env.DB.prepare("SELECT id, project_id, env, last_used_at FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL")
+  const row = await env.DB.prepare("SELECT k.id, k.project_id, k.env, k.last_used_at, p.salt FROM api_keys k JOIN projects p ON p.id = k.project_id WHERE k.key_hash = ? AND k.revoked_at IS NULL")
     .bind(await sha256Hex(key))
-    .first<{ id: string; project_id: string; env: string; last_used_at: number | null }>();
+    .first<{ id: string; project_id: string; env: string; last_used_at: number | null; salt: string | null }>();
   if (!row || row.env !== m[1]) return c.json(errorBody("unauthorized", "unknown or revoked key"), 401);
 
   const { success } = await env.INGEST_LIMITER.limit({ key: row.id });
@@ -241,7 +302,7 @@ export async function handleIngest(c: Context<AppEnv>): Promise<Response> {
   });
 
   const t = clock();
-  const result = await ingestEvents(env, row.project_id, row.env, valid, t);
+  const result = await ingestEvents(env, row.project_id, row.env, valid, t, { salt: row.salt });
   if (row.last_used_at === null || t - row.last_used_at > MINUTE) {
     c.executionCtx.waitUntil(env.DB.prepare("UPDATE api_keys SET last_used_at = ? WHERE id = ?").bind(t, row.id).run());
   }
