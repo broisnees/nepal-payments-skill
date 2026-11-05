@@ -10,6 +10,7 @@ npx paynp login
 npx paynp init
 npx paynp test
 npx paynp tail
+npx paynp doctor    # before going live
 ```
 
 ## Commands
@@ -23,9 +24,10 @@ npx paynp tail
 | `paynp test` | Sends a synthetic eSewa payment (started, redirected, callback, signature ok, status COMPLETE, paid, fulfilled) with `PAYNP_KEY` and prints the link to its timeline. Refuses live keys. |
 | `paynp keys` | Lists keys. `keys create --env test\|live --name prod` (the key is shown once), `keys revoke <id>`. |
 | `paynp open` | Opens the linked project in the dashboard. `--no-browser` just prints the URL. |
+| `paynp doctor` | Go-live checks on the env files, wrangler config and code, then the findings paynp computed from live traffic. `--json`, `--env test` for the server half (default live), `--local` to skip it. Exits 1 when anything is critical. See below. |
 | `paynp dev` | Local dev server: ingest and dashboard on `http://localhost:4040` with no account and no key. `--port`, `--fresh`, `--open`, `--quiet`. See below. |
 
-`--yes` (`-y`) never prompts and takes the defaults. `--json` works on `tail` and `keys`.
+`--yes` (`-y`) never prompts and takes the defaults. `--json` works on `tail`, `keys` and `doctor`.
 
 ## What `init` does to my project
 
@@ -49,12 +51,47 @@ Two shapes are recognised:
 
 Serverless: Next.js route handlers (`app/**/route.ts`) get `after(() => paynp.flush())` as their first line (Next.js 15 and later). Hono on Cloudflare Workers (a `wrangler` config next to `package.json`) gets a middleware that calls `c.executionCtx.waitUntil(paynp.flush())` after each response, and `paynp.ts` reads `PAYNP_KEY` from the `cloudflare:workers` env. Shapes I don't edit (a plain Worker `fetch`, `pages/api`, names imported from a gateway module, `require()`) get a precise manual step in the summary instead.
 
+Customer details: the generated `paynp.ts` ends with a commented `customer` getter. Uncommenting it sends the buyer's phone, email or name on `payment.started`, which paynp stores only as a salted hash and a masked form, so support can search payments by phone.
+
+### The action route (opt-in)
+
+After the wiring, `init` offers a route for the dashboard's "Re-check" and "Send refund" buttons: `POST /paynp/actions`, which paynp calls signed with `PAYNP_ACTION_SECRET` so that refunds run on my server with my own gateway keys. It is a second diff and a second question, `Add the /paynp/actions route? [y/N]`, and the default is no. `--actions` answers yes, `--no-actions` skips the question, and `--yes` alone leaves it out and prints how to add it. `--dry-run` shows its diff after the wiring diff.
+
+- `paynp-actions.ts` next to `paynp.ts`: `recheck` loads the attempt from the blog's store, runs `confirmPayment` with empty params (the reconcile path) and `settle()`; `refund` stays a comment, with a pointer to the Khalti callback in the `@paynp/sdk` README, or a note that the gateway has no refund API.
+- The route: Express `app.post("/paynp/actions", express.raw({ type: "application/json" }), paynp.nodeActionHandler(actions))`, Fastify `paynp.nodeActionHandler(actions)`, Hono `paynp.actionHandler(actions)(c.req.raw)` (on Workers with `secret` read from `c.env`), Next.js `app/paynp/actions/route.ts` exporting `POST`.
+- `.env` gets an empty `PAYNP_ACTION_SECRET=` with a comment saying where the value comes from. Until it is set, the route answers 500 and `paynp doctor` warns.
+- The adapters, several gateway modules in one paynp file, or an app object init can't find get a manual step instead.
+
 Rules it keeps:
 
 - Running it again changes nothing: files that already import from `paynp.ts` and a `settle()` that already calls paynp are left alone.
 - A file with uncommitted changes (modified, staged or untracked) is not edited, and is listed with the reason; `--force` edits it anyway. Outside a git repo the diff and the question are the only guard.
 - Only files inside the project: never `node_modules`, build output or anything reached through a symlink. An existing `paynp.ts` that `init` did not write is never overwritten.
 - Nothing recognisable found: it prints the wiring snippet, as before.
+
+## `paynp doctor`
+
+```bash
+npx paynp doctor          # exit 1 on anything critical, so it can gate a deploy
+npx paynp doctor --json
+```
+
+Local checks need no network and never print a secret value (only the public sandbox constants, `*_ENV` values and URLs):
+
+| Check | Severity | Flags |
+|---|---|---|
+| `sandbox_gateway_config` | critical | Production config (`.env.production`, a `.env` with a live `PAYNP_KEY` or `NODE_ENV=production`, wrangler deploy vars) where a gateway runs in sandbox: `*_ENV=sandbox`, public sandbox values (`EPAYTEST`, eSewa's and Fonepay's published test keys) or sandbox hosts. A missing `*_ENV` for a gateway the code or config uses is a warning, since the modules default to sandbox. |
+| `gateway_env_mismatch` | critical | `*_ENV=production` with sandbox credentials or hosts, or `*_ENV=sandbox` with a production URL, in any config. |
+| `test_key_in_production` | warning | A `pnp_test_` key in production config. |
+| `http_return_url` | critical | `BASE_URL`, `*_RETURN_URL`, `*_WEBSITE_URL` and similar on http or localhost in production config. |
+| `secret_in_client_bundle` | critical | Secrets behind `NEXT_PUBLIC_`, `VITE_`, `PUBLIC_`, `REACT_APP_`, `EXPO_PUBLIC_`, `NUXT_PUBLIC_`, `GATSBY_` in env files or read in code, and secrets under `env` in `next.config`. Public keys (`*_PUBLIC_KEY`, site keys) are fine. |
+| `action_route_without_secret` | warning | The code serves `/paynp/actions` but `PAYNP_ACTION_SECRET` is empty or missing everywhere I can see. |
+| `gateway_not_wrapped` | warning | Files that still import the gateway modules or adapters directly (the same analysis `init` uses). |
+| `env_file_committed` | critical | A tracked `.env*` file (not `.example`/`.sample`) with secret values. |
+
+Env files load the way Next.js and Vite load them: `.env` < `.env.<mode>` < `.env.local` < `.env.<mode>.local`, one set per mode. `wrangler.jsonc`, `wrangler.json` and `wrangler.toml` vars count per environment; secrets set with `wrangler secret put` are invisible to the CLI, so the messages say when that matters.
+
+Logged in and linked, it then prints the server findings from `GET /api/projects/:p/doctor?env=live` (sandbox hosts on live traffic, http return URLs, rupee-sized amounts, signature bursts, missing status checks, fulfilment problems, no reconcile job), each with its count, last time, an example attempt, the fix and a docs link, plus the passed checks. A server that can't be reached or has no doctor yet is reported and doesn't fail the run on its own.
 
 ## `paynp dev`
 
