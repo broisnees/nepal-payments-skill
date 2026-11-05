@@ -1,0 +1,35 @@
+---
+// Starlight's default <head>, plus JSON-LD so search engines read each doc page as a technical article.
+import Default from "@astrojs/starlight/components/Head.astro";
+import FontPreload from "./FontPreload.astro";
+
+const { entry, siteTitle } = Astro.locals.starlightRoute;
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const crumbs = Astro.url.pathname.split("/").filter(Boolean);
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    headline: entry.data.title,
+    description: entry.data.description,
+    url,
+    inLanguage: "en",
+    isPartOf: { "@type": "WebSite", name: siteTitle, url: new URL("/", Astro.site).href },
+    about: "Nepali payment gateway integration",
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: crumbs.map((_, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: i === crumbs.length - 1 ? entry.data.title : crumbs[i],
+      item: new URL(`/${crumbs.slice(0, i + 1).join("/")}/`, Astro.site).href,
+    })),
+  },
+];
+---
+
+<Default />
+<FontPreload />
+<script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
