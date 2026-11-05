@@ -3,6 +3,8 @@ import { runAlertCron } from "./alerts/engine.ts";
 import { NPT_OFFSET } from "./api/data.ts";
 import { htmlMail, sendMail } from "./email.ts";
 import { DAY, MINUTE, appOrigin, now } from "./lib/util.ts";
+import { financeDaily } from "./finance/daily.ts";
+import { opsCleanup, runDoctorCron } from "./ops/cron-ops.ts";
 
 export const DAILY_CRON = "15 3 * * *";
 
@@ -110,10 +112,13 @@ export async function cleanup(env: Env, t = now()): Promise<Record<string, numbe
 export async function scheduled(controller: ScheduledController, env: Env, _ctx?: ExecutionContext): Promise<void> {
   const t = controller.scheduledTime || now();
   if (controller.cron === DAILY_CRON) {
-    const [digests, removed] = await Promise.all([sendDigests(env, t), cleanup(env, t)]);
+    const [digests, removed, ops] = await Promise.all([sendDigests(env, t), cleanup(env, t), opsCleanup(env, t)]);
+    Object.assign(removed, ops);
+    Object.assign(removed, await financeDaily(env, t).catch((e: unknown) => (console.error(JSON.stringify({ msg: "finance daily failed", error: String(e) })), {})));
     console.log(JSON.stringify({ msg: "daily cron", digests, removed }));
     return;
   }
   const counts = await runAlertCron(env, t);
+  Object.assign(counts, await runDoctorCron(env, t).catch((e: unknown) => (console.error(JSON.stringify({ msg: "doctor cron failed", error: String(e) })), {})));
   if (Object.values(counts).some(Boolean)) console.log(JSON.stringify({ msg: "alert cron", ...counts }));
 }

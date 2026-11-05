@@ -4,6 +4,8 @@ import { afterIngest, ingestEvents } from "../ingest.ts";
 import type { Hono } from "hono";
 import { audit, requireOrg, requireProject } from "../lib/access.ts";
 import { HttpError, badRequest, decodeCursor, notFound, now, page, parseEnv, parseLimit, randomString, readJson, sha256Hex, slugify, str } from "../lib/util.ts";
+import { deleteFinanceStatements } from "../finance/statements.ts";
+import { deleteOpsStatements } from "../ops/cron-ops.ts";
 import type { AppEnv, ProjectRow } from "../types.ts";
 
 const toProject = (p: ProjectRow): Project => ({ id: p.id, org_id: p.org_id, name: p.name, slug: p.slug, created_at: p.created_at });
@@ -14,6 +16,8 @@ export function deleteProjectStatements(env: Env, projectId: string): D1Prepared
   return [
     env.DB.prepare("DELETE FROM notifications WHERE channel_id IN (SELECT id FROM alert_channels WHERE project_id = ?)").bind(projectId),
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t} WHERE project_id = ?`).bind(projectId)),
+    ...deleteOpsStatements(env, projectId),
+    ...deleteFinanceStatements(env, projectId),
     env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(projectId),
   ];
 }

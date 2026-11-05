@@ -11,7 +11,7 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/auth/*", "/v1/*"]
+    "run_worker_first": ["/api/*", "/auth/*", "/v1/*", "/s/*", "/status", "/status/*", "/status.json"]
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "paynp", "database_id": "90432197-a1ce-436a-bb1d-24ff35c054df", "migrations_dir": "migrations" }
@@ -27,7 +27,8 @@
   "vars": {
     "APP_URL": "https://paynp.discerns.app",
     "EMAIL_FROM": "paynp <noreply@paynp.discerns.app>",
-    // Free plan: D1 allows 50 queries per invocation and ingest uses about 3 per event.
+    // Free plan: D1 allows 50 queries per invocation. A 15-event batch uses 22 to 45 D1 statements including
+    // alert rules and notifications (test/ops-budget.test.ts).
     "INGEST_MAX_EVENTS": "15"
   }
   // Mail goes through Resend (secret RESEND_API_KEY). On Workers Paid, the Cloudflare binding works instead:
