@@ -1,5 +1,5 @@
 // Server-rendered public status pages: no scripts, inline CSS and SVG, light and dark from prefers-color-scheme.
-import { NEPAL_OFFSET_MS, type GatewayState, type GatewayStatus, type StatusIncident, type StatusReport } from "@paynp/shared";
+import { GATEWAY_LOGOS, NEPAL_OFFSET_MS, type GatewayState, type GatewayStatus, type StatusIncident, type StatusReport } from "@paynp/shared";
 import { BAD_P95_MS, MIN_PROJECTS } from "./aggregate.ts";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -41,7 +41,7 @@ h2{font-size:15px;margin:32px 0 12px;font-weight:600}
 .list{border:1px solid var(--line);background:var(--card);margin-top:16px}
 .gw{display:grid;grid-template-columns:minmax(150px,1.1fr) 1fr 1.4fr;gap:8px 20px;align-items:center;padding:16px;border-top:1px solid var(--line)}
 .gw:first-child{border-top:0}
-.gw .name{font-weight:600;font-size:16px;color:var(--fg)}.gw .meta{color:var(--muted);font-size:13px;margin-top:2px}
+.gw .name{font-weight:600;font-size:16px;color:var(--fg);display:inline-flex;align-items:center;gap:10px;text-decoration:none}.logo{display:inline-flex;line-height:0}.logo img{width:auto}.hero-logo{margin:4px 0 14px}@media (prefers-color-scheme:dark){.logo.chip{padding:2px 5px;background:#fff;border-radius:2px}}.gw .meta{color:var(--muted);font-size:13px;margin-top:2px}
 .label{font-size:12px;color:var(--faint);margin-bottom:4px}
 svg{display:block;width:100%;height:auto;overflow:visible}
 .bars rect.u-ok{fill:var(--ok)}.bars rect.u-warn{fill:var(--warn)}.bars rect.u-bad{fill:var(--bad)}.bars rect.u-none{fill:var(--none)}
@@ -62,6 +62,16 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-si
 @media (max-width:720px){.gw{grid-template-columns:1fr 1fr}.gw .uptime{grid-column:1/-1}h1{font-size:24px}.tiles{grid-template-columns:1fr}.tile{border-left:0;border-top:1px solid var(--line)}.tile:first-child{border-top:0}
 .hide-sm{display:none}th,td{padding:8px 6px}}
 `;
+
+/** The gateway's official logo, switching to its dark file (or a light chip) under a dark system theme. */
+function logo(gateway: string, name: string, height: number): string {
+  const l = GATEWAY_LOGOS[gateway];
+  if (!l) return "";
+  const h = Math.round(height * (l.scale ?? 1));
+  const w = Math.round(h * l.ratio);
+  const dark = l.dark ? `<source media="(prefers-color-scheme: dark)" srcset="${esc(l.dark)}">` : "";
+  return `<picture class="logo${l.chip ? " chip" : ""}">${dark}<img src="${esc(l.light)}" alt="${esc(name)}" width="${w}" height="${h}"></picture>`;
+}
 
 function layout(o: { title: string; description: string; canonical: string; body: string }): string {
   return `<!doctype html>
@@ -207,7 +217,7 @@ export function renderOverview(r: StatusReport, origin: string): string {
   const rows = r.gateways
     .map(
       (g) => `<div class="gw s-${g.state}">
-<div><a class="name" href="/status/${esc(g.gateway)}">${esc(g.name)}</a><div class="meta"><span class="pill s-${g.state}"><span class="dot s-${g.state}"></span>${STATE_LABEL[g.state]}</span></div></div>
+<div><a class="name" href="/status/${esc(g.gateway)}">${logo(g.gateway, g.name, 20)}<span>${esc(g.name)}</span></a><div class="meta"><span class="pill s-${g.state}"><span class="dot s-${g.state}"></span>${STATE_LABEL[g.state]}</span></div></div>
 <div><div class="label">Last 15 min</div><div>${g.state === "no_data" ? "n/a" : `${esc(pct(g.error_rate))} errors, p95 ${esc(ms(g.p95_ms))}`}</div></div>
 <div class="uptime"><div class="label">90 days${g.uptime_90d_pct !== null ? `: ${esc(pct(g.uptime_90d_pct, 2))} healthy` : ""}</div>${uptimeBars(g, 22)}</div>
 </div>`,
@@ -231,6 +241,7 @@ export function renderGateway(r: StatusReport, g: GatewayStatus, origin: string)
     .map((o) => `<a href="/status/${esc(o.gateway)}"><span class="dot s-${o.state}" style="display:inline-block;margin-right:6px"></span>Is ${esc(o.name)} down?</a>`)
     .join("");
   const body = `<p style="margin:0 0 8px;font-size:14px"><a href="/status">All gateways</a></p>
+<div class="hero-logo">${logo(g.gateway, g.name, 34)}</div>
 <h1>Is ${esc(g.name)} down?</h1>
 <p class="lede">${esc(stateLine(g))} Last update ${esc(npt(r.generated_at))} NPT.</p>
 <div class="tiles">
