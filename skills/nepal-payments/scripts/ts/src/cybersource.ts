@@ -100,7 +100,7 @@ export function cybersource(cfg: CyberSourceConfig) {
   /** Only trust fields listed in the response's signed_field_names. */
   function signedOnly(params: Record<string, string>): Record<string, string> {
     const out: Record<string, string> = {};
-    for (const n of (params.signed_field_names ?? "").split(",")) if (n in params) out[n] = params[n];
+    for (const n of (params.signed_field_names ?? "").split(",")) if (Object.hasOwn(params, n)) out[n] = params[n];
     return out;
   }
 
@@ -161,7 +161,7 @@ export function cybersource(cfg: CyberSourceConfig) {
         throw new PaymentError("CyberSource: invalid response signature — treat as malicious", "cybersource", "invalid_signature", 400);
       }
       const p = signedOnly(callback);
-      if ((p.req_reference_number ?? p.req_transaction_uuid) !== orderId) {
+      if ((p.req_reference_number || p.req_transaction_uuid) !== orderId) {
         throw new PaymentError("CyberSource: response is for a different order", "cybersource", "callback_mismatch", 400, p);
       }
       if (p.req_currency && p.req_currency !== currency) {

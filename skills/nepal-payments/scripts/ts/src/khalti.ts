@@ -6,6 +6,7 @@
  */
 import {
   http,
+  lookup,
   PaymentError,
   assertPaisa,
   type InitiateInput,
@@ -126,7 +127,7 @@ export function khalti(cfg: KhaltiConfig) {
 
       // Expired / User canceled come back as HTTP 400 WITH a normal body — parse, don't throw.
       if (res.data && typeof res.data === "object" && typeof res.data.status === "string") {
-        const status = STATUS[res.data.status.toLowerCase()] ?? "unknown";
+        const status = lookup(STATUS, res.data.status.toLowerCase()) ?? "unknown";
         return {
           provider: "khalti",
           status,

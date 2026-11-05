@@ -62,7 +62,7 @@ export function createPayments(cfg: PaymentsConfig) {
     },
     /** Untyped access for generic handlers keyed by a route param. */
     adapter(id: string): PaymentAdapter {
-      if (!(id in built)) throw new Error(`payment provider "${id}" is not configured`);
+      if (!Object.hasOwn(built, id)) throw new Error(`payment provider "${id}" is not configured`);
       return built[id as ProviderId] as PaymentAdapter;
     },
     enabled: Object.keys(built) as ProviderId[],
@@ -147,8 +147,12 @@ export function paymentsConfigFromEnv(env: Record<string, string | undefined> = 
 export function newOrderId(prefix = "P"): string {
   const time = Date.now().toString(36).toUpperCase(); // 8–9 chars
   const rand = new Uint8Array(10);
-  globalThis.crypto.getRandomValues(rand);
   const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const tail = Array.from(rand, (b) => alphabet[b % 36]).join("");
+  let tail = "";
+  while (tail.length < 10) {
+    globalThis.crypto.getRandomValues(rand);
+    // 252 = 7 * 36: dropping bytes >= 252 removes the modulo bias toward the first 4 symbols.
+    for (const b of rand) if (b < 252 && tail.length < 10) tail += alphabet[b % 36];
+  }
   return (prefix + time + tail).slice(0, 20);
 }

@@ -8,13 +8,14 @@
  *     server books -> app opens deeplink -> eSewa POSTs callback_url + redirects redirect_url -> status API.
  *
  * Signature (both): base64(HMAC-SHA256(secret, "k1=v1,k2=v2,...")) in `signed_field_names` order.
- * NOTE: the example signatures printed in eSewa's docs are wrong; see test vectors in test/vectors.test.ts.
+ * NOTE: the example signatures printed in eSewa's docs are wrong; see the vectors in test/adapters.test.ts.
  */
 import {
   base64Json,
   fromBase64,
   hmac,
   http,
+  lookup,
   paisaToRupees,
   PaymentError,
   assertPaisa,
@@ -89,9 +90,19 @@ export async function esewaSign(key: string, fields: Record<string, string | num
   return toBase64(await hmac("SHA-256", key, message));
 }
 
+/** Error text from an eSewa error body: docs say `error_message`, the live Intent sandbox sends `errorMessage`. */
+function errorMessage(data: any, text: string): string {
+  return data?.error_message ?? data?.errorMessage ?? text.slice(0, 200);
+}
+
+/** `esewa_<code>` when the body carries a code, else `http_<status>`. */
+function errorCode(data: any, status: number): string {
+  return data?.code !== undefined && data?.code !== null ? `esewa_${data.code}` : `http_${status}`;
+}
+
 /** Exact text of a field as eSewa sent it, so numbers keep their formatting ("1000.0" stays "1000.0"). */
 function rawValue(text: string, payload: Record<string, unknown>, field: string): string {
-  const v = payload[field];
+  const v = lookup(payload, field);
   if (typeof v !== "number") return String(v ?? "");
   const safe = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const m = text.match(new RegExp(`"${safe}"\\s*:\\s*(-?[0-9][0-9.eE+-]*)`));
@@ -129,8 +140,14 @@ export function esewa(cfg: EsewaConfig) {
 
   /** Decode + verify the base64 `data` param from success_url. Does NOT prove payment; call verify(). */
   async function parseSuccess(data: string): Promise<{ payload: EsewaSuccessPayload; signatureValid: boolean }> {
-    const text = new TextDecoder().decode(fromBase64(data));
-    const payload = JSON.parse(text) as EsewaSuccessPayload;
+    let text: string;
+    let payload: EsewaSuccessPayload;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(fromBase64(data));
+      payload = JSON.parse(text) as EsewaSuccessPayload;
+    } catch {
+      throw new PaymentError("eSewa: success data is not base64 JSON", "esewa", "malformed_callback", 400, data);
+    }
     if (!payload || typeof payload !== "object" || typeof payload.signed_field_names !== "string") {
       throw new PaymentError("eSewa: malformed success payload", "esewa", "malformed_callback", 400, payload);
     }
@@ -154,13 +171,7 @@ export function esewa(cfg: EsewaConfig) {
     });
     const res = await http<Record<string, any>>("esewa", `${statusUrl}?${qs}`, { timeoutMs, retries: 2 });
     if (res.status !== 200 || !res.data || typeof res.data !== "object" || !("status" in res.data)) {
-      throw new PaymentError(
-        `eSewa status check failed: ${res.data?.error_message ?? res.text.slice(0, 200)}`,
-        "esewa",
-        res.data?.code !== undefined ? `esewa_${res.data.code}` : `http_${res.status}`,
-        res.status,
-        res.data,
-      );
+      throw new PaymentError(`eSewa status check failed: ${errorMessage(res.data, res.text)}`, "esewa", errorCode(res.data, res.status), res.status, res.data);
     }
     return res.data as { product_code: string; transaction_uuid: string; total_amount: number; status: string; ref_id: string | null };
   }
@@ -222,7 +233,7 @@ export function esewa(cfg: EsewaConfig) {
       const s = await statusCheck(orderId, amountPaisa);
       return {
         provider: "esewa",
-        status: EPAY_STATUS[s.status] ?? "unknown",
+        status: lookup(EPAY_STATUS, s.status) ?? "unknown",
         orderId,
         amountPaisa: typeof s.total_amount === "number" || typeof s.total_amount === "string" ? rupeesToPaisa(s.total_amount) : null,
         transactionId: s.ref_id ?? null,
@@ -276,7 +287,7 @@ export function esewa(cfg: EsewaConfig) {
       };
       const res = await http<any>("esewa", `${intent.baseUrl}/book`, { method: "POST", body, timeoutMs });
       if (!res.data?.data?.booking_id) {
-        throw new PaymentError(`eSewa intent book failed: ${res.data?.error_message ?? res.text.slice(0, 200)}`, "esewa", res.data?.code ?? `http_${res.status}`, res.status, res.data);
+        throw new PaymentError(`eSewa intent book failed: ${errorMessage(res.data, res.text)}`, "esewa", errorCode(res.data, res.status), res.status, res.data);
       }
       const d = res.data.data as { booking_id: string; deeplink: string; correlation_id: string };
       return { bookingId: d.booking_id, deeplink: d.deeplink, correlationId: d.correlation_id, providerRef: `${d.booking_id}|${d.correlation_id}`, raw: res.data };
@@ -295,13 +306,13 @@ export function esewa(cfg: EsewaConfig) {
       const res = await http<any>("esewa", `${intent.baseUrl}/status`, { method: "POST", body, timeoutMs, retries: 2 });
       const d = res.data?.data;
       if (!d?.status) {
-        throw new PaymentError(`eSewa intent status failed: ${res.data?.error_message ?? res.text.slice(0, 200)}`, "esewa", res.data?.code ?? `http_${res.status}`, res.status, res.data);
+        throw new PaymentError(`eSewa intent status failed: ${errorMessage(res.data, res.text)}`, "esewa", errorCode(res.data, res.status), res.status, res.data);
       }
       if (d.transaction_id && d.transaction_id !== orderId) {
         throw new PaymentError("eSewa intent: status is for a different transaction", "esewa", "callback_mismatch", 400, d);
       }
       // Status response has no amount: the amount was fixed and signed at booking time.
-      return { provider: "esewa", status: INTENT_STATUS[d.status] ?? "unknown", orderId, amountPaisa: amountPaisa ?? null, transactionId: d.reference_code ?? null, raw: res.data };
+      return { provider: "esewa", status: lookup(INTENT_STATUS, d.status) ?? "unknown", orderId, amountPaisa: amountPaisa ?? null, transactionId: d.reference_code ?? null, raw: res.data };
     },
 
     /** Cancel a booking that hasn't completed (e.g. user abandoned). */
@@ -315,13 +326,30 @@ export function esewa(cfg: EsewaConfig) {
       return res.data;
     },
 
-    /** Verify the signature on eSewa's Intent callback POST body. Still call intentVerify() before fulfilling. */
-    async intentCallbackValid(body: Record<string, unknown>): Promise<boolean> {
+    /**
+     * Verify the signature on eSewa's Intent callback POST body. Still call intentVerify() before fulfilling.
+     * Prefer the RAW request body (string): numbers are then also checked exactly as eSewa sent them ("100.0"),
+     * not only as String(v) ("100"). A parsed object can only be checked in the String(v) form.
+     */
+    async intentCallbackValid(body: Record<string, unknown> | string): Promise<boolean> {
       const intent = requireIntent();
-      if (typeof body.signed_field_names !== "string" || typeof body.signature !== "string") return false;
-      const order = body.signed_field_names.split(",").map((s) => s.trim());
-      const fields = Object.fromEntries(order.map((f) => [f, String(body[f] ?? "")]));
-      return safeEqual(await esewaSign(intent.accessKey, fields, order), body.signature);
+      const text = typeof body === "string" ? body : undefined;
+      let payload: Record<string, unknown>;
+      try {
+        payload = text === undefined ? body as Record<string, unknown> : JSON.parse(text);
+      } catch {
+        return false;
+      }
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+      const names = lookup(payload, "signed_field_names");
+      const signature = lookup(payload, "signature");
+      if (typeof names !== "string" || typeof signature !== "string") return false;
+      const order = names.split(",").map((s) => s.trim());
+      const asString = Object.fromEntries(order.map((f) => [f, String(lookup(payload, f) ?? "")]));
+      if (safeEqual(await esewaSign(intent.accessKey, asString, order), signature)) return true;
+      if (text === undefined) return false;
+      const exact = Object.fromEntries(order.map((f) => [f, rawValue(text, payload, f)]));
+      return order.some((f) => exact[f] !== asString[f]) && safeEqual(await esewaSign(intent.accessKey, exact, order), signature);
     },
   } satisfies PaymentAdapter & Record<string, unknown>;
 

@@ -15,6 +15,7 @@ import {
   basicAuth,
   hmac,
   http,
+  lookup,
   paisaToRupees,
   PaymentError,
   assertPaisa,
@@ -151,13 +152,14 @@ export function nps(cfg: NpsConfig) {
         }
         throw fail("CheckTransactionStatus", r);
       }
-      const d = r.data;
+      // code "0" with a null/non-object data is malformed; report it as unknown rather than crash.
+      const d: Record<string, string> = r.data && typeof r.data === "object" ? r.data : {};
       if (d.MerchantTxnId && d.MerchantTxnId !== orderId) {
         throw new PaymentError("NPS: status is for a different transaction", "nps", "callback_mismatch", 400, d);
       }
       return {
         provider: "nps",
-        status: STATUS[(d.Status ?? "").toLowerCase()] ?? "unknown",
+        status: lookup(STATUS, String(d.Status ?? "").toLowerCase()) ?? "unknown",
         orderId,
         amountPaisa: d.Amount ? rupeesToPaisa(d.Amount) : null, // excludes ServiceCharge
         transactionId: d.GatewayReferenceNo ?? null,

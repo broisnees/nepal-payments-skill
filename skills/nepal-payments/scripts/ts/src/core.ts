@@ -169,9 +169,11 @@ export function assertPaisa(paisa: number, provider: ProviderId): void {
 
 /** 12345 -> "123.45", 10000 -> "100". Never use floats for money. */
 export function paisaToRupees(paisa: number): string {
-  const rupees = Math.trunc(paisa / 100);
-  const rem = Math.abs(paisa % 100);
-  return rem === 0 ? String(rupees) : `${rupees}.${String(rem).padStart(2, "0")}`;
+  const sign = paisa < 0 ? "-" : ""; // Math.trunc(-5 / 100) is -0, which prints as "0"
+  const abs = Math.abs(paisa);
+  const rupees = Math.trunc(abs / 100);
+  const rem = abs % 100;
+  return rem === 0 ? `${sign}${rupees}` : `${sign}${rupees}.${String(rem).padStart(2, "0")}`;
 }
 
 /** "123.45" | 123.45 | "100" -> paisa integer. Rounds half away from zero on the 3rd decimal. */
@@ -214,6 +216,9 @@ export function fromBase64(b64: string): Uint8Array {
 }
 
 export const base64Json = (b64: string): unknown => JSON.parse(new TextDecoder().decode(fromBase64(b64)));
+
+/** Own-property lookup, so keys like "constructor" or "__proto__" never reach Object.prototype. */
+export const lookup = <V>(table: Record<string, V>, key: string): V | undefined => (Object.hasOwn(table, key) ? table[key] : undefined);
 
 export function toHex(bytes: Uint8Array): string {
   let s = "";
@@ -325,7 +330,7 @@ export async function http<T = unknown>(
 }
 
 /** Basic auth header value. */
-export const basicAuth = (user: string, pass: string): string => `Basic ${btoa(`${user}:${pass}`)}`;
+export const basicAuth = (user: string, pass: string): string => `Basic ${toBase64(utf8(`${user}:${pass}`))}`;
 
 /** Escape for safe interpolation into HTML attribute values. */
 export function escapeHtml(s: string): string {

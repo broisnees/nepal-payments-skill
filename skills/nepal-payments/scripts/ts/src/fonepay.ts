@@ -14,6 +14,7 @@ import {
   basicAuth,
   hmac,
   http,
+  lookup,
   paisaToRupees,
   PaymentError,
   assertPaisa,
@@ -185,7 +186,7 @@ export function fonepay(cfg: FonepayConfig) {
         const r = await txnVerification(orderId, amountPaisa);
         return {
           provider: "fonepay",
-          status: TXN_STATUS[r.paymentStatus.toLowerCase()] ?? "unknown",
+          status: lookup(TXN_STATUS, r.paymentStatus.toLowerCase()) ?? "unknown",
           orderId,
           amountPaisa: r.requestedAmount ? rupeesToPaisa(r.requestedAmount) : null,
           transactionId: r.fonepayTraceId != null ? String(r.fonepayTraceId) : (trusted?.UID ?? null),
@@ -270,7 +271,7 @@ export function fonepay(cfg: FonepayConfig) {
       }
       return {
         provider: "fonepay",
-        status: TXN_STATUS[res.data.paymentStatus.toLowerCase()] ?? "unknown",
+        status: lookup(TXN_STATUS, res.data.paymentStatus.toLowerCase()) ?? "unknown",
         orderId,
         amountPaisa: amountPaisa ?? null,
         transactionId: res.data.fonepayTraceId != null ? String(res.data.fonepayTraceId) : null,

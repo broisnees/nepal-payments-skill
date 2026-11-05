@@ -119,9 +119,9 @@ export function connectips(cfg: ConnectIpsConfig) {
         TXNDATE: connectIpsDate(),
         TXNCRNCY: "NPR",
         TXNAMT: String(input.amountPaisa), // PAISA
-        REFERENCEID: clip(input.referenceId ?? input.orderId, 20),
-        REMARKS: clip(input.remarks ?? input.description, 50) || "Payment",
-        PARTICULARS: clip(input.particulars ?? input.description, 100) || "Payment",
+        REFERENCEID: clip(input.referenceId || input.orderId, 20),
+        REMARKS: clip(input.remarks || input.description, 50) || "Payment",
+        PARTICULARS: clip(input.particulars || input.description, 100) || "Payment",
       };
       f.TOKEN = await rsaSha256SignBase64(cfg.privateKeyPem, connectIpsTokenString(f));
       return { kind: "form", action: `${base}/connectipswebgw/loginpage`, method: "POST", fields: f };
@@ -137,7 +137,7 @@ export function connectips(cfg: ConnectIpsConfig) {
       else if (desc.includes("NOT FOUND")) status = "not_found";
       else if (desc.includes("INCOMPLETE")) status = "pending"; // user hasn't finished OTP yet
       else status = "unknown";
-      const amt = r.txnAmt !== undefined ? Math.round(Number(r.txnAmt)) : null;
+      const amt = r.txnAmt != null ? Math.round(Number(r.txnAmt)) : null; // Number(null) would be 0
       return { provider: "connectips", status, orderId, amountPaisa: Number.isFinite(amt) ? amt : null, transactionId: null, raw: r };
     },
 
