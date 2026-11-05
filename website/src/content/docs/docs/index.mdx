@@ -1,0 +1,41 @@
+---
+title: Introduction
+description: Nepal Payments is an Agent Skill plus tested adapters for eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS and IME Pay in TypeScript, Python, Java, Kotlin, PHP and Go.
+---
+
+import { LinkCard, CardGrid } from "@astrojs/starlight/components";
+import { providers, languages, totalTests } from "../../../data/site";
+
+Nepal Payments is an [Agent Skill](https://agentskills.io) for integrating Nepali payment gateways into any backend, web app or mobile app. Ask a coding agent to "add eSewa and Khalti checkout to this app" and it follows a tested recipe: server-side signing, server-to-server verification, exactly-once fulfilment and reconciliation.
+
+The skill ships working adapters in {languages.length} languages, covered by {totalTests} tests that include each provider's own signature test vectors. The adapters also work on their own, without any agent.
+
+## Providers
+
+<div class="np-grid">
+  {providers.map((p) => (
+    <a class="np-card" href={`/docs/providers/${p.slug}/`}>
+      <strong>{p.name}</strong>
+      <span>{p.flows}</span>
+    </a>
+  ))}
+</div>
+
+HBL (2C2P PACO), Prabhu Pay, Moru, CellPay and Namaste Pay are documented in [Other gateways](/docs/providers/others/) without a bundled adapter.
+
+## Two ways to use it
+
+<CardGrid>
+  <LinkCard title="With a coding agent" description="Install the skill in Claude Code, Codex, Cursor, Gemini CLI or Copilot and describe what you need." href="/docs/install/" />
+  <LinkCard title="Adapters only" description="Copy the adapter folder for your language into your server and call initiate() and verify()." href="/docs/adapters/" />
+</CardGrid>
+
+## What the skill enforces
+
+- Secrets and signing stay on the server. Clients only send an order id.
+- A redirect or callback is never proof of payment. The provider's status API decides.
+- Verification uses the amount and ids from your database, not from the callback.
+- State changes go through one tested function, `decideTransition`, which handles early return-URL hits, late payments after an attempt was closed, missing or mismatched amounts and duplicate payments.
+- A reconciliation job settles payments where the customer closed the tab.
+
+The reasoning behind each rule is in [Production architecture](/docs/guides/architecture/).
