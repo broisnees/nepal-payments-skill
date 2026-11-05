@@ -1,0 +1,292 @@
+---
+title: "NPS OnePG Payment Gateway Integration: Step by Step in Any Framework"
+description: "Build NPS OnePG checkout in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: HMAC-SHA512 signing, the multipart form and status checks."
+label: NPS OnePG
+provider: nps
+published: 2026-11-05
+order: 60
+stack: true
+stackTitle: "NPS OnePG Payment Gateway Integration in {stack}: Step by Step"
+stackDescription: "Integrate NPS OnePG in {stack}: signed API calls, GetProcessId, the multipart gateway form, CheckTransactionStatus and reconciliation, with runnable code."
+faq:
+  - q: "What are the NPS OnePG sandbox credentials?"
+    a: "NPS doesn't publish shared sandbox credentials. Onboarding gives you a MerchantId, MerchantName, API username, API password and SecretKey, plus the developer guide. The sandbox API is https://apisandbox.nepalpayment.com and the sandbox gateway is https://gatewaysandbox.nepalpayment.com/Payment/Index."
+  - q: "How is the NPS OnePG signature generated?"
+    a: "Sort the payload keys alphabetically, leave out Signature, join the values with no separator, and take HMAC-SHA512 with your SecretKey as lowercase hex. For MerchantId 9 and MerchantName TestMerchant the signed string is 9TestMerchant."
+  - q: "Why does the NPS API return 401?"
+    a: "Every API call needs an Authorization: Basic header built from your API username and password. A missing header or wrong credentials returns HTTP 401 before the signature is even checked."
+  - q: "What does NPS error code 3 Transaction not initialized yet mean?"
+    a: "CheckTransactionStatus returns code 1 with error_code 3 when the payer never reached the gateway for that MerchantTxnId. Treat it as not found, not as a failed payment, and expire the attempt later."
+  - q: "What should my NPS Notification URL return?"
+    a: "Call CheckTransactionStatus first. Reply in plain text with received when you record a final status, already received when it was final already, and a non-2xx response while the payment is still pending so NPS keeps notifying."
+  - q: "Does the NPS gateway form have to be multipart/form-data?"
+    a: "Yes, according to the NPS developer guide. Post MerchantId, MerchantName, Amount, MerchantTxnId and ProcessId as multipart/form-data from the browser, with exactly the values you sent to GetProcessId."
+  - q: "Which banks and wallets does NPS OnePG support?"
+    a: "About 29 banks' mobile banking and e-banking, card checkouts such as HBL Card Checkout, and wallets including Khalti, MORU, MyPay and Hamro Pay. GetPaymentInstrumentDetails returns the live list for your merchant account."
+---
+
+import CodeGroup from "../../components/blog/CodeGroup.astro";
+import Note from "../../components/blog/Note.astro";
+import { app, gatewayNames, part, whole } from "../../data/blog-code";
+import { nps, vectors } from "../../data/blog-code/nps";
+
+export const code = app(gatewayNames("nps", "NPS", "Nps"));
+
+By the end of this guide you'll have a checkout that takes payments through NPS OnePG (Nepal Payment Solution, now branded NPX) and marks an order paid only after NPS confirms the money moved. One NPS integration reaches about 29 banks' mobile and e-banking, card checkouts like HBL Card Checkout, and wallets including Khalti, MORU, MyPay and Hamro Pay. Pick your framework above and the whole guide switches to it.
+
+NPS publishes no shared sandbox credentials, so I couldn't pay in the NPS sandbox while writing this. I tested every block on this page in November 2026 against a local mock of the NPS API and gateway page that replays the request and response shapes from NPS's merchant developer guide ("DEVELOPER GUIDELINES, API DOCUMENT, GATEWAY 2025", handed out at onboarding and not public). Against that mock, in all twelve frameworks on this page, the multipart form goes through, the status check settles the order once, and a callback for the wrong attempt is rejected. The mock is mine, so it proves the code follows the guide, not that NPS behaves exactly like the guide. The signing code reproduces the same vectors in all six languages and in OpenSSL. The real sandbox and live API hosts answer (HTTP 401 without credentials), but confirm everything against your own onboarding PDF before going live.
+
+## How an NPS payment works
+
+NPS OnePG is a JSON API plus a hosted gateway page where the buyer picks a bank, card or wallet. Your server talks to the API, and the buyer's browser talks to the gateway page:
+
+<ol class="steps">
+  <li>Your server creates a <strong>payment attempt</strong> and calls <code>GetProcessId</code> with the amount and the attempt id (<code>MerchantTxnId</code>). The call is signed with HMAC-SHA512 and sent with Basic auth. NPS returns a <code>ProcessId</code>.</li>
+  <li>The browser auto-submits a <strong>multipart</strong> form to the NPS gateway page with the same amount, attempt id and <code>ProcessId</code>. The buyer chooses a bank or wallet and pays.</li>
+  <li>NPS sends the buyer back to your <code>ResponseUrl</code> with <code>?MerchantTxnId=...&amp;GatewayTxnId=...</code>. Separately, NPS calls your <strong>Notification URL</strong> server to server with the same two parameters. Neither is signed.</li>
+  <li>Your server calls <code>CheckTransactionStatus</code>. That answer, not the redirect, decides whether the order is paid.</li>
+</ol>
+
+Three rules fall out of this, and most broken NPS integrations break one of them:
+
+- **Keep the API on the server.** The secret key and the API password sign and authenticate every call, so they never reach the browser or a mobile app.
+- **A redirect is not a payment.** NPS's callbacks carry no signature, so anyone can fake one. Only `CheckTransactionStatus` proves payment.
+- **Use your own numbers.** Compare the amount you stored, never one from the callback.
+
+## What you need
+
+An NPS merchant account. There are no public test credentials: onboarding gives you five values for the sandbox (and later five for live), plus the developer guide.
+
+| | Sandbox | Production |
+|---|---|---|
+| `MerchantId`, `MerchantName` | from NPS onboarding | from NPS onboarding |
+| API username and password | from NPS onboarding | from NPS onboarding |
+| `SecretKey` | from NPS onboarding | from NPS onboarding |
+| API base (JSON, POST) | `apisandbox.nepalpayment.com` | `apigateway.nepalpayment.com` |
+| Gateway page (browser POST) | `gatewaysandbox.nepalpayment.com/Payment/Index` | `gateway.nepalpayment.com/Payment/Index` |
+
+The module reads them from environment variables:
+
+```bash
+NPS_ENV=sandbox                 # or production
+NPS_MERCHANT_ID=your-merchant-id
+NPS_MERCHANT_NAME=your-merchant-name
+NPS_API_USERNAME=your-api-username
+NPS_API_PASSWORD='your-api-password'
+NPS_SECRET_KEY='your-secret-key'
+# Only if your onboarding PDF lists other hosts:
+# NPS_API_URL=https://...
+# NPS_GATEWAY_URL=https://.../Payment/Index
+```
+
+<Note type="warn" title="Some NPS integrations use a dead live host">
+  Older open source code points at <code>api.nepalpayment.com</code>, which doesn't resolve. <code>apigateway.nepalpayment.com</code> answers (HTTP 401 without credentials, same as the sandbox).
+</Note>
+
+## Set up the project
+
+Create the project and install the framework. The commands below match the stack you picked. Export the `NPS_` variables above in the same shell (Laravel reads them from `.env`).
+
+<CodeGroup by="fw" blocks={code.setup} />
+
+## Step 1: Store payment attempts
+
+Every click on "Pay" creates a **payment attempt**: one row with its own id, the amount, and a status that starts at `initiated`. The order can have several attempts (the buyer cancels and tries again), and each attempt's id is what NPS sees as `MerchantTxnId`, so it is never reused. NPS refuses a repeated one with "Duplicate Record".
+
+In production this is a table:
+
+```sql
+CREATE TABLE payment_attempts (
+  id            VARCHAR(20) PRIMARY KEY,   -- sent to NPS as MerchantTxnId
+  order_id      VARCHAR(64) NOT NULL,
+  amount_paisa  BIGINT      NOT NULL,      -- what we charge, in paisa (Rs 100 = 10000)
+  status        VARCHAR(16) NOT NULL,      -- initiated, pending, paid, failed, canceled, expired
+  provider_ref  VARCHAR(64),               -- NPS's ProcessId from GetProcessId
+  created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+To keep this guide runnable with zero setup, the store below keeps attempts in memory (or in a JSON file for PHP, which forgets everything between requests). Swap its functions for queries when you move to a database. The function that matters is `transition`: it changes the status only if the current status is one you expect, in one atomic step. That single rule is what stops an order from being fulfilled twice when the buyer refreshes the return page while the reconcile job checks the same attempt.
+
+<CodeGroup by="lang" blocks={code.store} />
+
+Next, the types every gateway module speaks, plus `settle`. `settle` takes NPS's answer and applies it: `paid` moves the attempt to paid and fulfils the order exactly once, `pending` waits, and `not_found` is left for the reconcile job in step 4. The form type carries an optional `enctype`, and the auto-post page writes it into the form tag. NPS is the gateway that needs it.
+
+<CodeGroup by="lang" blocks={code.types} />
+
+## Step 2: Write the NPS module
+
+This file is the only NPS-specific code in the project. It exports two functions: `startPayment`, which gets a `ProcessId` and builds the gateway form, and `confirmPayment`, which asks NPS what happened. It's the same file for every framework in your language.
+
+### Configuration
+
+The module picks the sandbox or live hosts from `NPS_ENV` and refuses to start without all five credentials. There are no public defaults to fall back on. `NPS_API_URL` and `NPS_GATEWAY_URL` override the hosts if your onboarding PDF lists different ones.
+
+Amounts arrive in paisa and leave as rupee text, formatted **once** by a single function. NPS signs the exact characters it receives, so `100` and `100.00` are different signatures, and the form has to repeat the exact `Amount` that `GetProcessId` saw.
+
+<CodeGroup by="lang" blocks={part(nps, "config")} />
+
+### Signing
+
+The signature is HMAC-SHA512 with your `SecretKey`, as **lowercase hex**. The message is the **values** of every field except `Signature`, with the keys sorted alphabetically and joined with **no separator**. Keys never appear in it. `GetProcessId` sends `Amount`, `MerchantId`, `MerchantName` and `MerchantTxnId`, which sort in that order, so for Rs 100, merchant `9` and attempt `T1` the signed text is:
+
+```text
+1009TestMerchantT1
+```
+
+<CodeGroup by="lang" blocks={part(nps, "sign")} />
+
+The developer guide gives the rule but no example signatures, so these vectors are my own, with the dummy key `secret`. The payloads are listed out of order on purpose: your code has to sort them. All six modules above, OpenSSL and Python's `hmac` produce the same hex.
+
+<table>
+  <thead><tr><th>Payload (key <code>secret</code>)</th><th>Signed text</th><th>HMAC-SHA512, hex</th></tr></thead>
+  <tbody>
+    {vectors.map((v) => (
+      <tr><td><code>{JSON.stringify(v.payload)}</code></td><td><code>{v.message}</code></td><td><code>{v.signature}</code></td></tr>
+    ))}
+  </tbody>
+</table>
+
+From a terminal:
+
+```bash
+printf '%s' '1009TestMerchantT1' | openssl dgst -sha512 -hmac 'secret'
+# d169fb7da4502fe70cfc6791206b759de2944f1b46755650052e888774b929d677ea71819a868a71c597f0cf98e4d442015931a0553f8af6e792fda37d0927b8
+```
+
+### Calling the API
+
+Every NPS API call is a `POST` of JSON with two extra pieces: an `Authorization: Basic base64(username:password)` header, and a `Signature` field over the rest of the body. `MerchantId` and `MerchantName` go in every call, so the helper adds them. Every reply has the same envelope:
+
+```json
+{"code":"0","message":"Success","errors":[],"data":{}}
+```
+
+`code` is `"0"` when the call worked and `"1"` when it didn't, with details in `errors[].error_code` and `errors[].error_message`. HTTP 401 means a wrong API username or password. Anything that isn't the envelope is treated as an outage: the route answers 502 and the reconcile job tries again later.
+
+<CodeGroup by="lang" blocks={part(nps, "call")} />
+
+### Starting a payment
+
+`startPayment` calls `GetProcessId`, then returns the form for the gateway page. The form needs no auth and no signature, but three of its fields have to match the `GetProcessId` call exactly:
+
+| Field | Value |
+|---|---|
+| `MerchantId`, `MerchantName` | Your merchant values |
+| `Amount` | The same rupee string sent to `GetProcessId` |
+| `MerchantTxnId` | The attempt id, new for every attempt |
+| `ProcessId` | From `GetProcessId` |
+| `TransactionRemarks` | Optional. The order description, kept short |
+| `ResponseUrl` | Optional. Your return route, `/pay/return/<attemptId>`. NPS appends `?MerchantTxnId=...&GatewayTxnId=...` |
+| `InstrumentCode` | Optional, not sent here. A bank or wallet code from `GetPaymentInstrumentDetails` skips NPS's picker page |
+
+The form is marked `multipart/form-data`, which the NPS guide requires, and the routes' auto-post page puts that `enctype` on the form tag. The `ProcessId` comes back as `providerRef`, and the routes store it on the attempt.
+
+<CodeGroup by="lang" blocks={part(nps, "start")} />
+
+### Confirming a payment
+
+`confirmPayment` runs in two places: on the return route, with the `MerchantTxnId` and `GatewayTxnId` NPS appended, and in the reconcile job, with nothing. It works the same way in both:
+
+1. NPS's callback parameters carry no signature, so there is nothing to verify. If `MerchantTxnId` names a different attempt, the module throws `PaymentError` and the route answers 400.
+2. It calls `CheckTransactionStatus` for this attempt. The answer carries `GatewayReferenceNo`, `Amount`, `ServiceCharge`, `ProcessId`, `MerchantTxnId`, `Status` and a few display fields.
+3. It checks that the answer is for this attempt and that `Amount` equals the amount **you stored**. `Amount` leaves out NPS's `ServiceCharge`, so it matches what you sent. A mismatch throws `PaymentError`.
+4. It maps `Status` to ours.
+
+| NPS answer | Means | Our status |
+|---|---|---|
+| `code "0"`, `Status: "Success"` | Paid | `paid` |
+| `code "0"`, `Status: "Fail"` | The payment failed | `failed` |
+| `code "0"`, `Status: "Pending"` | Started, not finished | `pending` |
+| `code "1"`, `error_code` `3`, "Transaction not initialized yet" | The buyer never reached the gateway page | `not_found` |
+| Any other `Status` | Not documented | `pending`, so the reconcile job keeps asking |
+
+A failed payment still comes back as `code: "0"`, which is why the module reads `Status` and never stops at `code`.
+
+<CodeGroup by="lang" blocks={part(nps, "confirm")} />
+
+<details class="full-file">
+  <summary>The whole NPS module in one block</summary>
+  <CodeGroup by="lang" blocks={whole(nps, ["config", "sign", "call", "start", "confirm"])} />
+</details>
+
+## Step 3: Add the routes
+
+Four routes connect it all. None of them mention NPS: they call `startPayment` and `confirmPayment` on whichever gateway module you import, so adding Khalti later means importing a second module, not writing new routes.
+
+- `GET /` shows a demo order and a Pay button.
+- `POST /pay/{orderId}` creates an attempt, calls `startPayment`, stores the `ProcessId`, and sends back a page that auto-posts the multipart form to NPS.
+- `GET` and `POST /pay/return/{attemptId}` collect everything NPS sent, call `confirmPayment` with the **stored** amount, apply the answer with `settle`, and redirect to the order. This is your `ResponseUrl`. The route takes GET and POST because gateways differ in how they come back, and frameworks with CSRF protection exempt this one route for that reason.
+- `GET /orders/{orderId}` shows the order's payment status.
+
+<CodeGroup by="fw" blocks={code.routes} />
+
+### The Notification URL
+
+Besides the `ResponseUrl`, NPS calls a **Notification URL** server to server: `GET {url}?MerchantTxnId=<id>&GatewayTxnId=<id>`. It's registered once per merchant during onboarding, not sent with each payment, so it can't carry the attempt id in its path the way the return route does. It is **unsigned and unauthenticated**, so anyone can call it, and its parameters prove nothing.
+
+NPS expects a plain-text reply:
+
+- `received` when this call recorded a final status,
+- `already received` when the attempt was final already,
+- a non-2xx response while the payment is still pending, so NPS keeps notifying.
+
+This project doesn't add a notification route. The reconcile job in step 4 already checks every open NPS attempt each minute, so a buyer who pays and closes the tab still gets their order within a few minutes. A notification handler only makes that faster. If you add one, it is a few lines on top of what's here:
+
+1. Read `MerchantTxnId` from the query and load that attempt. Unknown id: answer 404.
+2. Note whether the attempt was already final (`paid`, `failed`, `canceled` or `expired`).
+3. Call `confirmPayment` with the stored amount and **empty** params, then `settle`, exactly like the reconcile job. Never trust the query beyond finding the attempt.
+4. Reload the attempt. Still `initiated` or `pending`: answer 503 so NPS retries. Final now: answer `received`, or `already received` if it was final before step 3, as `text/plain` with status 200.
+
+Don't point the Notification URL at `/pay/return/...`. That route answers with a 303 redirect and no body, which is not the `received` reply NPS waits for, so NPS would keep retrying.
+
+## Step 4: Catch payments the redirect missed
+
+Buyers close the tab after paying, lose signal, or never get redirected. The reconcile job fixes that: every minute it finds attempts still open after two minutes and runs `confirmPayment` on them with no callback data. Paid ones get settled; attempts NPS still answers with error code 3 after an hour are marked `expired`. The developer guide I have doesn't say how long a `ProcessId` stays valid, so the hour is my margin, not an NPS rule. Anything still open after three days drops out of the loop: the job logs it as needing manual review, because a payment that old needs a person, not another status call.
+
+<CodeGroup by="lang" blocks={code.reconcile} />
+
+## Step 5: Pay in the sandbox
+
+Get your sandbox credentials from NPS first. Until then, the vectors in step 2 check your signing offline, and an unauthenticated `POST` to `https://apisandbox.nepalpayment.com/GetProcessId` answering 401 confirms you can reach the host.
+
+With the `NPS_` variables set, start the server with the run command from the setup step, then:
+
+<ol class="steps">
+  <li>Open the app and click <strong>Pay with NPS</strong>. Your server calls <code>GetProcessId</code> and the browser posts the form to the NPS sandbox gateway page.</li>
+  <li>Pick a bank or wallet and pay with the test account NPS gave you at onboarding.</li>
+  <li>NPS redirects to <code>/pay/return/&lt;attemptId&gt;?MerchantTxnId=...&amp;GatewayTxnId=...</code>, and your server checks the status and settles it.</li>
+  <li>The order page shows <strong>paid</strong>, and the server log prints the fulfilment line once. Refresh the return URL as often as you like: it never prints again.</li>
+</ol>
+
+To test the unpaid path, click Pay and close the NPS page without paying. Open `/pay/return/<attemptId>` yourself: `CheckTransactionStatus` answers error code 3, the order stays `initiated`, and the reconcile job expires the attempt after an hour. To test a forged callback, add `?MerchantTxnId=` with a different attempt's id: the route answers 400.
+
+## Common NPS errors
+
+The developer guide documents only a few error codes. Where the exact NPS message isn't documented, the table says so.
+
+| Error | Cause | Fix |
+|---|---|---|
+| HTTP 401 | Missing `Authorization: Basic` header, or wrong API username or password. | Send `Basic base64(username:password)` on every API call. |
+| `code "1"`, "Duplicate Record" on `GetProcessId` | `MerchantTxnId` reused. | Create a new attempt per click. |
+| `code "1"`, `error_code` `3`, "Transaction not initialized yet" | No payment reached the gateway for that `MerchantTxnId`. | Treat as not found. Expire the attempt later, don't mark it failed. |
+| `code "0"` but `Status` is `Fail` | The payment failed. | Read `data.Status`, not only `code`. |
+| Signature rejected (exact message not documented) | Unsorted keys, a separator between values, `Signature` included in the message, base64 or uppercase hex, or `"100"` signed and `"100.00"` sent. | Check against the vectors above. Format the amount once. |
+| Gateway page rejects the payment (exact message not documented) | Form posted as JSON or urlencoded, or `Amount`, `MerchantTxnId` or `ProcessId` differ from `GetProcessId`. | Post `multipart/form-data` with the exact values from `GetProcessId`. |
+| DNS failure on `api.nepalpayment.com` | Copied from an old integration. That host doesn't resolve. | Use `apigateway.nepalpayment.com` for live, or the URL in your onboarding PDF. |
+| Amount mismatch after a `Success` | `data.Amount` excludes `ServiceCharge`, so comparing with the charged total fails. | Compare with the amount you sent in `GetProcessId`, as the module does. |
+| NPS keeps calling the Notification URL | It answered non-2xx (correct while pending), a redirect, or something other than plain-text `received`. | Reply `received` or `already received` once the status is final. |
+
+## Going live
+
+1. Get the live `MerchantId`, `MerchantName`, API username, API password and `SecretKey` from NPS.
+2. Set `NPS_ENV=production` and the five `NPS_` credentials on the server. The module switches to `apigateway.nepalpayment.com` and `gateway.nepalpayment.com/Payment/Index`; confirm both against your onboarding PDF and set `NPS_API_URL` and `NPS_GATEWAY_URL` if they differ.
+3. Replace the store with your database. Keep `transition` atomic: an `UPDATE ... WHERE id = ? AND status IN (...)` that reports how many rows changed.
+4. Run the reconcile job from a scheduler (cron, a queue worker, or the framework's scheduler) instead of the web process. Register a live Notification URL with NPS if you add the handler described in step 3.
+5. Make one real low-value payment end to end and watch `CheckTransactionStatus` report `Success` with the amount you stored.
+
+## NPS in React, Vue or a mobile app
+
+**React, Vue, Svelte or any SPA:** the frontend never signs and never calls the NPS API. It POSTs the order id to your server's `/pay/{orderId}` route and lets the browser follow the auto-post page. If you build the form yourself from JSON, keep `enctype="multipart/form-data"` on it. Tutorials that sign inside a component ship your secret key and API password to every visitor.
+
+**Flutter, React Native, Android, iOS:** NPS has no official mobile SDK. Open your server's `/pay/{orderId}` page in a WebView (`webview_flutter`, `react-native-webview`) or the system browser, watch for your return URL, then ask your backend for the verified status. Let non-`http` URLs leave the WebView so bank and wallet app links open. The [mobile guide](/docs/guides/mobile/) has the full WebView pattern, and the [NPS reference](/docs/providers/nps/reference/) has the field-by-field details, including the bank and wallet picker and service charges.
