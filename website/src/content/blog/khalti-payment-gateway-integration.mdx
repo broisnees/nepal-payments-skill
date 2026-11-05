@@ -1,0 +1,295 @@
+---
+title: "Khalti Payment Gateway Integration: Step by Step in Any Framework"
+description: "Build Khalti KPG-2 checkout in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: initiate in paisa, lookup by pidx, reconcile, sandbox."
+label: Khalti
+provider: khalti
+published: 2026-11-05
+order: 20
+stack: true
+stackTitle: "Khalti Payment Gateway Integration in {stack}: Step by Step"
+stackDescription: "Integrate Khalti KPG-2 in {stack}: initiate in paisa, lookup by the stored pidx, reconciliation and sandbox testing, with code you can run."
+faq:
+  - q: "What are the Khalti sandbox credentials?"
+    a: "Khalti has no shared sandbox key. Sign up as a merchant at test-admin.khalti.com (OTP 987654) and copy the secret key, which is labelled live even in the sandbox. To pay, log in with Khalti ID 9800000000 to 9800000005, MPIN 1111 and OTP 987654. The sandbox API base is https://dev.khalti.com/api/v2/."
+  - q: "Why does Khalti return 401 Authentication credentials were not provided?"
+    a: "The Authorization header is missing or uses the wrong prefix. Khalti wants Authorization: Key <secret_key>. Bearer or no header returns this 401. A wrong key returns 401 Invalid token instead."
+  - q: "Can I mark a Khalti order paid from the return_url?"
+    a: "No. The return_url parameters are informational. Check that the callback's pidx is the one you stored at initiate, call the lookup API with the stored pidx, and fulfil only when status is Completed and total_amount equals the amount you stored."
+  - q: "Why does the Khalti lookup API return HTTP 400?"
+    a: "Lookup reports Expired and User canceled payments as HTTP 400 with a normal JSON body. Read the status field before you treat the response as an error, or a plain cancellation turns into an exception."
+  - q: "Why does Khalti say Amount must be less than 200?"
+    a: "New Khalti merchants are capped at NPR 200 per transaction until KYC and the merchant contract are done. Finish onboarding with Khalti to lift the cap."
+  - q: "Does Khalti have webhooks or a refund API?"
+    a: "Khalti has a refund API at /api/merchant-transaction/{transaction_id}/refund/ but no webhooks and no API to cancel a pidx. A scheduled job that re-checks open payments with the lookup API covers the missing webhook."
+  - q: "How do I integrate Khalti in a Flutter or React Native app?"
+    a: "Your server initiates the payment and returns pidx and payment_url. In Flutter, pass them to the official khalti_checkout_flutter SDK. React Native has no official SDK, so open payment_url in a WebView and catch the redirect to your return_url. Either way your server confirms with lookup."
+---
+
+import CodeGroup from "../../components/blog/CodeGroup.astro";
+import Note from "../../components/blog/Note.astro";
+import { app, gatewayNames, part, whole } from "../../data/blog-code";
+import { khalti } from "../../data/blog-code/khalti";
+
+export const code = app(gatewayNames("khalti", "Khalti", "Khalti"));
+
+By the end of this guide you'll have a checkout that takes Khalti payments and marks an order paid only after Khalti confirms the money moved. Pick your framework above and the whole guide switches to it. The code runs as-is against Khalti's sandbox once you've created a free sandbox merchant account and copied its key.
+
+I tested every block on this page in November 2026, in all twelve frameworks, against a local mock that replays the initiate and lookup responses from Khalti's docs: start, return, a forged callback and every lookup status. I also called the real sandbox host from each language with a made-up key and got Khalti's documented 401 back. I did not make a sandbox payment, because that needs a test-admin.khalti.com merchant account and I tested without one.
+
+## How a Khalti payment works
+
+Khalti's web checkout is called **KPG-2**. Unlike eSewa, nothing is signed and nothing is posted from the browser. Your server talks to Khalti's JSON API and sends the buyer to a page Khalti hosts:
+
+<ol class="steps">
+  <li>Your server creates a <strong>payment attempt</strong> in your database and calls <strong>initiate</strong> with the amount in integer paisa. Khalti answers with a <code>pidx</code> (its id for this payment) and a <code>payment_url</code>.</li>
+  <li>Your server stores the <code>pidx</code> on the attempt and redirects the buyer to <code>payment_url</code>. The buyer logs in to Khalti and pays.</li>
+  <li>Khalti sends the buyer back to your return URL with a GET carrying <code>pidx</code>, <code>status</code>, <code>purchase_order_id</code> and the amount. None of it is signed.</li>
+  <li>Your server calls Khalti's <strong>lookup</strong> API with the <code>pidx</code> it stored. That answer, not the redirect, decides whether the order is paid.</li>
+</ol>
+
+Three rules fall out of this, and most broken Khalti integrations break one of them:
+
+- **Keep the key on the server.** The secret key authorizes payments and refunds. Khalti sends no CORS headers, so the browser can't call the API anyway.
+- **A redirect is not a payment.** Anyone can type your return URL with `status=Completed` on the end. Only lookup proves payment.
+- **Use your own numbers.** Look up the `pidx` you stored and compare against the amount you stored, never values from the callback.
+
+## What you need
+
+A sandbox merchant account. Khalti publishes no shared test key, so sign up at [test-admin.khalti.com](https://test-admin.khalti.com/#/join/merchant) (the signup OTP is `987654`) and copy the secret key from the dashboard. Sandbox keys are labelled "live" too; keys starting with `test_` belong to the dead v1 API.
+
+| | Sandbox | Production |
+|---|---|---|
+| Initiate (POST) | `dev.khalti.com/api/v2/epayment/initiate/` | `khalti.com/api/v2/epayment/initiate/` |
+| Lookup (POST) | `dev.khalti.com/api/v2/epayment/lookup/` | `khalti.com/api/v2/epayment/lookup/` |
+| Payment page | `test-pay.khalti.com/?pidx=...` | `pay.khalti.com/?pidx=...` |
+| Merchant dashboard | `test-admin.khalti.com` | `admin.khalti.com` |
+| Auth header | `Authorization: Key <secret_key>` | same |
+
+Set the key before you start the server (and before `next build` on Next.js). The module refuses to load without it, in both environments:
+
+```bash
+KHALTI_SECRET_KEY='your-secret-key'
+# KHALTI_ENV=production   # for live payments, with the key from admin.khalti.com
+```
+
+<Note type="warn" title="Most Khalti tutorials use the dead v1 API">
+  They load the <code>khalti-checkout-web</code> widget and confirm with <code>/api/v2/payment/verify/</code> and a <code>token</code>. That whole flow is gone. They also use <code>a.khalti.com</code>, which still answers, but Khalti's docs moved the sandbox to <code>dev.khalti.com</code>.
+</Note>
+
+## Set up the project
+
+Create the project and install the framework. The commands below match the stack you picked.
+
+<CodeGroup by="fw" blocks={code.setup} />
+
+## Step 1: Store payment attempts
+
+Every click on "Pay" creates a **payment attempt**: one row with its own id, the amount, and a status that starts at `initiated`. The order can have several attempts (the buyer cancels and tries again), and each attempt's id is what Khalti sees as `purchase_order_id`, so it is never reused. The attempt also keeps Khalti's `pidx`, because lookup only accepts a `pidx`: there is no lookup by your order id.
+
+In production this is a table:
+
+```sql
+CREATE TABLE payment_attempts (
+  id            VARCHAR(20) PRIMARY KEY,   -- sent to Khalti as purchase_order_id
+  order_id      VARCHAR(64) NOT NULL,
+  amount_paisa  BIGINT      NOT NULL,      -- what we charge, in paisa (Rs 100 = 10000)
+  status        VARCHAR(16) NOT NULL,      -- initiated, pending, paid, failed, canceled, expired
+  provider_ref  VARCHAR(64),               -- Khalti's pidx, saved right after initiate
+  created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+To keep this guide runnable with zero setup, the store below keeps attempts in memory (or in a JSON file for PHP, which forgets everything between requests). Swap its functions for queries when you move to a database. The function that matters is `transition`: it changes the status only if the current status is one you expect, in one atomic step. That single rule is what stops an order from being fulfilled twice when the buyer refreshes the return page.
+
+<CodeGroup by="lang" blocks={code.store} />
+
+Next, the types every gateway module speaks, plus `settle`. `settle` takes Khalti's answer and applies it: `paid` moves the attempt to paid and fulfils the order exactly once, `pending` waits, and `not_found` is left for the reconcile job in step 4.
+
+<CodeGroup by="lang" blocks={code.types} />
+
+## Step 2: Write the Khalti module
+
+This file is the only Khalti-specific code in the project. It exports two functions: `startPayment`, which asks Khalti for a payment page, and `confirmPayment`, which decides what happened. It's the same file for every framework in your language.
+
+### Configuration
+
+The module reads two environment variables: `KHALTI_SECRET_KEY` and, for live payments, `KHALTI_ENV=production`, which switches the API host from `dev.khalti.com` to `khalti.com`. Two details here save hours of debugging later:
+
+- **Keep the trailing slash** on `/epayment/initiate/` and `/epayment/lookup/`. Without it Khalti answers 301, and most HTTP clients follow the redirect as a GET without the body. You get validation errors for fields you did send.
+- Khalti wants `Key <secret>`. People often paste the key with that prefix already on it, so the module strips a leading `Key `.
+
+<CodeGroup by="lang" blocks={part(khalti, "config")} />
+
+### Calling the API
+
+Both calls are a JSON POST with the same header, so one helper does it. It hands back the HTTP status **and** the parsed body, whatever the status. That matters for lookup: an expired or canceled payment comes back as HTTP 400 with an ordinary body, and an HTTP client that throws on every 4xx turns a plain cancellation into an exception.
+
+<CodeGroup by="lang" blocks={part(khalti, "http")} />
+
+From a terminal, the same call without a key shows what a wrong header looks like:
+
+```bash
+curl -s -X POST https://dev.khalti.com/api/v2/epayment/lookup/ \
+  -H 'Content-Type: application/json' -d '{"pidx":"x"}'
+# {"detail":"Authentication credentials were not provided.","status_code":401}
+```
+
+With `Authorization: Key <wrong key>` the body is `{"detail":"Invalid token.","status_code":401}` instead. I got both answers from the sandbox in November 2026.
+
+### Starting a payment
+
+`startPayment` calls initiate with five required fields and returns a redirect to the `payment_url` Khalti sends back, with the `pidx` as `providerRef`. The route saves it on the attempt before the buyer leaves.
+
+| Field | Value |
+|---|---|
+| `return_url` | Your return route, `/pay/return/<attemptId>`. Khalti sends the buyer here with a GET. |
+| `website_url` | Your site's URL. The module takes the origin of the return URL. |
+| `amount` | **Integer paisa, as a JSON number.** Rs 100 is `10000`. The minimum is `1000` (Rs 10). |
+| `purchase_order_id` | The attempt id, unique per attempt |
+| `purchase_order_name` | The description, `Order demo` here |
+
+A successful initiate returns:
+
+```json
+{ "pidx": "bZQLD9wRVWo4CdESSfuSsB", "payment_url": "https://test-pay.khalti.com/?pidx=bZQLD9wRVWo4CdESSfuSsB",
+  "expires_at": "2023-05-25T16:26:16.471649+05:45", "expires_in": 1800 }
+```
+
+Initiate also takes optional `customer_info`, `amount_breakdown` (which must add up to `amount`), `product_details`, and any key starting with `merchant_`, which Khalti echoes back on the return URL. The module sends none of them. Initiate has **no idempotency key**, so the module never retries it: if it times out, the buyer clicks Pay again and gets a new attempt.
+
+<CodeGroup by="lang" blocks={part(khalti, "start")} />
+
+### Confirming a payment
+
+`confirmPayment` runs in two places: on the return route, with whatever Khalti put on the URL, and in the reconcile job, with nothing. It works the same way in both:
+
+1. If the callback carries a `pidx` or `purchase_order_id`, it has to match the stored `pidx` and this attempt. Anything else throws `PaymentError`, and the route answers 400. The callback's `status` and amounts are ignored.
+2. Ask lookup about the **stored** `pidx`. Lookup's response has no `purchase_order_id`, so looking up a `pidx` taken from the URL would let a buyer replay another, cheaper payment against this order.
+3. Map Khalti's status to ours. On `Completed`, check `total_amount` against the amount **you stored**. A mismatch throws `PaymentError`.
+
+This is what Khalti appends to the return URL on success:
+
+```http
+GET /pay/return/3fe75c2dba7c13627c20?pidx=bZQLD9wRVWo4CdESSfuSsB&status=Completed&transaction_id=GFq9PFS7b2iYvL8Lir9oXe&tidx=GFq9PFS7b2iYvL8Lir9oXe&amount=10000&total_amount=10000&mobile=98XXXXX904&purchase_order_id=3fe75c2dba7c13627c20&purchase_order_name=Order%20demo
+```
+
+On cancel, `status` is `User canceled` and `transaction_id`, `tidx` and `mobile` are empty. Lookup itself is `POST /epayment/lookup/` with `{"pidx": "..."}` and answers:
+
+```json
+{ "pidx": "bZQLD9wRVWo4CdESSfuSsB", "total_amount": 10000, "status": "Completed",
+  "transaction_id": "GFq9PFS7b2iYvL8Lir9oXe", "fee": 0, "refunded": false }
+```
+
+| Khalti status | HTTP | Means | Our status |
+|---|---|---|---|
+| `Completed` | 200 | Paid | `paid` |
+| `Pending` | 200 | Not final. Sandbox payments sometimes stick here. | `pending` |
+| `Initiated` | 200 | Payment page opened, nothing paid yet | `pending` |
+| `Refunded` | 200 | Refunded through Khalti | `refunded` |
+| `Partially Refunded` | 200 | Part refunded. The docs also write "Partially refunded", so the module compares in lower case. | `refunded` |
+| `Expired` | **400** | The link expired unpaid | `failed` |
+| `User canceled` | **400** | The buyer canceled on Khalti | `canceled` |
+| `{"detail": "Not found."}` | 404 | Unknown `pidx`, or a `pidx` from the other environment | `not_found` |
+
+An attempt without a stored `pidx` (initiate failed) also comes back `not_found`, since Khalti has nothing to look up. A 401, a 5xx or an HTML error page is not an answer at all: the module throws a plain error, the route answers 502, and the reconcile job asks again later.
+
+On `Completed` the outcome carries Khalti's `transaction_id` as `providerRef`. The shared `settle` doesn't save it. Add a column for it if you plan to refund through the API, because the refund endpoint takes `transaction_id`, not `pidx`.
+
+<CodeGroup by="lang" blocks={part(khalti, "confirm")} />
+
+<details class="full-file">
+  <summary>The whole Khalti module in one block</summary>
+  <CodeGroup by="lang" blocks={whole(khalti, ["config", "http", "start", "confirm"])} />
+</details>
+
+## Step 3: Add the routes
+
+Four routes connect it all. None of them mention Khalti: they call `startPayment` and `confirmPayment` on whichever gateway module you import, so adding eSewa later means importing a second module, not writing new routes.
+
+- `GET /` shows a demo order and a Pay button.
+- `POST /pay/{orderId}` creates an attempt, calls `startPayment`, saves the `pidx`, and answers 303 to Khalti's `payment_url`.
+- `GET` and `POST /pay/return/{attemptId}` collect everything Khalti sent, call `confirmPayment` with the **stored** amount and `pidx`, apply the answer with `settle`, and redirect to the order. Khalti comes back with a GET; the route accepts POST too because other gateways post back, and frameworks with CSRF protection exempt this one route for the same reason.
+- `GET /orders/{orderId}` shows the order's payment status.
+
+The attempt id lives in the path, so the route never has to trust `purchase_order_id` to find the attempt.
+
+<CodeGroup by="fw" blocks={code.routes} />
+
+## Step 4: Catch payments the redirect missed
+
+Buyers close the tab after paying, lose signal, or never get redirected. Khalti has **no webhooks**, so nothing tells your server. The reconcile job fixes that: every minute it finds attempts still open after two minutes and runs `confirmPayment` on them with no callback data, which goes straight to lookup with the stored `pidx`. Paid ones get settled. Anything still open after three days drops out of the loop: the job logs it as needing manual review, because a payment that old needs a person, not another status call.
+
+Abandoned Khalti payments mostly close themselves: lookup says `Initiated` until the link expires (60 minutes by default in production; the sandbox sample shows 1800 seconds), then `Expired`, which settles the attempt as `failed`. The one-hour `not_found` rule catches the rest: attempts whose initiate failed, or a `pidx` looked up with the other environment's key.
+
+<CodeGroup by="lang" blocks={code.reconcile} />
+
+## Step 5: Pay in the sandbox
+
+Start the server with the run command from the setup step, with `KHALTI_SECRET_KEY` set to your sandbox key, then:
+
+<ol class="steps">
+  <li>Open the app and click <strong>Pay with Khalti</strong>. You land on <code>test-pay.khalti.com</code>.</li>
+  <li>Log in with Khalti ID <code>9800000000</code> (up to <code>9800000005</code>), MPIN <code>1111</code> and OTP <code>987654</code>. The sandbox has the wallet only, no e-banking or cards.</li>
+  <li>Confirm the payment. Khalti redirects to <code>/pay/return/&lt;attemptId&gt;?pidx=...&amp;status=Completed&amp;...</code>, and your server looks it up and settles it.</li>
+  <li>The order page shows <strong>paid</strong>, and the server log prints the fulfilment line once. Refresh the return URL as often as you like: it never prints again.</li>
+</ol>
+
+To test the failure path, click Pay and cancel on Khalti. You come back with `status=User%20canceled`, lookup answers HTTP 400 with `User canceled`, and the order shows **canceled**. Keep sandbox amounts between Rs 10 and Rs 200 (`1000` to `20000` paisa) or the sandbox answers `Fee not found.`; the Rs 100 demo order fits. If a sandbox payment sticks at `Pending`, Khalti's maintainers advise a new attempt with a fresh `pidx`.
+
+<Note title="How I tested without a merchant account">
+  Each framework ran the code from this page with one change: the host <code>https://dev.khalti.com</code> pointed at a local mock that answers initiate and lookup with the shapes in Khalti's docs, including the 401s, the 301 on a missing slash and the HTTP 400 lookups. The flow was: Pay (303 to <code>payment_url</code>), return with a cancel-style callback while lookup still says <code>Initiated</code> (order stays pending), return with another payment's <code>pidx</code> (400), pay, return with <code>Completed</code> (paid, fulfilled once), return again (still fulfilled once). It passed in Express, Hono, Fastify, Next.js (dev and a production build), Flask, FastAPI, Django, Laravel, plain PHP, Go, Spring Boot and Ktor.
+</Note>
+
+## Refund a Khalti payment
+
+Refunds aren't part of the module above, because the checkout doesn't need them. Khalti has an API for them, outside `/api/v2/`, authenticated with the same header:
+
+```http
+POST https://dev.khalti.com/api/merchant-transaction/{transaction_id}/refund/
+Authorization: Key <secret_key>
+```
+
+`transaction_id` comes from lookup (it's the `providerRef` that `confirmPayment` returns on `Completed`). Production uses `khalti.com` in place of `dev.khalti.com`. The body depends on how the buyer paid:
+
+| Case | Body |
+|---|---|
+| Wallet, full | `{}` |
+| Wallet, partial | `{ "amount": <paisa> }` |
+| Bank, full | `{ "mobile": "98XXXXXXXX" }` |
+| Bank, partial | `{ "mobile": "98XXXXXXXX", "amount": <paisa> }` |
+
+Success returns `{ "detail": "Transaction refund successful." }`, and lookup then reports `Refunded` or `Partially Refunded`. Khalti's docs say the partial `amount` is paisa but their own example shows `50.00`. I haven't confirmed which unit the API takes, so run a partial refund in the sandbox before you rely on it. Full refunds (`{}`) don't have this problem, and the merchant dashboard can refund by hand. There is no API to cancel an unpaid `pidx`; let it expire. The [Khalti reference](/docs/providers/khalti/reference/#6-refund) has the details.
+
+## Common Khalti errors
+
+| Error | Cause | Fix |
+|---|---|---|
+| `401 "Authentication credentials were not provided."` | Missing header, or `Bearer` instead of `Key`. | Send `Authorization: Key <secret_key>`. |
+| `401 "Invalid token."` | Wrong secret key. | Use the key from the dashboard that matches the host. |
+| `"Amount should be greater than Rs. 10, that is 1000 paisa."` (`error_key: validation_error`) | Amount under `1000`, or rupees sent instead of paisa. | Send integer paisa: Rs 100 is `10000`. |
+| `"Amount must be less than 200."` | Production merchant without KYC and contract, capped at NPR 200. | Finish onboarding with Khalti. |
+| `"Fee not found."` | Sandbox amount outside its fee range. | Use Rs 10 to Rs 200 in the sandbox. |
+| `"Amount Breakdown mismatch."` | `amount_breakdown` doesn't add up to `amount`. | Recompute the breakdown in paisa. |
+| Validation errors for fields you did send | No trailing slash: the 301 turned your POST into a GET without a body. | Call `/epayment/initiate/` and `/epayment/lookup/` with the slash. |
+| `{"detail": "Not found."}` on lookup | Unknown `pidx`, or a `pidx` from the other environment. | Look up the stored `pidx` with the key and host that created it. |
+| Lookup "fails" with HTTP 400 | Expected for `Expired` and `User canceled`. | Read `status` from the 400 body. |
+| CORS error in the browser | Khalti sends no CORS headers. | Call Khalti from your server only. |
+
+## Going live
+
+1. Finish KYC and the merchant contract with Khalti, or live payments stay capped at NPR 200.
+2. Get the live secret key from [admin.khalti.com](https://admin.khalti.com/).
+3. Set `KHALTI_ENV=production` and `KHALTI_SECRET_KEY` on the server. The module switches the API host; the payment page moves to `pay.khalti.com` on its own, since the route redirects to the `payment_url` Khalti returns.
+4. Replace the store with your database. Keep `transition` atomic: an `UPDATE ... WHERE id = ? AND status IN (...)` that reports how many rows changed. Save the `pidx` in the same request that called initiate.
+5. Run the reconcile job from a scheduler (cron, a queue worker, or the framework's scheduler) instead of the web process.
+6. Make one real low-value payment end to end, then refund it from the merchant dashboard and watch lookup report `Refunded`.
+
+## Khalti in React, Vue or a mobile app
+
+**React, Vue, Svelte or any SPA:** there is no KPG-2 JavaScript SDK, and none is needed. The frontend POSTs the order id to your server's `/pay/{orderId}` route and follows the redirect, or fetches the `payment_url` as JSON and sets `window.location` to it. Calling Khalti from the browser fails on CORS, and it would ship your secret key to every visitor.
+
+**Flutter:** use the official `khalti_checkout_flutter` package (`^1.0.1`, Android and iOS only). Your server initiates, the app passes `pidx`, `payment_url` and the **public** key to `Khalti.init`, and `onPaymentResult` calls your server, which runs lookup. The SDK's own status check is only for the UI. Version `2.0.0-beta.1` is a breaking prerelease, so pin `^1.0.1` for now.
+
+**Android and iOS:** the official SDKs are `com.khalti:checkout-android` (`0.08.00`) and `KhaltiCheckout` (Swift Package Manager, `1.1.1`). Same pattern: server initiates, SDK opens checkout, server looks up.
+
+**React Native, Expo, Ionic, Capacitor:** no official SDK exists (the `khalti-sdk-react-native` repo is empty, and the npm packages are third-party). Open `payment_url` in `react-native-webview` or an in-app browser, catch the navigation to your return URL, and call your server, which runs `confirmPayment`. The old `khalti`, `khalti_flutter`, `com.khalti:khalti-android` and `pod 'Khalti'` SDKs are KPG-v1 and archived. The [Khalti reference](/docs/providers/khalti/reference/#8-mobile-sdks) has full Flutter, Kotlin and Swift code.
