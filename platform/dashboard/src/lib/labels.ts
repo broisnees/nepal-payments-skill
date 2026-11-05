@@ -31,6 +31,8 @@ export const EVENT_LABELS: Record<string, string> = {
   "status.changed": "Status changed",
   "payment.fulfilled": "Order fulfilled",
   "reconcile.checked": "Reconcile check",
+  "payment.annotated": "Details added",
+  "payment.refunded": "Refunded",
   error: "Error",
 };
 
@@ -44,4 +46,6 @@ export const RULES: Record<RuleType, { title: string; blurb: string; when: strin
   gateway_slow: { title: "Gateway slow", blurb: "Average gateway response time crosses a limit.", when: "Every minute" },
   double_fulfilment: { title: "Double fulfilment", blurb: "An order was fulfilled twice for the same payment.", when: "On ingest" },
   no_traffic: { title: "No traffic", blurb: "No payment started in the window. Live environment only.", when: "Every minute" },
+  double_payment: { title: "Double payment", blurb: "A buyer paid twice for the same order, or the same amount twice within 30 minutes.", when: "On ingest" },
+  paid_not_fulfilled: { title: "Paid but not fulfilled", blurb: "A payment went through but the order was not marked fulfilled after N minutes.", when: "Every minute" },
 };

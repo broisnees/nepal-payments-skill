@@ -187,3 +187,86 @@ export function shortId(id: string, keep = 6): string {
   if (id.length <= keep * 2 + 3) return id;
   return `${id.slice(0, keep + 4)}...${id.slice(-keep)}`;
 }
+
+/**
+ * Amounts as gateway statements print them, to paisa: "1,000.00", "Rs. 1,000", "NPR 1,00,000.50", "-250",
+ * "(250.00)" for a refund, "1500" with `unit: "paisa"`. Null for anything that is not a number.
+ */
+export function parseStatementAmount(input: string | null | undefined, unit: "rupees" | "paisa" = "rupees"): number | null {
+  if (input === null || input === undefined) return null;
+  let s = String(input).trim();
+  if (!s) return null;
+  let neg = false;
+  if (/^\(.*\)$/.test(s)) {
+    neg = true;
+    s = s.slice(1, -1);
+  }
+  s = s.replace(/^(?:rs\.?|npr|inr)\s*/i, "").replace(/\s*(?:rs\.?|npr)$/i, "").trim();
+  if (s.startsWith("-")) {
+    neg = !neg;
+    s = s.slice(1).trim();
+  } else if (s.endsWith("-")) {
+    neg = !neg;
+    s = s.slice(0, -1).trim();
+  }
+  s = s.replace(/^(?:rs\.?|npr)\s*/i, "");
+  // Grouping commas only: 1,00,000.50 (lakh) or 100,000.50 (thousands). A comma after the decimal point is not a number.
+  if (!/^\d{1,3}(?:,\d{2,3})*(?:\.\d+)?$|^\d+(?:\.\d+)?$/.test(s)) return null;
+  const n = Number(s.replace(/,/g, ""));
+  if (!Number.isFinite(n)) return null;
+  const paisa = unit === "paisa" ? Math.round(n) : Math.round(n * 100);
+  return neg ? -paisa : paisa;
+}
+
+const dateFmt = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, day: "numeric", month: "short", year: "numeric" });
+const timeOfDayFmt = new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", minute: "2-digit" });
+const monthFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", month: "long", year: "numeric" });
+
+/** "5 Nov 2026" in Nepal time. */
+export function formatDate(t: number | string | Date): string {
+  return dateFmt.format(toMs(t));
+}
+
+/** "12:59 PM" in Nepal time, the way a shopkeeper says it to a customer. */
+export function formatClock(t: number | string | Date): string {
+  return timeOfDayFmt.format(toMs(t));
+}
+
+/** Nepal calendar date of an instant as "2026-11-05", the value of an <input type="date">. */
+export function nptDateValue(t: number): string {
+  return new Date(t + NPT_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** Start of a Nepal day "2026-11-05" as epoch ms; `end` gives the last millisecond of that day. Null when invalid. */
+export function nptDateToMs(value: string, end = false): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const utc = Date.parse(`${value}T00:00:00Z`);
+  if (!Number.isFinite(utc)) return null;
+  return utc - NPT_OFFSET_MS + (end ? DAY - 1 : 0);
+}
+
+/** "2026-11" for the Nepal month containing `t`. */
+export function nptMonthValue(t: number): string {
+  return nptDateValue(t).slice(0, 7);
+}
+
+/** "November 2026" from "2026-11". */
+export function adMonthLabel(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return monthFmt.format(Date.UTC(y, m - 1, 1));
+}
+
+/** The `count` months ending with the one that contains `now`, newest first: ["2026-11", "2026-10", ...]. */
+export function recentMonths(now: number, count: number): string[] {
+  const [y, m] = nptMonthValue(now).split("-").map(Number);
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(Date.UTC(y, m - 1 - i, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
+}
+
+/** Rate 0..1 as "1.84%" with two decimals, for fees. */
+export function formatFeePct(rate: number | null | undefined): string {
+  if (rate === null || rate === undefined || !Number.isFinite(rate)) return "-";
+  return `${(rate * 100).toFixed(2)}%`;
+}

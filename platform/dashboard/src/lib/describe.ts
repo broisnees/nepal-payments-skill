@@ -10,6 +10,7 @@ export function tone(e: StoredEvent): Tone {
   if (e.type === "signature.checked") return e.data?.valid === false ? "bad" : undefined;
   if (e.type === "gateway.request") return (e.data?.http_status ?? 200) >= 400 ? "bad" : undefined;
   if (e.type === "payment.fulfilled") return "ok";
+  if (e.type === "payment.refunded") return "warn";
   if (e.type === "status.changed" || e.type === "reconcile.checked") {
     const to = e.status ?? e.data?.to;
     if (to === "paid") return "ok";
@@ -38,6 +39,10 @@ export function describe(e: StoredEvent): string {
       return "Order marked fulfilled";
     case "reconcile.checked":
       return [d.provider_status && `gateway says ${d.provider_status}`, e.status && `now ${e.status}`].filter(Boolean).join(", ");
+    case "payment.refunded":
+      return [e.amount_paisa !== undefined ? `Rs ${moneyParts(e.amount_paisa).int}.${moneyParts(e.amount_paisa).frac}` : null, d.refund_ref && `ref ${d.refund_ref}`, d.refund_reason].filter(Boolean).join(", ");
+    case "payment.annotated":
+      return [e.order_id && `order ${e.order_id}`, e.customer?.name].filter(Boolean).join(", ") || "Order or customer details";
     case "error":
       return d.message ?? (d.reason ? reasonLabel(d.reason) : "Error");
   }
