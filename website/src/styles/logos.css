@@ -1,0 +1,49 @@
+/* Gateway logos: shared by the landing page, the blog and the docs. Light/dark follows [data-theme]. */
+.gwlogo {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  line-height: 0;
+}
+
+.gwlogo-img {
+  height: var(--h, 20px);
+  width: auto;
+}
+
+.gwlogo-dark {
+  display: none;
+}
+
+:root[data-theme="dark"] .gwlogo-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .gwlogo-dark {
+  display: inline;
+}
+
+/* Logos with no dark version keep their colours on a light chip. */
+:root[data-theme="dark"] .gwlogo-chip {
+  padding: 3px 6px;
+  background: #fff;
+  border-radius: 2px;
+}
+
+/* Docs: logo above each provider guide, and the logo row on the providers overview. */
+.np-gw-logo {
+  margin-block: 4px 20px;
+}
+
+.np-gw-logos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 32px;
+  margin-block: 8px 28px;
+}
+
+.np-gw-logos a {
+  display: inline-flex;
+  text-decoration: none;
+}

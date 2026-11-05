@@ -1,0 +1,25 @@
+---
+// A gateway's official logo at a fixed height, with its dark-mode version when the gateway publishes one.
+import { gatewayLogos } from "../data/site";
+
+interface Props {
+  slug: string;
+  name: string;
+  height?: number;
+}
+const { slug, name, height = 20 } = Astro.props;
+const logo = gatewayLogos[slug];
+const h = logo ? Math.round(height * (logo.scale ?? 1)) : height;
+const width = logo ? Math.round(h * logo.ratio) : 0;
+---
+
+{
+  logo ? (
+    <span class:list={["gwlogo", { "gwlogo-chip": logo.chip }]} style={`--h:${h}px`}>
+      <img class:list={["gwlogo-img", { "gwlogo-light": logo.dark }]} src={logo.light} alt={name} width={width} height={h} loading="lazy" decoding="async" />
+      {logo.dark && <img class="gwlogo-img gwlogo-dark" src={logo.dark} alt="" aria-hidden="true" width={width} height={h} loading="lazy" decoding="async" />}
+    </span>
+  ) : (
+    <span>{name}</span>
+  )
+}
