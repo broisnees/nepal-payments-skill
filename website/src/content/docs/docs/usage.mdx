@@ -1,0 +1,45 @@
+---
+title: Use it with your agent
+description: Example prompts and the six-step workflow the Nepal Payments skill gives your coding agent, from picking providers to reconciliation and tests.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+import { prompts } from "../../../data/site";
+
+Talk to your agent normally. The skill loads when you mention a provider, NPR or Nepali payments, or when you're debugging a Nepali payment signature, callback or status check. You don't need to say "skill".
+
+## Prompts that work well
+
+<ul>
+  {prompts.map((p) => <li><q>{p}</q></li>)}
+</ul>
+
+Name the providers and your stack when you know them. If you don't name a provider, the skill recommends eSewa and Khalti first, then NPS or Fonepay to cover banks, connectIPS for direct bank debit and CyberSource only for card acquiring through a bank.
+
+## What the agent does
+
+The skill gives the agent this workflow:
+
+<Steps>
+
+1. **Pick providers** from the provider table, or recommend a set.
+
+2. **Detect the stack** from `package.json`, `pyproject.toml`, `composer.json`, `pubspec.yaml`, `go.mod` and similar, and find where server routes and database models live.
+
+3. **Install the adapters** by copying the folder for your language and keeping only the providers you need. See [Use the adapters directly](/docs/adapters/).
+
+4. **Add persistence and routes**: a `payment_attempts` table and the return handler from [Production architecture](/docs/guides/architecture/), wired into your framework with [Web frameworks](/docs/guides/web/) or [Mobile apps](/docs/guides/mobile/).
+
+5. **Add reconciliation**, so customers who pay and close the tab still get their order.
+
+6. **Test** with the bundled suites, then the integration checks in [Testing and go-live](/docs/guides/testing/).
+
+</Steps>
+
+<Aside type="caution" title="Keep secrets out of the chat">
+  Give the agent credentials through environment variables or your secret manager, not by pasting them into the prompt. Sandbox values are public and listed in the testing guide.
+</Aside>
+
+## Debugging with the skill
+
+The provider references list the failure modes I hit while building and testing the adapters, such as eSewa's ES104 invalid signature, Fonepay's date format and Khalti's integer-paisa amounts. Paste the error and the agent checks it against the matching reference.

@@ -1,0 +1,58 @@
+---
+title: Install the skill
+description: Install the Nepal Payments Agent Skill in Claude Code from the plugin marketplace, in any Agent Skills compatible agent with the skills CLI, or by copying the folder.
+---
+
+import { Tabs, TabItem, Steps } from "@astrojs/starlight/components";
+
+The skill is a plain folder, `skills/nepal-payments/`, in the [GitHub repo](https://github.com/broisnees/nepal-payments-skill). Pick whichever install path fits your agent.
+
+<Tabs syncKey="install">
+  <TabItem label="Claude Code">
+    Install it from the plugin marketplace. Run these inside Claude Code:
+
+    ```text
+    /plugin marketplace add broisnees/nepal-payments-skill
+    /plugin install nepal-payments@nepal-payments-skill
+    ```
+  </TabItem>
+  <TabItem label="Any agent (skills CLI)">
+    The [skills CLI](https://github.com/vercel-labs/skills) installs into any agent that supports Agent Skills, including Claude Code, Codex, Cursor, Gemini CLI and GitHub Copilot.
+
+    ```bash
+    npx skills add broisnees/nepal-payments-skill        # this project only
+    npx skills add broisnees/nepal-payments-skill -g     # every project
+    ```
+  </TabItem>
+  <TabItem label="Manual">
+    Copy the folder into your agent's skills directory. For Claude Code:
+
+    ```bash
+    git clone https://github.com/broisnees/nepal-payments-skill
+    cp -r nepal-payments-skill/skills/nepal-payments ~/.claude/skills/
+    ```
+  </TabItem>
+</Tabs>
+
+## What gets installed
+
+```text
+skills/nepal-payments/
+├── SKILL.md            workflow, non-negotiable rules, provider table, traps
+├── references/         one file per provider + architecture, web, mobile, env, testing
+└── scripts/            tested adapters: ts, python, java, kotlin, php, go
+```
+
+The agent reads `SKILL.md` when a task matches, then opens only the references it needs. Every page under [Providers](/docs/providers/esewa/) and [Guides](/docs/guides/architecture/) on this site is generated from those same reference files.
+
+## Next steps
+
+<Steps>
+
+1. Put your sandbox credentials in environment variables. The [environment variables](/docs/guides/env/) page lists each one, and [Testing and go-live](/docs/guides/testing/) has the public sandbox values.
+
+2. Ask your agent for the integration you want. [Use it with your agent](/docs/usage/) has prompts that work well.
+
+3. Run the bundled tests and the sandbox checks before going live.
+
+</Steps>
