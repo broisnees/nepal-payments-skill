@@ -261,7 +261,7 @@ func (n *NPS) Verify(ctx context.Context, in VerifyInput) (VerifyResult, error) 
 	}
 	d, ok := r["data"].(map[string]any)
 	if !ok {
-		return VerifyResult{}, newPaymentError(ProviderNPS, "malformed_response", "NPS CheckTransactionStatus: code 0 without a data object", 200, r)
+		d = map[string]any{} // code "0" with null/non-object data: report unknown
 	}
 	if mt := d["MerchantTxnId"]; truthy(mt) && !isString(mt, in.OrderID) {
 		return VerifyResult{}, newPaymentError(ProviderNPS, "callback_mismatch", "NPS: status is for a different transaction", 400, d)

@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Public eSewa sandbox credentials.
@@ -206,8 +207,10 @@ func (e *Esewa) ParseSuccess(data string) (payload map[string]any, signatureVali
 	if err != nil {
 		return nil, false, &PaymentError{Provider: ProviderEsewa, Code: "malformed_callback", HTTPStatus: 400, Message: "eSewa: success payload is not base64: " + err.Error(), Err: err}
 	}
-	text := strings.TrimPrefix(strings.ToValidUTF8(string(raw), "\uFFFD"), "\uFEFF")
-	v, err := decodeJSON(text)
+	if !utf8.Valid(raw) {
+		return nil, false, &PaymentError{Provider: ProviderEsewa, Code: "malformed_callback", HTTPStatus: 400, Message: "eSewa: success payload is not UTF-8"}
+	}
+	v, err := decodeJSON(strings.TrimPrefix(string(raw), "\uFEFF"))
 	if err != nil {
 		return nil, false, &PaymentError{Provider: ProviderEsewa, Code: "malformed_callback", HTTPStatus: 400, Message: "eSewa: success payload is not JSON: " + err.Error(), Err: err}
 	}
@@ -313,17 +316,25 @@ func (e *Esewa) statusCheck(ctx context.Context, orderID string, amountPaisa int
 	m, isObj := res.data.(map[string]any)
 	_, hasStatus := m["status"]
 	if res.status != 200 || !isObj || !hasStatus {
-		msg := truncateUTF16(res.text, 200)
-		if v, ok := getNonNull(res.data, "error_message"); ok {
-			msg = jsString(v)
-		}
-		code := fmt.Sprintf("http_%d", res.status)
-		if v, ok := get(res.data, "code"); ok {
-			code = "esewa_" + jsString(v)
-		}
-		return nil, newPaymentError(ProviderEsewa, code, "eSewa status check failed: "+msg, res.status, res.data)
+		return nil, esewaError("eSewa status check failed: ", res)
 	}
 	return m, nil
+}
+
+// esewaError maps an eSewa error body. The message comes from error_message (docs) or errorMessage (live
+// Intent sandbox), else the body text; the code is esewa_<code> when the body carries one, else http_<status>.
+func esewaError(prefix string, res *httpResponse) error {
+	msg := truncateUTF16(res.text, 200)
+	if v, ok := getNonNull(res.data, "error_message"); ok {
+		msg = jsString(v)
+	} else if v, ok := getNonNull(res.data, "errorMessage"); ok {
+		msg = jsString(v)
+	}
+	code := fmt.Sprintf("http_%d", res.status)
+	if v, ok := getNonNull(res.data, "code"); ok {
+		code = "esewa_" + jsString(v)
+	}
+	return newPaymentError(ProviderEsewa, code, prefix+msg, res.status, res.data)
 }
 
 // OrderIDFromCallback reads transaction_uuid from the `data` param, else (failure redirects carry no
@@ -409,7 +420,7 @@ func (e *Esewa) IntentBook(ctx context.Context, in EsewaIntentBookInput) (EsewaI
 	d, _ := get(res.data, "data")
 	bid, hasBid := get(d, "booking_id")
 	if !truthy(bid) {
-		return EsewaIntentBooking{}, esewaIntentError("eSewa intent book failed: ", res)
+		return EsewaIntentBooking{}, esewaError("eSewa intent book failed: ", res)
 	}
 	corr, hasCorr := get(d, "correlation_id")
 	return EsewaIntentBooking{
@@ -419,18 +430,6 @@ func (e *Esewa) IntentBook(ctx context.Context, in EsewaIntentBookInput) (EsewaI
 		ProviderRef:   jsTemplate(bid, hasBid) + "|" + jsTemplate(corr, hasCorr),
 		Raw:           res.data,
 	}, nil
-}
-
-func esewaIntentError(prefix string, res *httpResponse) error {
-	msg := truncateUTF16(res.text, 200)
-	if v, ok := getNonNull(res.data, "error_message"); ok {
-		msg = jsString(v)
-	}
-	code := fmt.Sprintf("http_%d", res.status)
-	if v, ok := getNonNull(res.data, "code"); ok {
-		code = jsString(v)
-	}
-	return newPaymentError(ProviderEsewa, code, prefix+msg, res.status, res.data)
 }
 
 // IntentVerify is the authoritative Intent status. providerRef = "bookingId|correlationId" stored at booking.
@@ -456,7 +455,7 @@ func (e *Esewa) IntentVerify(ctx context.Context, orderID, providerRef string, a
 	d, _ := get(res.data, "data")
 	st, _ := get(d, "status")
 	if !truthy(st) {
-		return VerifyResult{}, esewaIntentError("eSewa intent status failed: ", res)
+		return VerifyResult{}, esewaError("eSewa intent status failed: ", res)
 	}
 	if tid, _ := get(d, "transaction_id"); truthy(tid) && !isString(tid, orderID) {
 		return VerifyResult{}, newPaymentError(ProviderEsewa, "callback_mismatch", "eSewa intent: status is for a different transaction", 400, d)
@@ -501,20 +500,57 @@ func (e *Esewa) IntentCancel(ctx context.Context, providerRef string) (any, erro
 
 // IntentCallbackValid verifies the signature on eSewa's Intent callback POST body (decoded JSON;
 // numbers are formatted like JavaScript String(n)). Still call IntentVerify before fulfilling.
+// Prefer IntentCallbackValidRaw: a decoded body can only be checked in the String(n) form.
 func (e *Esewa) IntentCallbackValid(body map[string]any) (bool, error) {
 	ic, err := e.requireIntent()
 	if err != nil {
 		return false, err
 	}
+	return esewaIntentCallbackValid(ic.AccessKey, body, false), nil
+}
+
+// IntentCallbackValidRaw verifies the RAW Intent callback body. Numbers are checked in the String(n)
+// form ("100") and, failing that, exactly as eSewa sent them ("100.0"). Non-JSON or non-object bodies
+// are invalid. Still call IntentVerify before fulfilling.
+func (e *Esewa) IntentCallbackValidRaw(body []byte) (bool, error) {
+	ic, err := e.requireIntent()
+	if err != nil {
+		return false, err
+	}
+	if !utf8.Valid(body) {
+		return false, nil
+	}
+	v, err := decodeJSON(string(body))
+	m, isObj := v.(map[string]any)
+	if err != nil || !isObj {
+		return false, nil
+	}
+	return esewaIntentCallbackValid(ic.AccessKey, m, true), nil
+}
+
+// esewaIntentCallbackValid tries the String(v) form, then (exact=true, json.Number values) the JSON text form.
+func esewaIntentCallbackValid(key string, body map[string]any, exact bool) bool {
 	names, ok1 := body["signed_field_names"].(string)
 	sig, ok2 := body["signature"].(string)
 	if !ok1 || !ok2 {
-		return false, nil
+		return false
 	}
 	order := splitTrim(names)
 	fields := make(map[string]string, len(order))
 	for _, f := range order {
 		fields[f] = strOrEmpty(body, f)
 	}
-	return SafeEqual(EsewaSign(ic.AccessKey, fields, order), sig), nil
+	if SafeEqual(EsewaSign(key, fields, order), sig) {
+		return true
+	}
+	if !exact {
+		return false
+	}
+	raw := make(map[string]string, len(order))
+	differs := false
+	for _, f := range order {
+		raw[f] = esewaRawValue(body, f)
+		differs = differs || raw[f] != fields[f]
+	}
+	return differs && SafeEqual(EsewaSign(key, raw, order), sig)
 }

@@ -212,7 +212,7 @@ func (c *CyberSource) Verify(_ context.Context, in VerifyInput) (VerifyResult, e
 	}
 	p := signedOnly(in.Callback)
 	ref, ok := p["req_reference_number"]
-	if !ok {
+	if ref == "" { // JS ||: an empty reference number falls back too
 		ref, ok = p["req_transaction_uuid"]
 	}
 	if !ok || ref != in.OrderID {

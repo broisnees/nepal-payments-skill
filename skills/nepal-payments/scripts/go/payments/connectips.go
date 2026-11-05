@@ -202,7 +202,7 @@ func (c *ConnectIPS) Verify(ctx context.Context, in VerifyInput) (VerifyResult, 
 		status = StatusUnknown
 	}
 	var amount *int64
-	if v, present := r["txnAmt"]; present {
+	if v := r["txnAmt"]; v != nil { // null is "no amount", not 0
 		if n, ok := jsNumberRounded(v); ok {
 			amount = &n
 		}
