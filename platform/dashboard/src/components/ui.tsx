@@ -1,5 +1,5 @@
 import type { PaymentStatus } from "@paynp/shared";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { formatFull, gatewayName, moneyParts, statusLabel } from "../lib/format.ts";
 import { Icon, type IconName } from "./Icon.tsx";
@@ -165,6 +165,186 @@ export function Seg<T extends string>({ value, options, onChange, small, label, 
         </button>
       ))}
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ select
+export type SelectOption<T extends string = string> = { value: T; label: string; hint?: string; disabled?: boolean };
+
+/** Listbox in place of a native <select>. The OS popup ignored the theme (a light,
+ * blue-highlighted list in dark mode) and the sharp, menu-styled language of every other
+ * popover. Keeps native behaviour: focus stays on the trigger, arrows/Home/End move,
+ * Enter/Space pick, Escape closes, typing jumps to a label. The list is portalled with
+ * fixed positioning so tables and dialogs can't clip it, and it flips up near the bottom.
+ * Every label sits stacked in the trigger, so it is as wide as the longest option and a
+ * filter bar doesn't shift when the value changes. */
+export function Select<T extends string>({
+  value,
+  options,
+  onChange,
+  className = "",
+  style,
+  disabled,
+  invalid,
+  "aria-label": ariaLabel,
+}: {
+  value: T;
+  options: SelectOption<T>[];
+  onChange: (v: T) => void;
+  className?: string;
+  style?: CSSProperties;
+  disabled?: boolean;
+  invalid?: boolean;
+  "aria-label"?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number; up: boolean } | null>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const typed = useRef({ text: "", at: 0 });
+  const id = useId();
+  const selected = options.findIndex((o) => o.value === value);
+
+  const place = useCallback(() => {
+    const r = trigger.current?.getBoundingClientRect();
+    if (!r) return;
+    const below = window.innerHeight - r.bottom - 8;
+    const above = r.top - 8;
+    const up = below < 200 && above > below;
+    const maxHeight = Math.min(320, up ? above : below) - 4;
+    setPos(up ? { bottom: window.innerHeight - r.top + 4, left: r.left, width: r.width, maxHeight, up } : { top: r.bottom + 4, left: r.left, width: r.width, maxHeight, up });
+  }, []);
+
+  const show = (at = selected) => {
+    if (disabled) return;
+    place();
+    setActive(at >= 0 ? at : options.findIndex((o) => !o.disabled));
+    setOpen(true);
+  };
+  const close = () => {
+    setOpen(false);
+    trigger.current?.focus();
+  };
+  const pick = (i: number) => {
+    const o = options[i];
+    if (!o || o.disabled) return;
+    if (o.value !== value) onChange(o.value);
+    close();
+  };
+  const step = (from: number, dir: 1 | -1) => {
+    for (let i = from + dir; i >= 0 && i < options.length; i += dir) if (!options[i]!.disabled) return i;
+    return from;
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!trigger.current?.contains(t) && !list.current?.contains(t)) setOpen(false);
+    };
+    // Follow the trigger instead of closing: filter bars sit in scrolling pages.
+    document.addEventListener("pointerdown", onDown);
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, place]);
+
+  useLayoutEffect(() => {
+    if (open && active >= 0) list.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [open, active]);
+
+  const onKey = (e: React.KeyboardEvent) => {
+    if (!open) {
+      if (["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) {
+        e.preventDefault();
+        show();
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") setActive((a) => step(a, 1));
+    else if (e.key === "ArrowUp") setActive((a) => step(a, -1));
+    else if (e.key === "Home") setActive(step(-1, 1));
+    else if (e.key === "End") setActive(step(options.length, -1));
+    else if (e.key === "Enter" || e.key === " ") pick(active);
+    else if (e.key === "Escape") close();
+    else if (e.key === "Tab") setOpen(false);
+    else if (e.key.length === 1) {
+      const now = Date.now();
+      const t = (typed.current = { text: (now - typed.current.at < 600 ? typed.current.text : "") + e.key.toLowerCase(), at: now });
+      const hit = options.findIndex((o) => !o.disabled && o.label.toLowerCase().startsWith(t.text));
+      if (hit >= 0) setActive(hit);
+      return;
+    } else return;
+    if (e.key !== "Tab") e.preventDefault();
+  };
+
+  return (
+    <>
+      <button
+        ref={trigger}
+        type="button"
+        className={`select select-btn ${className}`}
+        style={style}
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        aria-activedescendant={open && active >= 0 ? `${id}-${active}` : undefined}
+        aria-label={ariaLabel}
+        aria-invalid={invalid || undefined}
+        disabled={disabled}
+        onClick={() => (open ? setOpen(false) : show())}
+        onKeyDown={onKey}
+      >
+        <span className="select-value">
+          {options.map((o, i) => (
+            <span key={o.value} aria-hidden={i !== selected || undefined} data-hidden={i !== selected || undefined}>
+              {o.label}
+            </span>
+          ))}
+          {selected < 0 && <span className="subtle">Choose</span>}
+        </span>
+      </button>
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={list}
+            id={id}
+            role="listbox"
+            aria-label={ariaLabel}
+            className="menu select-list"
+            data-up={pos.up || undefined}
+            style={{ top: pos.top, bottom: pos.bottom, left: pos.left, minWidth: pos.width, maxHeight: pos.maxHeight }}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {options.map((o, i) => (
+              <div
+                key={o.value}
+                id={`${id}-${i}`}
+                data-i={i}
+                role="option"
+                className="menu-item"
+                aria-selected={i === selected}
+                aria-disabled={o.disabled || undefined}
+                data-active={i === active || undefined}
+                onPointerMove={() => !o.disabled && active !== i && setActive(i)}
+                onClick={() => pick(i)}
+              >
+                <span className="select-label">{o.label}</span>
+                {o.hint && <span className="select-hint">{o.hint}</span>}
+                {i === selected && <Icon name="check" size={14} className="check-mark" />}
+              </div>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 

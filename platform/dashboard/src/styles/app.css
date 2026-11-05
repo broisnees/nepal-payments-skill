@@ -142,21 +142,29 @@ code,
   border-block-end: 1px solid var(--line);
 }
 
+/* The bar's background and rule bleed edge to edge; its contents sit on the same
+   gutters and max width as the tabs and .main, so the logo, the first tab and the
+   page title share one leading edge and the avatar ends where the content does. */
 .topbar-row {
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: calc(1600px + 2 * var(--gutter));
   height: var(--top);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
 }
 
+/* Grouped by space, not rules: no dividers between the cells. */
 .tb-cell {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding-inline: 14px;
-  border-inline-end: 1px solid var(--line);
+  height: 32px;
+  padding-inline: 8px;
   background: transparent;
-  border-block: 0;
-  border-inline-start: 0;
+  border: 0;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
@@ -170,8 +178,15 @@ code,
 }
 
 .tb-brand {
-  padding-inline: 12px;
+  padding-inline: 0;
   cursor: default;
+}
+
+/* The switcher's hover fill pads out from its text; pull it back so the org
+   avatar sits one group gap (16px) after the logo. It renders inside Menu's anchor. */
+.tb-brand + .tb-cell,
+.tb-brand + .menu-anchor > .tb-cell {
+  margin-inline-start: -8px;
 }
 
 .tb-brand:hover {
@@ -187,8 +202,12 @@ code,
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-inline: 12px;
-  border-inline-start: 1px solid var(--line);
+}
+
+/* Same 28px square as the Test/Live toggle beside it. */
+.tb-right .btn-icon .avatar {
+  width: 28px;
+  height: 28px;
 }
 
 .crumb-sep {
@@ -229,6 +248,9 @@ code,
 .tabs {
   display: flex;
   gap: 2px;
+  width: 100%;
+  max-width: calc(1600px + 2 * var(--gutter));
+  margin-inline: auto;
   padding-inline: calc(var(--gutter) - 10px);
   overflow-x: auto;
   scrollbar-width: none;
@@ -611,6 +633,26 @@ code,
   place-items: center;
   cursor: pointer;
   flex: none;
+}
+
+.check input {
+  transition-property: background-color, border-color, box-shadow;
+  transition-duration: 120ms;
+  transition-timing-function: var(--ease-out);
+}
+
+.check input:hover:not(:disabled) {
+  border-color: var(--subtle);
+}
+
+.check input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--ink);
+}
+
+.check input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .check input:checked {
@@ -1352,7 +1394,7 @@ code,
   padding: 32px 32px 24px;
   display: grid;
   gap: 8px;
-  max-width: 640px;
+  max-width: 720px;
 }
 
 .empty-hero h2 {
@@ -1361,32 +1403,59 @@ code,
   letter-spacing: -0.02em;
 }
 
+/* Steps run top to bottom, the order they're done in. From 900px each row puts
+   what the step is on the left and what to do on the right, on one shared
+   column line, so the code sample gets the width it needs instead of wrapping
+   mid-statement in a third of the card, and short steps stay short. */
 .empty-steps {
   display: grid;
   border-block-start: 1px solid var(--tone-slate-line);
 }
 
-@media (min-width: 900px) {
-  .empty-steps {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
 .empty-step {
   display: grid;
-  align-content: start;
-  gap: 10px;
-  padding: 20px 24px 24px;
-  border-block-end: 1px solid var(--tone-slate-line);
+  gap: 12px;
+  padding: 20px 32px 24px;
   min-width: 0;
+}
+
+.empty-step + .empty-step {
+  border-block-start: 1px solid var(--tone-slate-line);
+}
+
+.empty-step-text {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.empty-step-do {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Commands and code fill the action column; buttons keep their own width. */
+.empty-step-do > .code {
+  justify-self: stretch;
+  max-width: 760px;
 }
 
 @media (min-width: 900px) {
   .empty-step {
-    border-block-end: 0;
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
+    column-gap: 48px;
+    padding-block: 24px;
   }
-  .empty-step + .empty-step {
-    border-inline-start: 1px solid var(--tone-slate-line);
+}
+
+@media (max-width: 639px) {
+  .empty-hero > .empty-top,
+  .empty-step {
+    padding-inline: 16px;
   }
 }
 
@@ -1495,6 +1564,108 @@ code,
   height: 1px;
   margin: 4px -4px;
   background: var(--line);
+}
+
+/* ------------------------------------------------------------------ select (button + listbox) */
+.select-btn {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.select-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.select-btn[aria-expanded="true"] {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.select-btn[aria-invalid="true"] {
+  border-color: var(--crit);
+}
+
+/* Every label stacked in one cell: the trigger is as wide as the longest option. */
+.select-value {
+  display: grid;
+  min-width: 0;
+  width: 100%;
+}
+
+.select-value > span {
+  grid-area: 1 / 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.select-value > [data-hidden] {
+  visibility: hidden;
+}
+
+.select-list {
+  position: fixed;
+  z-index: 70;
+  min-width: 0;
+  max-width: min(420px, calc(100vw - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.select-list[data-up] {
+  transform-origin: bottom left;
+  animation-name: menu-in-up;
+}
+
+@keyframes menu-in-up {
+  from {
+    opacity: 0;
+    scale: 0.97;
+    translate: 0 2px;
+  }
+}
+
+.select-list .menu-item {
+  min-height: 30px;
+  padding-block: 5px;
+  user-select: none;
+}
+
+/* Keyboard and pointer share one highlight, as a native list does. */
+.select-list .menu-item:hover {
+  background: transparent;
+}
+
+.select-list .menu-item[data-active] {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.select-list .menu-item[aria-selected="true"] {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.select-list .menu-item[aria-disabled] {
+  color: var(--subtle);
+  cursor: default;
+}
+
+.select-label {
+  white-space: nowrap;
+}
+
+.select-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--subtle);
+  font-size: 12px;
 }
 
 /* ------------------------------------------------------------------ dialog */
@@ -2316,12 +2487,11 @@ a.list-row:hover {
 }
 
 @media (max-width: 639px) {
-  .tb-cell {
-    padding-inline: 10px;
+  .topbar-row {
+    gap: 12px;
   }
   .tb-right {
     gap: 4px;
-    padding-inline: 8px;
   }
   .card-head .legend {
     width: 100%;
