@@ -1,5 +1,6 @@
-import type { EventData, PaymentStatus } from "./shared.ts";
+import type { EventCustomer, EventData, PaymentStatus } from "./shared.ts";
 import type { EventInput, Transport } from "./client.ts";
+import { gwEnvOf, isHttps } from "./env.ts";
 import { CALLBACK_REASONS, messageOf, reasonOf } from "./reasons.ts";
 import { GATEWAY_HOSTS, enter, leave, now, type CallScope, type RecordedRequest } from "./trace.ts";
 
@@ -11,6 +12,28 @@ export interface WrapOptions {
   hosts?: readonly string[];
   /** Set false to never touch globalThis.fetch; confirm calls are then timed as one request. Default true. */
   traceFetch?: boolean;
+  /**
+   * Who is paying, read from the startPayment / initiate input and sent on payment.started. paynp stores phone and
+   * email only as a salted hash plus a masked form, so support can search by them. A throwing getter sends nothing.
+   *
+   * ```ts
+   * paynp.wrapGateway("esewa", esewa, { customer: (input) => ({ phone: input.phone }) })
+   * ```
+   */
+  customer?: (input: any) => CustomerInfo | null | undefined;
+}
+
+export type CustomerInfo = EventCustomer;
+
+/** Cleans what a customer getter returned: strings only, empty fields dropped. */
+export function customerOf(v: unknown): EventCustomer | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const c = v as Record<string, unknown>;
+  const out: EventCustomer = {};
+  for (const k of ["phone", "email", "name"] as const) {
+    if (typeof c[k] === "string" && (c[k] as string).trim()) out[k] = (c[k] as string).trim();
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 // Callback params that carry the gateway's signature, per gateway. Present means the module
@@ -104,6 +127,8 @@ export class Recorder {
       seen.set(r.endpoint, n);
       const data: EventData = { op: opFor(r.endpoint, op), method: r.method, endpoint: r.endpoint };
       if (r.httpStatus !== undefined) data.http_status = r.httpStatus;
+      const env = gwEnvOf(r.host);
+      if (env) data.gw_env = env;
       if (n > 1) data.attempt = n;
       if (r.error !== undefined) {
         data.reason = reasonOf(r.error);
@@ -126,8 +151,27 @@ export class Recorder {
 
   // ---- start (startPayment / initiate) ----
 
-  startBegin(c: Call): void {
-    this.emit(c, { type: "payment.started", ts: c.t0, amount_paisa: c.amountPaisa, status: "initiated" });
+  startBegin(c: Call, input: unknown): void {
+    const i = (input ?? {}) as { returnUrl?: unknown };
+    const data: EventData = {};
+    const https = isHttps(i.returnUrl);
+    if (https !== undefined) data.return_https = https;
+    let customer: EventCustomer | undefined;
+    if (this.opts.customer) {
+      try {
+        customer = customerOf(this.opts.customer(input));
+      } catch {
+        /* a broken getter must not break checkout */
+      }
+    }
+    this.emit(c, {
+      type: "payment.started",
+      ts: c.t0,
+      amount_paisa: c.amountPaisa,
+      status: "initiated",
+      ...(Object.keys(data).length ? { data } : {}),
+      ...(customer ? { customer } : {}),
+    });
   }
 
   startEnd(c: Call, result: unknown, err?: unknown): void {
@@ -136,8 +180,11 @@ export class Recorder {
     if (err !== undefined) return this.errorEvent(c, err, "initiate");
     const r = (result ?? {}) as { type?: string; kind?: string; url?: string; action?: string; providerRef?: string };
     const form = (r.type ?? r.kind) === "form";
-    const data: EventData = { method: form ? "POST" : "GET", endpoint: pathOf(form ? r.action : r.url) };
+    const target = form ? r.action : r.url;
+    const data: EventData = { method: form ? "POST" : "GET", endpoint: pathOf(target) };
     if (typeof r.providerRef === "string") data.provider_ref = r.providerRef;
+    const env = typeof target === "string" ? gwEnvOf(target) : undefined;
+    if (env) data.gw_env = env;
     this.emit(c, { type: "payment.redirected", amount_paisa: c.amountPaisa, status: "initiated", data });
   }
 
@@ -241,7 +288,7 @@ export function wrapGatewayWith<M extends object>(transport: Transport, gateway:
   const startPayment = (input: { attemptId: string; amountPaisa: number }, ...rest: unknown[]) => {
     const c = rec.begin(input?.attemptId, input?.amountPaisa);
     if (!c) return m.startPayment.call(mod, input, ...rest);
-    rec.startBegin(c);
+    rec.startBegin(c, input);
     return run(() => m.startPayment.call(mod, input, ...rest), (v, err) => rec.startEnd(c, v, err));
   };
   const confirmPayment = (input: { attemptId: string; amountPaisa: number; params?: Record<string, string> }, ...rest: unknown[]) => {
@@ -282,7 +329,7 @@ export function wrapAdapterWith<A extends AdapterLike>(transport: Transport, ada
     value: (input: Parameters<A["initiate"]>[0]) => {
       const c = rec.begin(input?.orderId, input?.amountPaisa);
       if (!c) return adapter.initiate(input);
-      rec.startBegin(c);
+      rec.startBegin(c, input);
       return run(() => adapter.initiate(input), (v, err) => rec.startEnd(c, v, err));
     },
   });
