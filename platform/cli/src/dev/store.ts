@@ -3,6 +3,7 @@
 // accepted event is also appended to .paynp/dev/events.db and replayed on start, so data survives a restart.
 // Replaying the log in the order it was written rebuilds exactly the same rows, so there is one rollup and
 // one set of queries for both modes.
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { FINAL_STATUSES, impliedStatus, type PaymentEvent, type PaymentStatus } from "../../../shared/src/events.ts";
@@ -30,6 +31,13 @@ export interface PaymentRow {
   fulfil_count: number;
   status_at: number;
   reason_at: number;
+  // v2 (SPEC-v2 sections 1 and 2)
+  refunded_paisa: number;
+  customer_hash: string | null;
+  customer_mask: string | null;
+  customer_name: string | null;
+  gw_env: string | null;
+  fulfilled_at: number | null;
 }
 
 /** Same columns as the worker's events table. */
@@ -85,8 +93,47 @@ export function isGatewayError(e: PaymentEvent): boolean {
  * One event applied to a payment row: the worker's UPSERT_PAYMENT in plain code. Every SET expression there
  * reads the row as it was before the event, and so does this.
  */
+// Customer details the way the worker stores them (worker/src/ops/customer.ts): a salted hash and a masked form.
+// The dev server has one local project, so one fixed salt.
+const LOCAL_SALT = "paynp-dev-local";
+
+function normalisePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (/^9\d{9}$/.test(digits)) return digits;
+  const local = digits.replace(/^(?:00)?977/, "").replace(/^0+/, "");
+  return /^9\d{9}$/.test(local) ? local : digits;
+}
+
+export function hashCustomer(c: PaymentEvent["customer"]): { hash: string | null; mask: string | null; name: string | null } | null {
+  if (!c) return null;
+  const phone = c.phone ? normalisePhone(c.phone) : "";
+  const email = c.email ? c.email.trim().toLowerCase() : "";
+  const h = (v: string) => createHash("sha256").update(`${LOCAL_SALT}:${v}`).digest("hex");
+  const name = c.name ? c.name.trim().slice(0, 80) || null : null;
+  if (!phone && !email && !name) return null;
+  const at = email.lastIndexOf("@");
+  const mask = phone
+    ? phone.length < 6
+      ? "X".repeat(phone.length)
+      : phone.slice(0, 2) + "X".repeat(phone.length - 5) + phone.slice(-3)
+    : email
+      ? at < 1
+        ? "***"
+        : `${email[0]}***${email.slice(at)}`
+      : null;
+  return { hash: phone ? h(phone) : email ? h(email) : null, mask, name };
+}
+
 export function applyEvent(old: PaymentRow | undefined, e: PaymentEvent, ts: number, projectId: string, env: string): PaymentRow {
-  const s: PaymentStatus | null = impliedStatus(e) ?? null;
+  // payment.refunded (SPEC-v2 section 1): amount_paisa is the refunded amount, never the payment's. A bare one means
+  // a full refund; otherwise the status becomes refunded once the refunds add up to the payment amount.
+  const refund = e.type === "payment.refunded" ? (e.amount_paisa ?? null) : null;
+  const isRefund = e.type === "payment.refunded";
+  const amount = isRefund ? null : (e.amount_paisa ?? null);
+  const implied: PaymentStatus | null = impliedStatus(e) ?? null;
+  const evStatus: PaymentStatus | null = isRefund && e.amount_paisa === undefined ? (implied ?? "refunded") : implied;
+  const customer = hashCustomer(e.customer);
+  const gwEnv = e.data?.gw_env ?? null;
   const err = e.type === "error" || (e.type === "signature.checked" && e.data?.valid === false) ? 1 : 0;
   const ful = e.type === "payment.fulfilled" ? 1 : 0;
   const hasReason = e.data?.reason !== undefined || e.data?.message !== undefined;
@@ -94,13 +141,18 @@ export function applyEvent(old: PaymentRow | undefined, e: PaymentEvent, ts: num
   const message = e.data?.message ?? null;
   const ref = e.data?.provider_ref ?? null;
   if (!old) {
+    const s = refund !== null ? "refunded" : evStatus;
     return {
-      project_id: projectId, env, attempt_id: e.attempt_id, order_id: e.order_id ?? null, gateway: e.gateway, amount_paisa: e.amount_paisa ?? null,
+      project_id: projectId, env, attempt_id: e.attempt_id, order_id: e.order_id ?? null, gateway: e.gateway, amount_paisa: amount,
       status: s ?? "initiated", started_at: ts, updated_at: ts, finished_at: isFinal(s) ? ts : null,
       provider_ref: ref, last_reason: reason, last_message: message, event_count: 1, error_count: err, fulfil_count: ful,
       status_at: s === null ? 0 : ts, reason_at: hasReason ? ts : 0,
+      refunded_paisa: refund ?? 0, customer_hash: customer?.hash ?? null, customer_mask: customer?.mask ?? null, customer_name: customer?.name ?? null,
+      gw_env: gwEnv, fulfilled_at: ful ? ts : null,
     };
   }
+  const s: PaymentStatus | null =
+    refund === null ? evStatus : old.amount_paisa === null || old.refunded_paisa + refund >= old.amount_paisa ? "refunded" : null;
   // (a) an open payment takes any final status, even an older one; (b) a status not older than the current one
   // lands unless it would turn a final status back into an open one.
   const apply = s !== null && ((!isFinal(old.status) && isFinal(s)) || (ts >= old.status_at && !(isFinal(old.status) && !isFinal(s))));
@@ -111,7 +163,7 @@ export function applyEvent(old: PaymentRow | undefined, e: PaymentEvent, ts: num
   return {
     ...old,
     order_id: old.order_id ?? e.order_id ?? null,
-    amount_paisa: old.amount_paisa ?? e.amount_paisa ?? null,
+    amount_paisa: old.amount_paisa ?? amount,
     status: apply ? s! : old.status,
     status_at: apply ? ts : old.status_at,
     finished_at: finished,
@@ -124,6 +176,12 @@ export function applyEvent(old: PaymentRow | undefined, e: PaymentEvent, ts: num
     event_count: old.event_count + 1,
     error_count: old.error_count + err,
     fulfil_count: old.fulfil_count + ful,
+    refunded_paisa: old.refunded_paisa + (refund ?? 0),
+    customer_hash: customer?.hash ?? old.customer_hash,
+    customer_mask: customer?.mask ?? old.customer_mask,
+    customer_name: customer?.name ?? old.customer_name,
+    gw_env: gwEnv ?? old.gw_env,
+    fulfilled_at: ful ? (old.fulfilled_at === null ? ts : Math.min(old.fulfilled_at, ts)) : old.fulfilled_at,
   };
 }
 
