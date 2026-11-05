@@ -22,6 +22,9 @@ export interface MockState {
   invalid: string[];
   csrfMissing: string[];
   liveAuth: string[];
+  /** GET /api/projects/:p/doctor answers, keyed "project|env" (SPEC-v2 4.4). Missing: 404 like a server without v2. */
+  doctor: Record<string, unknown>;
+  doctorRequests: string[];
 }
 
 export interface MockApi {
@@ -42,6 +45,8 @@ export async function startMockApi(opts: { verificationOrigin?: string } = {}): 
     invalid: [],
     csrfMissing: [],
     liveAuth: [],
+    doctor: {},
+    doctorRequests: [],
   };
   const devices = new Map<string, { user_code: string; polls: number }>();
   const sockets = new Set<{ project: string; env: string; sock: Duplex }>();
@@ -164,6 +169,13 @@ export async function startMockApi(opts: { verificationOrigin?: string } = {}): 
         state.keys.push(k);
         const { project_id, ...rest } = k;
         return json(res, 201, { ...rest, prefix: k.key.slice(0, 13), last_used_at: null });
+      }
+      if ((g = m(/^GET \/api\/projects\/([^/]+)\/doctor$/))) {
+        const env = u.searchParams.get("env") ?? "test";
+        state.doctorRequests.push(`${g[1]}|${env}`);
+        if (!project(g[1])) return err(res, 404, "not_found", "project not found");
+        const r = state.doctor[`${g[1]}|${env}`];
+        return r === undefined ? err(res, 404, "not_found", `${req.method} ${path}`) : json(res, 200, r);
       }
       if ((g = m(/^DELETE \/api\/projects\/([^/]+)\/keys\/([^/]+)$/))) {
         const k = state.keys.find((x) => x.project_id === g![1] && x.id === g![2] && !x.revoked_at);

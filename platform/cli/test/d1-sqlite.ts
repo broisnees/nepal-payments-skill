@@ -1,6 +1,6 @@
 // The slice of the D1 API the worker's ingest and health queries use, over node:sqlite, so the worker's own
 // SQL can run in Node for the parity test.
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadSqlite } from "../src/dev/store.ts";
 
@@ -18,7 +18,9 @@ export async function d1(): Promise<{ DB: { prepare(sql: string): Stmt; batch(s:
   const sqlite = await loadSqlite();
   if (!sqlite) return null;
   const db = new (sqlite as unknown as { DatabaseSync: new (p: string) => any }).DatabaseSync(":memory:");
-  db.exec(readFileSync(join(import.meta.dirname, "../../worker/migrations/0001_init.sql"), "utf8"));
+  // Every migration in order, as wrangler applies them.
+  const dir = join(import.meta.dirname, "../../worker/migrations");
+  for (const f of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) db.exec(readFileSync(join(dir, f), "utf8"));
   const exec = (s: Stmt) => {
     const st = db.prepare(s.sql);
     const args = s.args.map((a) => (a === undefined ? null : a));

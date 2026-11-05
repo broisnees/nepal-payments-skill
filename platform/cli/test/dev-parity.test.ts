@@ -50,7 +50,7 @@ describe.skipIf(!hasSqlite)("rollup parity with the worker", () => {
     const wPayments = (await shim.DB.prepare("SELECT * FROM payments").all()).results;
     const wMinutes = (await shim.DB.prepare("SELECT * FROM minute_stats").all()).results;
     const wEvents = (await shim.DB.prepare("SELECT * FROM events").all()).results;
-    expect(wPayments).toHaveLength(5);
+    expect(wPayments).toHaveLength(7);
     expect(wMinutes.length).toBeGreaterThan(3);
     expect(sortBy([...store.payments.values()] as never, "attempt_id")).toEqual(sortBy(wPayments, "attempt_id"));
     expect(sortBy([...store.minutes.values()] as never, "gateway", "minute")).toEqual(sortBy(wMinutes, "gateway", "minute"));
@@ -63,6 +63,9 @@ describe.skipIf(!hasSqlite)("rollup parity with the worker", () => {
     expect(p("p3")).toMatchObject({ status: "refunded", fulfil_count: 2 });
     expect(p("p4")).toMatchObject({ status: "initiated", error_count: 2 });
     expect(p("p5")).toMatchObject({ status: "paid" });
+    // v2: a partial refund leaves the status, the one that completes it sets refunded; a bare refund is a full one.
+    expect(p("p6")).toMatchObject({ status: "refunded", refunded_paisa: 20000, gw_env: "sandbox", customer_name: "Sita", customer_hash: null, fulfilled_at: FIXTURE_T0 + 70_100 });
+    expect(p("p7")).toMatchObject({ status: "refunded", refunded_paisa: 0, amount_paisa: 3000 });
 
     for (const t of [FIXTURE_T0 + 120_000, FIXTURE_T0 + 3_600_000]) {
       expect(gatewayHealth(store, "test", t)).toEqual(await workerHealth(env, LOCAL_PROJECT, "test", t));

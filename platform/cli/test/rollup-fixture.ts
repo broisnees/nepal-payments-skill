@@ -47,6 +47,20 @@ const bad = [
   ev("status.changed", "p5", 400_000, { status: "paid", data: { from: "failed", to: "paid" } }),
 ];
 
+// v2: gw_env last seen, a partial then a completing payment.refunded, a bare payment.refunded (full refund),
+// a name-only customer (no hash, so both sides agree without sharing a salt), fulfilled_at.
+const v2 = [
+  ev("payment.started", "p6", 6_000, { amount_paisa: 20000, status: "initiated", customer: { name: "Sita" } }, "khalti"),
+  ev("payment.redirected", "p6", 6_100, { data: { method: "GET", endpoint: "/", gw_env: "sandbox" } }, "khalti"),
+  ev("status.changed", "p6", 70_000, { status: "paid", data: { to: "paid" } }, "khalti"),
+  ev("payment.fulfilled", "p6", 70_100, {}, "khalti"),
+  ev("payment.refunded", "p6", 300_000, { amount_paisa: 5000, data: { refund_ref: "RF-1" } }, "khalti"),
+  ev("payment.refunded", "p6", 310_000, { amount_paisa: 15000, data: { refund_ref: "RF-2", action_id: "act_1" } }, "khalti"),
+  ev("payment.started", "p7", 7_000, { amount_paisa: 3000, status: "initiated" }, "esewa"),
+  ev("status.changed", "p7", 8_000, { status: "paid", data: { to: "paid" } }, "esewa"),
+  ev("payment.refunded", "p7", 320_000, { data: { refund_reason: "duplicate" } }, "esewa"),
+];
+
 /** Batches in arrival order. Duplicates within a batch and across batches included. */
 export const FIXTURE_BATCHES: PaymentEvent[][] = [
   [paid[0], paid[1], outOfOrder[0], refund[0]],
@@ -54,5 +68,7 @@ export const FIXTURE_BATCHES: PaymentEvent[][] = [
   [outOfOrder[2], outOfOrder[3], outOfOrder[4], refund[4], refund[1]],
   [refund[2], refund[3], refund[5], paid[6], paid[6]],
   [bad[0], bad[1], bad[2], bad[3], bad[4], bad[5], paid[0]],
+  [v2[1], v2[0], v2[2], v2[3], v2[6], v2[7]],
+  [v2[5], v2[4], v2[8]],
 ];
 export const FIXTURE_T0 = T0;
