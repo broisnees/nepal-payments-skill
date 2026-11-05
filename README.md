@@ -58,12 +58,12 @@ skills/nepal-payments/
 ├── SKILL.md            workflow, non-negotiable rules, provider table, traps
 ├── references/         one file per provider + architecture, web, mobile, env, testing
 └── scripts/
-    ├── ts/             Node 22.18+, Bun, Deno, Workers, Next.js edge · 37 tests + demo server
-    ├── python/         Python 3.10+, stdlib · 25 tests
-    ├── java/           JDK 17+, no dependencies (Spring Boot, Quarkus) · 98 tests
-    ├── kotlin/         JDK 17+, suspend API (Ktor, Spring) · 71 tests
-    ├── php/            PHP 8.1+, ext-curl/openssl (Laravel, Symfony) · 56 tests
-    └── go/             Go 1.22+, stdlib · 56 tests
+    ├── ts/             Node 22.18+, Bun, Deno, Workers, Next.js edge · 49 tests + demo server
+    ├── python/         Python 3.10+, stdlib · 33 tests
+    ├── java/           JDK 17+, no dependencies (Spring Boot, Quarkus) · 111 tests
+    ├── kotlin/         JDK 17+, suspend API (Ktor, Spring) · 84 tests
+    ├── php/            PHP 8.1+, ext-curl/openssl (Laravel, Symfony) · 69 tests
+    └── go/             Go 1.22+, stdlib · 68 tests
 ```
 Every suite runs the same signature vectors and mocked-provider cases, and each has a live eSewa + Fonepay sandbox check.
 
@@ -95,16 +95,20 @@ const result = await payments.get("khalti").verify({
 
 ```bash
 cd skills/nepal-payments/scripts
-(cd ts && npm ci && npm test && npm run typecheck)            # 37 tests + strict tsc
-(cd python && python -m unittest discover -s tests)           # 25 tests
-(cd java && ./gradlew test)                                    # 98 tests
-(cd kotlin && ./gradlew test)                                  # 71 tests
-(cd php && composer install && vendor/bin/phpunit)             # 56 tests
-(cd go && go test -race ./...)                                 # 56 tests
+(cd ts && npm ci && npm test && npm run typecheck)            # 49 tests + strict tsc
+(cd python && python -m unittest discover -s tests)           # 33 tests
+(cd java && ./gradlew test)                                    # 111 tests
+(cd kotlin && ./gradlew test)                                  # 84 tests
+(cd php && composer install && vendor/bin/phpunit)             # 69 tests
+(cd go && go test -race ./...)                                 # 68 tests
 ```
 Live sandbox checks: `node test/sandbox.ts`, `./gradlew sandbox`, `php tests/sandbox.php`, `go run ./cmd/sandbox`. Demo: `node examples/server.ts`.
 
 Open work is tracked in [TODO.md](TODO.md).
+
+## Website
+
+The docs site and landing page live in [`website/`](website/) (Astro + Starlight). Provider and guide pages are generated from `skills/nepal-payments/references/`, so the site and the skill stay in sync.
 
 ## Contributing
 
