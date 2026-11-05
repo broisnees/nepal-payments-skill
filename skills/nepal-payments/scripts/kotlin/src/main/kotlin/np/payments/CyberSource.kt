@@ -136,7 +136,7 @@ class CyberSource(val config: CyberSourceConfig) : PaymentAdapter {
             throw PaymentException("CyberSource: invalid response signature — treat as malicious", id, "invalid_signature", 400)
         }
         val p = signedOnly(callback)
-        if ((p["req_reference_number"] ?: p["req_transaction_uuid"]) != input.orderId) {
+        if ((p["req_reference_number"].orNullIfEmpty() ?: p["req_transaction_uuid"]) != input.orderId) {
             throw PaymentException("CyberSource: response is for a different order", id, "callback_mismatch", 400, p)
         }
         val reqCurrency = p["req_currency"]

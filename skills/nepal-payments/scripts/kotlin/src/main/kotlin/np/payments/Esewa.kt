@@ -10,6 +10,9 @@
 package np.payments
 
 import java.math.BigDecimal
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -149,10 +152,12 @@ class Esewa(val config: EsewaConfig, transport: HttpTransport = HttpTransport.De
         val text: String
         val parsed: Any?
         try {
-            text = decodeUtf8(fromBase64(data))
+            text = decodeUtf8Strict(fromBase64(data))
             parsed = Json.parse(text)
         } catch (e: IllegalArgumentException) {
-            throw PaymentException("eSewa: malformed success payload", id, "malformed_callback", 400, data, e)
+            throw PaymentException("eSewa: success data is not base64 JSON", id, "malformed_callback", 400, data, e)
+        } catch (e: CharacterCodingException) {
+            throw PaymentException("eSewa: success data is not base64 JSON", id, "malformed_callback", 400, data, e)
         }
         val payload = parsed.asJsonObject()
         val names = payload?.get("signed_field_names") as? String
@@ -218,9 +223,7 @@ class Esewa(val config: EsewaConfig, transport: HttpTransport = HttpTransport.De
         val res = http.request("$statusUrl?$qs", timeout = config.timeout, retries = 2)
         val body = res.data.asJsonObject()
         if (res.status != 200 || body == null || !body.containsKey("status")) {
-            val code = if (body != null && body.containsKey("code")) "esewa_${jsString(body["code"])}" else "http_${res.status}"
-            val message = body?.get("error_message")?.let(::jsString) ?: res.text.take(200)
-            throw PaymentException("eSewa status check failed: $message", id, code, res.status, res.data)
+            throw PaymentException("eSewa status check failed: ${errorMessage(res)}", id, errorCode(res), res.status, res.data)
         }
         return body
     }
@@ -307,20 +310,55 @@ class Esewa(val config: EsewaConfig, transport: HttpTransport = HttpTransport.De
         return http.request("${intent.baseUrl}/cancel", "POST", body = body, timeout = config.timeout).data
     }
 
-    /** Verify the signature on eSewa's Intent callback POST body (parsed JSON). Still call intentVerify() before fulfilling. */
-    fun intentCallbackValid(body: Map<String, Any?>): Boolean {
+    /**
+     * Verify the signature on eSewa's Intent callback POST body (parsed JSON). Still call intentVerify() before fulfilling.
+     * Prefer the raw-body overload: a parsed map can only be checked in the JS String(v) form (100.0 signs as "100").
+     */
+    fun intentCallbackValid(body: Map<String, Any?>): Boolean = intentCallbackValid(body, null)
+
+    /**
+     * Same, from the RAW request body: numbers are then also checked exactly as eSewa sent them ("100.0"),
+     * not only in the String(v) form ("100"). Non-JSON or non-object bodies are invalid.
+     */
+    fun intentCallbackValid(rawBody: String): Boolean {
+        val payload = try {
+            Json.parse(rawBody).asJsonObject()
+        } catch (e: IllegalArgumentException) {
+            null
+        } ?: return false
+        return intentCallbackValid(payload, rawBody)
+    }
+
+    private fun intentCallbackValid(body: Map<String, Any?>, text: String?): Boolean {
         val intent = requireIntent()
         val names = body["signed_field_names"] as? String ?: return false
         val signature = body["signature"] as? String ?: return false
         val order = names.split(",").map { it.trim() }
-        val fields = order.associateWith { jsString(body[it] ?: "") }
-        return safeEqual(esewaSign(intent.accessKey, fields, order), signature)
+        val asString = order.associateWith { jsString(body[it] ?: "") }
+        if (safeEqual(esewaSign(intent.accessKey, asString, order), signature)) return true
+        if (text == null) return false
+        val exact = order.associateWith { rawValue(text, body, it) }
+        return exact != asString && safeEqual(esewaSign(intent.accessKey, exact, order), signature)
     }
 
-    private fun intentError(op: String, res: HttpResult): PaymentException {
-        val message = res.data.field("error_message")?.let(::jsString) ?: res.text.take(200)
-        val code = res.data.field("code")?.let(::jsString) ?: "http_${res.status}"
-        return PaymentException("eSewa intent $op failed: $message", id, code, res.status, res.data)
+    private fun intentError(op: String, res: HttpResult): PaymentException =
+        PaymentException("eSewa intent $op failed: ${errorMessage(res)}", id, errorCode(res), res.status, res.data)
+
+    /** Error text from an eSewa error body: docs say `error_message`, the live Intent sandbox sends `errorMessage`. */
+    private fun errorMessage(res: HttpResult): String =
+        (res.data.field("error_message") ?: res.data.field("errorMessage"))?.let(::jsString) ?: res.text.take(200)
+
+    /** `esewa_<code>` when the body carries a code, else `http_<status>`. */
+    private fun errorCode(res: HttpResult): String =
+        res.data.field("code")?.let { "esewa_${jsString(it)}" } ?: "http_${res.status}"
+
+    /** Like [decodeUtf8], but invalid UTF-8 throws instead of becoming U+FFFD (TextDecoder `fatal: true`). */
+    private fun decodeUtf8Strict(bytes: ByteArray): String {
+        val s = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes)).toString()
+        return if (s.startsWith('\uFEFF')) s.substring(1) else s
     }
 
     private fun requireIntent(): EsewaIntentCredentials {

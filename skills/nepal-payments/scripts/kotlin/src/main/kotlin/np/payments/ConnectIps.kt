@@ -98,9 +98,10 @@ class ConnectIps(val config: ConnectIpsConfig, transport: HttpTransport = HttpTr
             "TXNDATE" to connectIpsDate(),
             "TXNCRNCY" to "NPR",
             "TXNAMT" to input.amountPaisa.toString(), // PAISA
-            "REFERENCEID" to clip(extras.referenceId ?: input.orderId, 20),
-            "REMARKS" to clip(extras.remarks ?: input.description, 50).ifEmpty { "Payment" },
-            "PARTICULARS" to clip(extras.particulars ?: input.description, 100).ifEmpty { "Payment" },
+            // Empty extras fall back too (JS `||`, not `??`).
+            "REFERENCEID" to clip(extras.referenceId.orNullIfEmpty() ?: input.orderId, 20),
+            "REMARKS" to clip(extras.remarks.orNullIfEmpty() ?: input.description, 50).ifEmpty { "Payment" },
+            "PARTICULARS" to clip(extras.particulars.orNullIfEmpty() ?: input.description, 100).ifEmpty { "Payment" },
         )
         f["TOKEN"] = rsaSha256SignBase64(config.privateKey, connectIpsTokenString(f))
         return InitiateResult.Form(action = "$base/connectipswebgw/loginpage", fields = f)
