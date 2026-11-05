@@ -1,0 +1,174 @@
+// Sequence diagrams for each provider's Integrate page and the architecture guide.
+// Rendered to SVG by scripts/diagrams.mjs. Text in `backticks` is set in the code font.
+import type { ProviderKey } from "./integrations/types";
+
+export type FlowStep =
+  | { from: string; to: string; text: string; reply?: boolean }
+  | { note: string; text: string };
+
+export interface Flow {
+  title: string;
+  actors: { id: string; label: string }[];
+  steps: FlowStep[];
+}
+
+const actors = [
+  { id: "browser", label: "Payer's browser" },
+  { id: "backend", label: "Your backend" },
+  { id: "provider", label: "Provider" },
+];
+
+export const architectureFlow: Flow = {
+  title: "Payment flow across client, backend and provider",
+  actors: [
+    { id: "client", label: "Client (web / mobile)" },
+    { id: "backend", label: "Your backend" },
+    { id: "provider", label: "Provider" },
+  ],
+  steps: [
+    { from: "client", to: "backend", text: "`POST /payments {orderId, provider}`" },
+    { note: "backend", text: "load order, compute amount server-side" },
+    { note: "backend", text: "insert payment_attempt (initiated)" },
+    { from: "backend", to: "provider", text: "`adapter.initiate()`" },
+    { from: "backend", to: "client", text: "redirect URL or form fields", reply: true },
+    { from: "client", to: "provider", text: "user pays on the provider page or SDK" },
+    { from: "provider", to: "client", text: "redirect to the return URL (GET / POST)", reply: true },
+    { from: "client", to: "backend", text: "return URL hit" },
+    { from: "backend", to: "provider", text: "`adapter.verify()`: status API" },
+    { from: "provider", to: "backend", text: "authoritative status", reply: true },
+    { note: "backend", text: "conditional UPDATE, fulfil once" },
+    { from: "backend", to: "client", text: "receipt, or deep link back to the app", reply: true },
+    { from: "provider", to: "backend", text: "webhook / server POST (optional)" },
+    { note: "backend", text: "`adapter.verify()` again (idempotent)" },
+    { note: "backend", text: "scheduler: reconcile stale attempts" },
+  ],
+};
+
+export const providerFlows: Record<ProviderKey, Flow> = {
+  esewa: {
+    title: "eSewa ePay v2 payment flow",
+    actors,
+    steps: [
+      { from: "browser", to: "backend", text: "Pay with eSewa" },
+      { note: "backend", text: "insert attempt, sign fields (HMAC-SHA256)" },
+      { from: "backend", to: "browser", text: "auto-submitting form", reply: true },
+      { from: "browser", to: "provider", text: "POST the signed form" },
+      { note: "provider", text: "payer logs in and pays" },
+      { from: "provider", to: "browser", text: "redirect `success_url?data=…`", reply: true },
+      { from: "browser", to: "backend", text: "return URL with `data`" },
+      { note: "backend", text: "check the `data` signature" },
+      { from: "backend", to: "provider", text: "status API with the stored total" },
+      { from: "provider", to: "backend", text: "`COMPLETE` + `ref_id`", reply: true },
+      { note: "backend", text: "`decideTransition()`, fulfil once" },
+      { from: "backend", to: "browser", text: "receipt", reply: true },
+    ],
+  },
+  khalti: {
+    title: "Khalti KPG-2 payment flow",
+    actors,
+    steps: [
+      { from: "browser", to: "backend", text: "Pay with Khalti" },
+      { from: "backend", to: "provider", text: "initiate (integer paisa)" },
+      { from: "provider", to: "backend", text: "`payment_url` + `pidx`", reply: true },
+      { note: "backend", text: "store `pidx` on the attempt" },
+      { from: "backend", to: "browser", text: "302 to `payment_url`", reply: true },
+      { from: "browser", to: "provider", text: "payer pays in Khalti" },
+      { from: "provider", to: "browser", text: "redirect `return_url?pidx=…`", reply: true },
+      { from: "browser", to: "backend", text: "return URL hit" },
+      { from: "backend", to: "provider", text: "lookup with the stored `pidx`" },
+      { from: "provider", to: "backend", text: "`Completed` + `transaction_id`", reply: true },
+      { note: "backend", text: "`decideTransition()`, fulfil once" },
+      { from: "backend", to: "browser", text: "receipt", reply: true },
+    ],
+  },
+  fonepay: {
+    title: "Fonepay web payment flow",
+    actors,
+    steps: [
+      { from: "browser", to: "backend", text: "Pay with Fonepay" },
+      { note: "backend", text: "insert attempt, sign params (DV)" },
+      { from: "backend", to: "browser", text: "redirect with signed params", reply: true },
+      { from: "browser", to: "provider", text: "open Fonepay" },
+      { note: "provider", text: "payer scans or pays in the bank app" },
+      { from: "provider", to: "browser", text: "redirect `RU?PRN=…&DV=…`", reply: true },
+      { from: "browser", to: "backend", text: "return URL hit" },
+      { note: "backend", text: "check the response DV" },
+      { from: "backend", to: "provider", text: "txnVerification" },
+      { from: "provider", to: "backend", text: "`paymentStatus: success`", reply: true },
+      { note: "backend", text: "`decideTransition()`, fulfil once" },
+      { from: "backend", to: "browser", text: "receipt", reply: true },
+    ],
+  },
+  connectips: {
+    title: "connectIPS direct debit flow",
+    actors,
+    steps: [
+      { from: "browser", to: "backend", text: "Pay with connectIPS" },
+      { note: "backend", text: "insert attempt, sign `TOKEN` (RSA-SHA256)" },
+      { from: "backend", to: "browser", text: "auto-submitting form", reply: true },
+      { from: "browser", to: "provider", text: "POST to the login page" },
+      { note: "provider", text: "payer approves in their bank" },
+      { from: "provider", to: "browser", text: "redirect to the registered URL `?TXNID=…`", reply: true },
+      { from: "browser", to: "backend", text: "success or failure URL hit" },
+      { from: "backend", to: "provider", text: "`validatetxn` (Basic auth)" },
+      { from: "provider", to: "backend", text: "`SUCCESS` + `txnAmt`", reply: true },
+      { note: "backend", text: "`decideTransition()`, fulfil once" },
+      { from: "backend", to: "browser", text: "receipt", reply: true },
+    ],
+  },
+  cybersource: {
+    title: "CyberSource Secure Acceptance flow",
+    actors,
+    steps: [
+      { from: "browser", to: "backend", text: "Pay by card" },
+      { note: "backend", text: "sign every field incl. `bill_to`" },
+      { from: "backend", to: "browser", text: "auto-submitting form", reply: true },
+      { from: "browser", to: "provider", text: "POST to `/pay`" },
+      { note: "provider", text: "card entry + 3-D Secure" },
+      { from: "provider", to: "backend", text: "Merchant POST URL (signed, server to server)" },
+      { from: "provider", to: "browser", text: "POST to the receipt page (signed)", reply: true },
+      { from: "browser", to: "backend", text: "receipt page POST" },
+      { note: "backend", text: "check signature, order and currency" },
+      { note: "backend", text: "`decideTransition()`, fulfil once" },
+      { from: "backend", to: "browser", text: "receipt", reply: true },
+    ],
+  },
+  nps: {
+    title: "NPS OnePG payment flow",
+    actors,
+    steps: [
+      { from: "browser", to: "backend", text: "Pay with NPS" },
+      { from: "backend", to: "provider", text: "`GetProcessId`" },
+      { from: "provider", to: "backend", text: "`ProcessId`", reply: true },
+      { note: "backend", text: "store `ProcessId` on the attempt" },
+      { from: "backend", to: "browser", text: "multipart auto-submitting form", reply: true },
+      { from: "browser", to: "provider", text: "POST to the gateway" },
+      { note: "provider", text: "payer picks a bank or wallet" },
+      { from: "provider", to: "backend", text: "Notification URL `?MerchantTxnId=…`" },
+      { from: "backend", to: "provider", text: "`CheckTransactionStatus`" },
+      { from: "provider", to: "backend", text: "`Success` + `Amount`", reply: true },
+      { note: "backend", text: "`decideTransition()`, reply `received`" },
+      { from: "provider", to: "browser", text: "back to `ResponseUrl`", reply: true },
+      { from: "browser", to: "backend", text: "`ResponseUrl` hit" },
+      { from: "backend", to: "browser", text: "receipt", reply: true },
+    ],
+  },
+  imepay: {
+    title: "IME Pay checkout flow",
+    actors,
+    steps: [
+      { from: "browser", to: "backend", text: "Pay with IME Pay" },
+      { from: "backend", to: "provider", text: "`GetToken`" },
+      { from: "provider", to: "backend", text: "`TokenId`", reply: true },
+      { note: "backend", text: "store `TokenId` on the attempt" },
+      { from: "backend", to: "browser", text: "redirect to web checkout", reply: true },
+      { from: "browser", to: "provider", text: "payer pays in IME Pay" },
+      { from: "provider", to: "browser", text: "POST to `RespUrl` (unsigned)", reply: true },
+      { from: "browser", to: "backend", text: "response URL hit" },
+      { from: "backend", to: "provider", text: "`Recheck` with the stored token" },
+      { from: "provider", to: "backend", text: "`ResponseCode: 0`", reply: true },
+      { note: "backend", text: "`decideTransition()`, fulfil once" },
+      { from: "backend", to: "browser", text: "receipt", reply: true },
+    ],
+  },
+};
