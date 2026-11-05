@@ -1,0 +1,8 @@
+---
+// Preload the two Latin font files every page needs, so text doesn't wait for CSS to discover them.
+import sans from "@fontsource-variable/inter/files/inter-latin-opsz-normal.woff2?url";
+import mono from "@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2?url";
+---
+
+<link rel="preload" href={sans} as="font" type="font/woff2" crossorigin />
+<link rel="preload" href={mono} as="font" type="font/woff2" crossorigin />
