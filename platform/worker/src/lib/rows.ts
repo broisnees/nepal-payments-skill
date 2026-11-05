@@ -20,6 +20,10 @@ export function toPayment(r: PaymentRow): Payment {
     event_count: r.event_count,
     error_count: r.error_count,
     fulfil_count: r.fulfil_count,
+    customer_mask: r.customer_mask ?? null,
+    refunded_paisa: r.refunded_paisa ?? 0,
+    gw_env: (r.gw_env as Payment["gw_env"]) ?? null,
+    fulfilled_at: r.fulfilled_at ?? null,
   };
 }
 

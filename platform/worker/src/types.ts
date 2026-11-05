@@ -35,6 +35,13 @@ export interface PaymentRow {
   fulfil_count: number;
   status_at: number;
   reason_at: number;
+  // v2 (migrations/0002_ops.sql)
+  customer_hash: string | null;
+  customer_mask: string | null;
+  customer_name: string | null;
+  refunded_paisa: number;
+  gw_env: string | null;
+  fulfilled_at: number | null;
 }
 
 export interface EventRow {
