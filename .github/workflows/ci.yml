@@ -59,3 +59,60 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install cryptography
       - run: python -m unittest discover -s tests -v
+
+  jvm:
+    name: ${{ matrix.lang }} (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lang: [java, kotlin]
+        java: ["17", "21"]
+    defaults:
+      run:
+        working-directory: skills/nepal-payments/scripts/${{ matrix.lang }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: gradle/actions/setup-gradle@v6
+      - run: ./gradlew test --no-daemon
+
+  php:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ["8.1", "8.5"]
+    defaults:
+      run:
+        working-directory: skills/nepal-payments/scripts/php
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, openssl, json, mbstring
+          tools: composer:v2
+          coverage: none
+      - run: composer install --no-interaction --no-progress
+      - run: vendor/bin/phpunit
+
+  go:
+    name: Go ${{ matrix.go }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["1.22", "stable"]
+    defaults:
+      run:
+        working-directory: skills/nepal-payments/scripts/go
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test -race ./...
