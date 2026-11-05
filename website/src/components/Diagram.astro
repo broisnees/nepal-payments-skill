@@ -1,0 +1,9 @@
+---
+// Renders a build-time SVG diagram from scripts/diagrams.mjs inside MDX pages.
+interface Props {
+  html: string;
+}
+const { html } = Astro.props;
+---
+
+<Fragment set:html={html} />
