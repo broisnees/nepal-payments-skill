@@ -1,0 +1,34 @@
+---
+// Footer shared by the landing page and the blog.
+import Icon from "./Icon.astro";
+import { REPO, providers } from "../data/site";
+
+const site = new URL("/", Astro.site).href;
+const aiQuery = encodeURIComponent(`Explain ${site} and how to integrate eSewa and Khalti with it.`);
+const askAi = [
+  { name: "ChatGPT", href: `https://chatgpt.com/?q=${aiQuery}` },
+  { name: "Claude", href: `https://claude.ai/new?q=${aiQuery}` },
+  { name: "Perplexity", href: `https://www.perplexity.ai/search?q=${aiQuery}` },
+];
+---
+
+<footer class="footer container">
+  <div class="footer-top">
+    <div>
+      <h2 class="footer-title">Ask an AI about Nepal Payments</h2>
+      <div class="chips">
+        {askAi.map((a) => <a class="chip" href={a.href} rel="noopener">{a.name}<Icon name="external" size={13} /></a>)}
+      </div>
+    </div>
+    <nav class="footer-cols" aria-label="Footer">
+      <div><p>Product</p><a href="/docs/">Docs</a><a href="/blog/">Blog</a><a href="/docs/install/">Install</a><a href="/docs/api/">Adapter API</a><a href="/docs/languages/">Languages</a></div>
+      <div><p>Integration guides</p>{providers.map((p) => <a href={`/blog/${p.blog}/`}>{p.name}</a>)}<a href="/blog/payment-gateways-in-nepal/">Compare gateways</a></div>
+      <div><p>Guides</p><a href="/docs/guides/architecture/">Architecture</a><a href="/docs/guides/web/">Web frameworks</a><a href="/docs/guides/mobile/">Mobile apps</a><a href="/docs/guides/testing/">Testing</a></div>
+      <div><p>Project</p><a href={REPO} rel="noopener">GitHub</a><a href={`${REPO}/issues`} rel="noopener">Issues</a><a href={`${REPO}/blob/main/LICENSE`} rel="noopener">MIT License</a><a href="/llms.txt">llms.txt</a></div>
+    </nav>
+  </div>
+  <div class="footer-bottom">
+    <span class="brand-sm"><img src="/favicon.svg" alt="" width="16" height="16" />Nepal Payments</span>
+    <span>Not affiliated with or endorsed by any payment provider. Provider names belong to their owners.</span>
+  </div>
+</footer>
