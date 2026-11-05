@@ -1,0 +1,63 @@
+---
+import "@fontsource-variable/inter/opsz.css";
+import "@fontsource-variable/jetbrains-mono";
+import FontPreload from "../components/FontPreload.astro";
+import "../styles/landing.css";
+
+interface Props {
+  title: string;
+  description: string;
+  jsonLd: object[];
+  ogType?: "website" | "article";
+}
+
+const { title, description, jsonLd, ogType = "website" } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+const ogImage = new URL("/og.png", Astro.site).href;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <FontPreload />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:site_name" content="Nepal Payments" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Nepal Payments: Nepali payments for coding agents" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <slot name="head" />
+    <script is:inline>
+      // Same rule as the docs: a saved light/dark choice wins, otherwise follow the system. Runs before paint.
+      (() => {
+        let t = null;
+        try {
+          t = localStorage.getItem("starlight-theme");
+        } catch {}
+        const dark = t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
