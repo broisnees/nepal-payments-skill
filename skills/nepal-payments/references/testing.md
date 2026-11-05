@@ -34,9 +34,24 @@ KHALTI_SECRET_KEY=... node test/sandbox.ts      # + Khalti initiate/lookup
 # Python (stdlib; connectIPS tests need `pip install cryptography`)
 cd scripts/python && python -m unittest discover -s tests -v   # 25 tests
 
+# Java / Kotlin (JDK 17+; the Gradle wrapper downloads Gradle on first run)
+cd scripts/java && ./gradlew test               # offline tests
+./gradlew sandbox                               # live eSewa + Fonepay checks
+cd scripts/kotlin && ./gradlew test && ./gradlew sandbox
+
+# PHP (8.1+; no local PHP? run each command in Docker:
+#   docker run --rm -v "$PWD":/app -w /app composer:2 <command>)
+cd scripts/php && composer install && vendor/bin/phpunit
+php tests/sandbox.php                           # live eSewa + Fonepay checks
+
+# Go (1.22+, stdlib only)
+cd scripts/go && go test -race ./...
+go run ./cmd/sandbox                            # live eSewa + Fonepay checks
+
 # End-to-end demo (eSewa + Fonepay sandboxes, no setup)
 cd scripts/ts && node examples/server.ts        # http://localhost:3000
 ```
+Every language suite runs the same signature vectors and mocked-provider cases as the TypeScript one, so a behaviour change has to land in all of them.
 
 ## 3. What to test in your integration
 
