@@ -1,0 +1,27 @@
+---
+import Icon from "./Icon.astro";
+
+interface Props {
+  tone: "lavender" | "sky" | "rose" | "mint" | "slate" | "steel" | "cream";
+  title: string;
+  body: string;
+  href?: string;
+  link?: string;
+  wide?: boolean;
+}
+
+const { tone, title, body, href, link, wide = false } = Astro.props;
+---
+
+<article class:list={["feature", `tone-${tone}`, { wide }]}>
+  <div class="feature-inner">
+  <div class="feature-copy">
+    <h3>{title}</h3>
+    <p>{body}</p>
+    {href && <a class="text-link" href={href}>{link}<Icon name="chevron" size={14} /></a>}
+  </div>
+  <div class="feature-panel">
+    <slot />
+  </div>
+  </div>
+</article>
