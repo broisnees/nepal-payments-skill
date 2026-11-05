@@ -156,7 +156,7 @@ final class CyberSourceAdapter implements PaymentAdapter
                 $p[$n] = $callback[$n];
             }
         }
-        if (($p['req_reference_number'] ?? $p['req_transaction_uuid'] ?? null) !== $input->orderId) {
+        if (Js::firstTruthy($p['req_reference_number'] ?? null, $p['req_transaction_uuid'] ?? null) !== $input->orderId) {
             throw new PaymentException('CyberSource: response is for a different order', ProviderId::CyberSource, 'callback_mismatch', 400, $p);
         }
         if (($p['req_currency'] ?? '') !== '' && $p['req_currency'] !== $this->cfg->currency) {

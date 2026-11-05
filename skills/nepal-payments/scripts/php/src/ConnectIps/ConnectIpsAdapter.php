@@ -72,8 +72,9 @@ final class ConnectIpsAdapter implements PaymentAdapter
         if (preg_match('/^[A-Za-z0-9-]{1,20}\z/', $input->orderId) !== 1) {
             throw new PaymentException('connectIPS TXNID must be 1–20 chars [A-Za-z0-9-]', ProviderId::ConnectIps, 'invalid_order_id');
         }
-        $rem = self::clip($remarks ?? $input->description, 50);
-        $par = self::clip($particulars ?? $input->description, 100);
+        // JS `||`: an empty string falls back too
+        $rem = self::clip(Js::firstTruthy($remarks, $input->description) ?? '', 50);
+        $par = self::clip(Js::firstTruthy($particulars, $input->description) ?? '', 100);
         $f = [
             'MERCHANTID' => (string) $this->cfg->merchantId,
             'APPID' => $this->cfg->appId,
@@ -82,7 +83,7 @@ final class ConnectIpsAdapter implements PaymentAdapter
             'TXNDATE' => self::date(),
             'TXNCRNCY' => 'NPR',
             'TXNAMT' => (string) $input->amountPaisa, // PAISA
-            'REFERENCEID' => self::clip($referenceId ?? $input->orderId, 20),
+            'REFERENCEID' => self::clip(Js::firstTruthy($referenceId, $input->orderId) ?? '', 20),
             'REMARKS' => $rem !== '' ? $rem : 'Payment',
             'PARTICULARS' => $par !== '' ? $par : 'Payment',
         ];
@@ -103,8 +104,8 @@ final class ConnectIpsAdapter implements PaymentAdapter
             str_contains($desc, 'INCOMPLETE') => PaymentStatus::Pending, // user hasn't finished OTP yet
             default => PaymentStatus::Unknown,
         };
-        // Math.round(Number(txnAmt)); null when absent or not a finite number.
-        $amt = array_key_exists('txnAmt', $r) ? Js::roundToInt(Js::toNumber($r['txnAmt'])) : null;
+        // Math.round(Number(txnAmt)); null when absent, null (Number(null) would be 0) or not a finite number.
+        $amt = isset($r['txnAmt']) ? Js::roundToInt(Js::toNumber($r['txnAmt'])) : null;
 
         return new VerifyResult(ProviderId::ConnectIps, $status, $input->orderId, $amt, null, $r);
     }

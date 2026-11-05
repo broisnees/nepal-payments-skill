@@ -144,9 +144,12 @@ final class EsewaAdapter implements PaymentAdapter
     {
         try {
             $text = Crypto::fromBase64($data);
+            if (preg_match('//u', $text) !== 1) { // TextDecoder fatal: reject non-UTF-8 instead of substituting
+                throw new \InvalidArgumentException('not UTF-8');
+            }
             $payload = Json::decode($text);
         } catch (\InvalidArgumentException|\JsonException $e) {
-            throw new PaymentException('eSewa: malformed success payload', ProviderId::Esewa, 'malformed_callback', 400, $data, $e);
+            throw new PaymentException('eSewa: success data is not base64 JSON', ProviderId::Esewa, 'malformed_callback', 400, $data, $e);
         }
         if (!is_array($payload) || !is_string($payload['signed_field_names'] ?? null)) {
             throw new PaymentException('eSewa: malformed success payload', ProviderId::Esewa, 'malformed_callback', 400, $payload);
@@ -306,26 +309,49 @@ final class EsewaAdapter implements PaymentAdapter
     }
 
     /**
-     * Verify the signature on eSewa's Intent callback POST body (decoded JSON). Still call intentVerify() before fulfilling.
+     * Verify the signature on eSewa's Intent callback POST body. Still call intentVerify() before fulfilling.
+     * Prefer the RAW request body (string): numbers are then also checked exactly as eSewa sent them ("100.0"),
+     * not only as String(v) ("100"). A decoded array can only be checked in the String(v) form.
      *
-     * @param array<array-key, mixed> $body
+     * @param array<array-key, mixed>|string $body
      */
-    public function intentCallbackValid(array $body): bool
+    public function intentCallbackValid(array|string $body): bool
     {
         [, $accessKey] = $this->requireIntent();
+        $text = is_string($body) ? $body : null;
+        if ($text !== null) {
+            try {
+                $body = Json::decode($text);
+            } catch (\JsonException) {
+                return false;
+            }
+            if (!is_array($body) || (array_is_list($body) && $body !== [])) {
+                return false;
+            }
+        }
         $names = $body['signed_field_names'] ?? null;
         $signature = $body['signature'] ?? null;
         if (!is_string($names) || !is_string($signature)) {
             return false;
         }
         $order = array_map('trim', explode(',', $names));
-        $fields = [];
+        $asString = [];
         foreach ($order as $f) {
             $v = $body[$f] ?? null;
-            $fields[$f] = $v === null ? '' : Js::toString($v);
+            $asString[$f] = $v === null ? '' : Js::toString($v);
+        }
+        if (Crypto::safeEqual(self::sign($accessKey, $asString, $order), $signature)) {
+            return true;
+        }
+        if ($text === null) {
+            return false;
+        }
+        $exact = [];
+        foreach ($order as $f) {
+            $exact[$f] = self::rawValue($text, $body, $f);
         }
 
-        return Crypto::safeEqual(self::sign($accessKey, $fields, $order), $signature);
+        return $exact !== $asString && Crypto::safeEqual(self::sign($accessKey, $exact, $order), $signature);
     }
 
     /** @return array<string, mixed> */
@@ -338,21 +364,24 @@ final class EsewaAdapter implements PaymentAdapter
         ]);
         $res = $this->http->request(ProviderId::Esewa, "{$this->statusUrl}?{$qs}", 'GET', [], null, $this->cfg->timeoutMs, 2);
         if ($res->status !== 200 || !is_array($res->data) || !array_key_exists('status', $res->data)) {
-            $code = is_array($res->data) && array_key_exists('code', $res->data) ? 'esewa_' . Js::toString($res->data['code']) : "http_{$res->status}";
-            throw new PaymentException('eSewa status check failed: ' . $this->errorMessage($res->data, $res->text), ProviderId::Esewa, $code, $res->status, $res->data);
+            throw new PaymentException('eSewa status check failed: ' . $this->errorMessage($res->data, $res->text), ProviderId::Esewa, $this->errorCode($res->data, $res->status), $res->status, $res->data);
         }
 
         return $res->data;
     }
 
+    /** Docs say `error_message`; the live Intent sandbox sends `errorMessage`. */
     private function errorMessage(mixed $data, string $text): string
     {
-        return is_array($data) && isset($data['error_message']) ? Js::toString($data['error_message']) : Js::slice($text, 200);
+        $msg = is_array($data) ? ($data['error_message'] ?? $data['errorMessage'] ?? null) : null;
+
+        return $msg !== null ? Js::toString($msg) : Js::slice($text, 200);
     }
 
+    /** `esewa_<code>` when the body carries a code, else `http_<status>`. */
     private function errorCode(mixed $data, int $status): string
     {
-        return is_array($data) && isset($data['code']) ? Js::toString($data['code']) : "http_{$status}";
+        return is_array($data) && isset($data['code']) ? 'esewa_' . Js::toString($data['code']) : "http_{$status}";
     }
 
     /** @return array{0: string, 1: string, 2: string} */

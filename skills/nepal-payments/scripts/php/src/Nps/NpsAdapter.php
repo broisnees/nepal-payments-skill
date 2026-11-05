@@ -136,10 +136,8 @@ final class NpsAdapter implements PaymentAdapter
             }
             throw self::fail('CheckTransactionStatus', $r);
         }
-        $d = $r['data'] ?? null;
-        if (!is_array($d)) {
-            throw new PaymentException('NPS CheckTransactionStatus: response has no data', ProviderId::Nps, 'malformed_response', 200, $r);
-        }
+        // code "0" with a null/non-object data is malformed; report it as unknown rather than throw.
+        $d = is_array($r['data'] ?? null) ? $r['data'] : [];
         if (Js::truthy($d['MerchantTxnId'] ?? null) && $d['MerchantTxnId'] !== $orderId) {
             throw new PaymentException('NPS: status is for a different transaction', ProviderId::Nps, 'callback_mismatch', 400, $d);
         }
