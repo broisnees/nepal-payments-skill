@@ -1,0 +1,279 @@
+/* Payment timeline: phase bar on top, readable steps below. */
+
+.tl-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-block-end: 14px;
+}
+
+/* Where the time went */
+
+.tl-phases {
+  margin-block-end: 20px;
+}
+
+.tl-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+}
+
+.tl-seg {
+  flex-basis: 0;
+  min-width: 4px;
+  background: var(--line-strong);
+}
+
+.tl-seg[data-kind="checkout"] {
+  background: var(--subtle);
+}
+
+.tl-seg[data-kind="buyer"] {
+  background: var(--gw-other);
+}
+
+.tl-seg[data-kind="buyer"][data-gw="esewa"] {
+  background: var(--gw-esewa);
+}
+
+.tl-seg[data-kind="buyer"][data-gw="khalti"] {
+  background: var(--gw-khalti);
+}
+
+.tl-seg[data-kind="buyer"][data-gw="fonepay"] {
+  background: var(--gw-fonepay);
+}
+
+.tl-seg[data-kind="buyer"][data-gw="connectips"] {
+  background: var(--gw-connectips);
+}
+
+.tl-seg[data-kind="wait"] {
+  background: repeating-linear-gradient(-45deg, var(--line-strong) 0 3px, transparent 3px 6px);
+}
+
+.tl-seg[data-outcome="ok"] {
+  background: var(--st-paid);
+}
+
+.tl-seg[data-outcome="bad"] {
+  background: var(--st-failed);
+}
+
+.tl-seg[data-outcome="warn"] {
+  background: var(--st-open);
+}
+
+.tl-legend {
+  display: flex;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tl-legend li {
+  flex-basis: 0;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.tl-legend-label {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-legend-ms {
+  font: 500 13px var(--font);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Steps */
+
+.tl-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+}
+
+.tl-step + .tl-step,
+.tl-gap + .tl-step,
+.tl-step + .tl-gap {
+  border-block-start: 1px solid var(--line);
+}
+
+.tl-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 14px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms var(--ease);
+}
+
+.tl-row:hover {
+  background: var(--hover);
+}
+
+.tl-step[data-open] .tl-row {
+  background: var(--surface-2, var(--hover));
+}
+
+.tl-row:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.tl-dot {
+  justify-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--subtle);
+  background: var(--bg);
+}
+
+.tl-step[data-tone="ok"] .tl-dot {
+  border-color: var(--st-paid);
+  background: var(--st-paid);
+}
+
+.tl-step[data-tone="bad"] .tl-dot {
+  border-color: var(--st-failed);
+  background: var(--st-failed);
+}
+
+.tl-step[data-tone="warn"] .tl-dot {
+  border-color: var(--st-open);
+  background: var(--st-open);
+}
+
+.tl-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tl-title {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.tl-step[data-tone="bad"] .tl-title {
+  color: var(--crit-ink);
+}
+
+.tl-sub {
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.tl-dur {
+  padding: 2px 6px;
+  font: 12px var(--mono);
+  color: var(--text);
+  background: var(--hover);
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+.tl-at {
+  grid-column: 4;
+  min-width: 64px;
+  text-align: end;
+  font: 12px var(--mono);
+  color: var(--subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The long wait between steps: a quiet divider instead of an empty chart. */
+.tl-gap {
+  padding: 8px 16px 8px 46px;
+  font-size: 12px;
+  color: var(--subtle);
+  background: repeating-linear-gradient(-45deg, transparent 0 6px, var(--hover) 6px 7px);
+}
+
+.tl-raw {
+  padding: 4px 16px 16px 46px;
+  background: var(--surface-2, var(--hover));
+}
+
+.tl-raw-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding-block: 6px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tl-raw-meta code {
+  font: 12px var(--mono);
+  color: var(--ink);
+}
+
+.tl-waiting .tl-row {
+  cursor: default;
+}
+
+@media (max-width: 560px) {
+  /* Phase labels stack as a list: proportional columns are too narrow to read on a phone. */
+  .tl-legend {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .tl-legend li {
+    flex-grow: 0 !important;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .tl-legend li::before {
+    content: "";
+    flex: none;
+    align-self: center;
+    width: 8px;
+    height: 8px;
+    margin-inline-end: -4px;
+    background: var(--swatch, var(--subtle));
+  }
+  .tl-legend-label {
+    flex: 1;
+  }
+  .tl-row {
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    row-gap: 4px;
+  }
+  .tl-dur {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .tl-at {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .tl-gap,
+  .tl-raw {
+    padding-inline-start: 46px;
+  }
+}
