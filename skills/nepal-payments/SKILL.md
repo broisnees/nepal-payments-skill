@@ -1,8 +1,8 @@
 ---
 name: nepal-payments
-description: Integrate Nepali payment gateways (eSewa, Khalti, Fonepay, connectIPS, CyberSource via Nepali banks, NPS/OnePG, IME Pay; plus HBL 2C2P, Moru, Prabhu Pay notes) into any backend, web app or mobile app, production-ready. Ships tested zero-dependency TypeScript (Node/Bun/Deno/Cloudflare Workers/Next.js) and Python adapters with verified signature test vectors, server-side verification, exactly-once fulfilment, reconciliation, and Flutter/React Native/Android/iOS patterns. Use whenever the user mentions any of these providers, NPR / Nepal payments, "payment gateway in Nepal", eSewa ePay v2 or Intent, Khalti KPG-2 / pidx, Fonepay DV / dynamic QR, connectIPS TOKEN / .pfx, Secure Acceptance with a Nepali bank, or is debugging a Nepali payment signature, callback, or status-check problem, even if they don't say "skill".
+description: Integrate Nepali payment gateways (eSewa, Khalti, Fonepay, connectIPS, CyberSource via Nepali banks, NPS/OnePG, IME Pay; plus HBL 2C2P, Moru, Prabhu Pay notes) into any backend, web app or mobile app, production-ready. Ships tested zero-dependency adapters for TypeScript (Node/Bun/Deno/Cloudflare Workers/Next.js), Python, Java and Kotlin (Spring Boot/Ktor), PHP (Laravel) and Go, with verified signature test vectors, server-side verification, exactly-once fulfilment, reconciliation, and Flutter/React Native/Android/iOS patterns. Use whenever the user mentions any of these providers, NPR / Nepal payments, "payment gateway in Nepal", eSewa ePay v2 or Intent, Khalti KPG-2 / pidx, Fonepay DV / dynamic QR, connectIPS TOKEN / .pfx, Secure Acceptance with a Nepali bank, or is debugging a Nepali payment signature, callback, or status-check problem, even if they don't say "skill".
 license: MIT
-compatibility: TypeScript adapters need Node.js 22.18+ (or Bun, Deno, Cloudflare Workers); Python adapters need Python 3.10+ (plus the cryptography package for connectIPS). Live sandbox checks need internet access.
+compatibility: Bundled adapters need one of Node.js 22.18+ (or Bun, Deno, Cloudflare Workers), Python 3.10+ (plus the cryptography package for connectIPS), JDK 17+ (Java or Kotlin), PHP 8.1+ with ext-curl and ext-openssl, or Go 1.22+. Live sandbox checks need internet access.
 metadata:
   author: Nischal Dahal
   version: "1.0.0"
@@ -20,7 +20,11 @@ Production integrations for Nepali payment providers. Everything here was checke
 3. **Install the adapters**:
    - TypeScript/JavaScript: copy `scripts/ts/src/` into the project's server code (e.g. `src/server/payments/`), keeping only the providers needed plus `core.ts` and `index.ts`. The files import each other with `.ts` extensions (runs natively on Node ≥ 22.18, Bun, Deno). If the project's tsconfig lacks `allowImportingTsExtensions`, rewrite `./x.ts` imports to match its module resolution (`./x.js` for NodeNext, extensionless for bundlers).
    - Python: copy `scripts/python/nepal_payments/` as a package (stdlib only; add `cryptography` for connectIPS).
-   - Other languages (PHP/Laravel, Go, Java, C#, Dart server): port from the TS adapter of each provider. Write the provider's **test vectors** as tests first (in each `references/<provider>.md`) and port until they pass.
+   - Java (Spring Boot, Quarkus, Micronaut): copy `scripts/java/src/main/java/np/payments/` (JDK 17+, no dependencies; blocking API, fine on virtual threads).
+   - Kotlin (Ktor, Spring Boot): copy `scripts/kotlin/src/main/kotlin/np/payments/` (kotlin-stdlib only; `suspend` API). Server-side only: never put it in an Android app.
+   - PHP (Laravel, Symfony, plain PHP): copy `scripts/php/src/` (namespace `NepalPayments`, PHP 8.1+, ext-curl + ext-openssl, no Composer dependencies) and register it in the project's PSR-4 autoload.
+   - Go: copy `scripts/go/payments/` into the module (e.g. `internal/payments/`) and fix the import path (stdlib only, Go 1.22+; `context.Context` on every network call; convert a connectIPS `.pfx` to PEM with openssl).
+   - Other languages (C#, Ruby, Rust, Dart server): port from the TS adapter of each provider. Write the provider's **test vectors** as tests first (in each `references/<provider>.md`) and port until they pass.
 4. **Add persistence + routes**: the `payment_attempts` table and the return handler from `references/architecture.md`, wired to the framework via `references/web.md`. For mobile, follow `references/mobile.md`.
 5. **Add reconciliation** (`architecture.md` §6). Without it, customers who close the tab after paying never get their order.
 6. **Test**: run the bundled tests, then the integration checks in `references/testing.md`. Use the sandbox credentials listed there.
@@ -87,9 +91,12 @@ Provider extras: `esewa.intentBook/intentVerify/intentCancel`, `khalti.refund`, 
 
 - [references/architecture.md](references/architecture.md): data model, state machine, return handler, webhooks, reconciliation, security + go-live checklists. **Read before writing any handler or schema.**
 - Read the provider file for each provider you integrate, before writing its code: [esewa](references/esewa.md), [khalti](references/khalti.md), [fonepay](references/fonepay.md), [connectips](references/connectips.md), [cybersource](references/cybersource.md), [nps](references/nps.md), [imepay](references/imepay.md), [others](references/others.md) (HBL, Moru, Prabhu Pay, CellPay, Namaste Pay). Each has endpoints, credentials, fields, signatures + test vectors, status mapping, SDKs and gotchas.
-- [references/web.md](references/web.md): read when wiring routes in Express, Hono/Workers, Next.js, FastAPI, Django or Laravel (includes CSRF exemptions).
+- [references/web.md](references/web.md): read when wiring routes in Express, Hono/Workers, Next.js, FastAPI, Django, Laravel, Spring Boot or Ktor (includes CSRF exemptions).
 - [references/mobile.md](references/mobile.md): read for Flutter, React Native/Expo, Android or iOS (native SDKs, the universal WebView pattern, deep links).
 - [references/env.md](references/env.md): read when adding env vars or `.env.example`.
 - [references/testing.md](references/testing.md): read when testing or going live (sandbox credentials, test plan, go-live per provider).
 - `scripts/ts/`: adapters (`src/`), 37 offline tests (`npm test`), live sandbox check (`node test/sandbox.ts`), runnable demo (`node examples/server.ts`).
 - `scripts/python/`: adapters (`nepal_payments/`) + 25 tests (`python -m unittest discover -s tests`).
+- `scripts/java/` (98 tests), `scripts/kotlin/` (71 tests): `./gradlew test`, live check `./gradlew sandbox`.
+- `scripts/php/` (56 tests, PHP 8.1–8.5): `composer install && vendor/bin/phpunit`, live check `php tests/sandbox.php`.
+- `scripts/go/` (56 tests): `go test -race ./...`, live check `go run ./cmd/sandbox`.
