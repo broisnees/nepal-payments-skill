@@ -1,0 +1,45 @@
+{
+  "name": "@paynp/sdk",
+  "version": "0.1.0",
+  "description": "Send payment events from eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS and IME Pay integrations to paynp. Zero dependencies.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "esewa",
+    "khalti",
+    "fonepay",
+    "connectips",
+    "nepal",
+    "payments",
+    "observability"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}
