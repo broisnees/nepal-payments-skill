@@ -1,0 +1,25 @@
+{
+  "name": "@paynp/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "node -e \"require('fs').mkdirSync('public',{recursive:true})\"",
+    "dev": "wrangler dev",
+    "db:migrate": "wrangler d1 migrations apply DB --local",
+    "pretest": "node -e \"require('fs').mkdirSync('public',{recursive:true})\"",
+    "test": "vitest run",
+    "types": "wrangler types --strict-vars=false src/worker-configuration.d.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@paynp/shared": "0.1.0",
+    "hono": "4.13.16"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.5.1",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5",
+    "wrangler": "4.157.0"
+  }
+}

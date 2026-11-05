@@ -1,0 +1,35 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "paynp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true, "traces": { "enabled": true } },
+  // The dashboard builds into ./public. API, auth and ingest routes run the Worker first;
+  // everything else is the SPA (index.html for unknown paths).
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/auth/*", "/v1/*"]
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "paynp", "database_id": "90432197-a1ce-436a-bb1d-24ff35c054df", "migrations_dir": "migrations" }
+  ],
+  "durable_objects": { "bindings": [{ "name": "LIVE", "class_name": "ProjectLive" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectLive"] }],
+  // 50 requests per second per key, expressed in the 10 s period the binding supports.
+  "ratelimits": [{ "name": "INGEST_LIMITER", "namespace_id": "1001", "simple": { "limit": 500, "period": 10 } }],
+  // Every minute: alert evaluation and batched notifications. 03:15 UTC is 09:00 Asia/Kathmandu: digest + retention.
+  "triggers": { "crons": ["* * * * *", "15 3 * * *"] },
+  // Served at paynp.discerns.app until the product has its own domain.
+  "routes": [{ "pattern": "paynp.discerns.app", "custom_domain": true }],
+  "vars": {
+    "APP_URL": "https://paynp.discerns.app",
+    "EMAIL_FROM": "paynp <noreply@paynp.discerns.app>",
+    // Free plan: D1 allows 50 queries per invocation and ingest uses about 3 per event.
+    "INGEST_MAX_EVENTS": "15"
+  }
+  // Mail goes through Resend (secret RESEND_API_KEY). On Workers Paid, the Cloudflare binding works instead:
+  // "send_email": [{ "name": "EMAIL" }]
+}
