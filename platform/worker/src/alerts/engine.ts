@@ -6,10 +6,13 @@
 // resolve it and send a resolved message. signature_failure is also checked on ingest (it can open, never resolve there).
 //
 // Per-payment rules (payment_failed, amount_mismatch, double_fulfilment) open one incident per payment on ingest, marked
-// pending. flushPending() sends each channel at most one message per clock minute listing every pending payment; what a
+// pending. double_payment (v2) is per-payment on ingest too; paid_not_fulfilled (v2) opens per-payment incidents from
+// the cron (ops/cron-ops.ts) and resolves on ingest when payment.fulfilled arrives. flushPending() sends each channel at most one message per clock minute listing every pending payment; what a
 // throttled channel misses goes out with the next cron run.
 import { OPEN_STATUSES, newId, type PaymentEvent, type RuleType } from "@paynp/shared";
 import { DAY, MINUTE, badRequest, now, parseJson } from "../lib/util.ts";
+import { openPaidNotFulfilled } from "../ops/cron-ops.ts";
+import type { DuplicateHit } from "../ops/ingest-ops.ts";
 import type { PaymentRow } from "../types.ts";
 import { deliverWithRetry, loadChannels, projectLink, sendToChannel, type ChannelRow, type Message } from "./notify.ts";
 
@@ -45,6 +48,8 @@ export interface IngestTransition {
   event: PaymentEvent;
   old: Pick<PaymentRow, "status" | "fulfil_count"> | null;
   payment: PaymentRow;
+  /** Set when this transition opened a duplicate-payment refund case. */
+  duplicate?: DuplicateHit;
 }
 
 export interface Evaluation {
@@ -53,9 +58,11 @@ export interface Evaluation {
   context: Record<string, unknown>;
 }
 
-export const PER_PAYMENT: RuleType[] = ["payment_failed", "amount_mismatch", "double_fulfilment"];
+export const PER_PAYMENT: RuleType[] = ["payment_failed", "amount_mismatch", "double_fulfilment", "double_payment"];
 export const AGGREGATE: RuleType[] = ["failure_rate", "stuck_pending", "signature_failure", "gateway_errors", "gateway_slow", "no_traffic"];
-export const RULE_TYPES: RuleType[] = [...PER_PAYMENT, ...AGGREGATE];
+/** Per-payment incidents opened by the cron. */
+export const CRON_PER_PAYMENT: RuleType[] = ["paid_not_fulfilled"];
+export const RULE_TYPES: RuleType[] = [...PER_PAYMENT, ...AGGREGATE, ...CRON_PER_PAYMENT];
 
 export const RULE_LABEL: Record<RuleType, string> = {
   payment_failed: "Payment failed",
@@ -67,6 +74,8 @@ export const RULE_LABEL: Record<RuleType, string> = {
   gateway_slow: "Gateway slow",
   double_fulfilment: "Double fulfilment",
   no_traffic: "No traffic",
+  double_payment: "Double payment",
+  paid_not_fulfilled: "Paid but not fulfilled",
 };
 
 const DEFAULTS: Record<RuleType, Record<string, unknown>> = {
@@ -79,6 +88,8 @@ const DEFAULTS: Record<RuleType, Record<string, unknown>> = {
   gateway_slow: { avg_ms: 5000, window_min: 10 },
   double_fulfilment: {},
   no_traffic: { window_min: 60 },
+  double_payment: {},
+  paid_not_fulfilled: { after_min: 15 },
 };
 
 type Kind = "pos" | "nonneg" | "pct" | "gateway" | "gateways";
@@ -92,6 +103,8 @@ const PARAM_KINDS: Record<RuleType, Record<string, Kind>> = {
   gateway_slow: { gateway: "gateway", avg_ms: "pos", window_min: "pos" },
   double_fulfilment: {},
   no_traffic: { window_min: "pos" },
+  double_payment: {},
+  paid_not_fulfilled: { after_min: "pos" },
 };
 
 /** Validates rule params for the API and fills defaults. Unknown keys are refused so typos do not silently do nothing. */
@@ -118,9 +131,9 @@ export function normalizeParams(type: RuleType, input: unknown): Record<string, 
   return out;
 }
 
-const params = (rule: RuleRow) => ({ ...DEFAULTS[rule.type], ...parseJson<Record<string, unknown>>(rule.params, {}) }) as Record<string, number | string | string[] | undefined>;
+export const params = (rule: RuleRow) => ({ ...DEFAULTS[rule.type], ...parseJson<Record<string, unknown>>(rule.params, {}) }) as Record<string, number | string | string[] | undefined>;
 const pct = (x: number) => `${Math.round(x * 1000) / 10}%`;
-const rupees = (paisa: number | null) => (paisa == null ? "" : `Rs ${(paisa / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+export const rupees = (paisa: number | null) => (paisa == null ? "" : `Rs ${(paisa / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 
 type StatSum = { started: number; paid: number; failed: number; req: number; err: number; ms: number };
 
@@ -297,6 +310,11 @@ function perPaymentMatch(rule: RuleRow, tr: IngestTransition): string | null {
       return tr.event.data?.reason === "amount_mismatch" ? `${pay.attempt_id} on ${pay.gateway}${amt}: amount does not match the order` : null;
     case "double_fulfilment":
       return tr.event.type === "payment.fulfilled" && pay.fulfil_count >= 2 && (tr.old?.fulfil_count ?? 0) < 2 ? `${pay.attempt_id} on ${pay.gateway}${amt} was fulfilled ${pay.fulfil_count} times` : null;
+    case "double_payment": {
+      const d = tr.duplicate;
+      if (!d) return null;
+      return `${d.attempt_id} on ${pay.gateway}${amt} duplicates ${d.related_attempt_id} (${d.reason === "same_order" ? `same order${pay.order_id ? ` ${pay.order_id}` : ""}` : "same customer and amount within 30 min"}). Refund case ${d.case_id} is open.`;
+    }
     default:
       return null;
   }
@@ -310,29 +328,45 @@ export async function onIngest(env: Env, projectId: string, envName: string, tra
   ).results;
   if (!rules.length) return;
 
+  // Ingest has a D1 query budget (50 per invocation on the free plan), so the new incidents go in multi-row inserts
+  // (one row per rule and payment; the NOT EXISTS keeps one firing incident per rule and payment).
   const inserts: D1PreparedStatement[] = [];
+  const rows = new Map<string, [string, string, string, string, string]>();
   for (const rule of rules.filter((r) => PER_PAYMENT.includes(r.type))) {
     for (const tr of transitions) {
       const summary = perPaymentMatch(rule, tr);
-      if (!summary) continue;
+      const k = `${rule.id}|${tr.payment.attempt_id}`;
+      if (!summary || rows.has(k)) continue;
       const ctx = JSON.stringify({ attempt_id: tr.payment.attempt_id, gateway: tr.payment.gateway, amount_paisa: tr.payment.amount_paisa, reason: tr.payment.last_reason, order_id: tr.payment.order_id });
-      inserts.push(
-        env.DB.prepare(
-          `INSERT INTO alert_incidents (id, rule_id, project_id, state, opened_at, last_notified_at, summary, context, attempt_id, env, pending)
-           SELECT ?, ?, ?, 'firing', ?, 0, ?, ?, ?, ?, 1 WHERE NOT EXISTS (SELECT 1 FROM alert_incidents WHERE rule_id = ? AND attempt_id = ? AND state = 'firing')`,
-        ).bind(newId("inc", t), rule.id, projectId, t, summary, ctx, tr.payment.attempt_id, envName, rule.id, tr.payment.attempt_id),
-      );
+      rows.set(k, [newId("inc", t), rule.id, summary, ctx, tr.payment.attempt_id]);
     }
   }
-  // A payment that ends up paid closes its payment_failed incident quietly.
-  for (const tr of transitions) {
-    if (tr.payment.status === "paid" && tr.old?.status !== "paid") {
-      inserts.push(
-        env.DB.prepare(
-          "UPDATE alert_incidents SET state = 'resolved', resolved_at = ?, pending = 0 WHERE project_id = ? AND attempt_id = ? AND state = 'firing' AND rule_id IN (SELECT id FROM alert_rules WHERE project_id = ? AND type = 'payment_failed')",
-        ).bind(t, projectId, tr.payment.attempt_id, projectId),
-      );
-    }
+  const list = [...rows.values()];
+  for (let i = 0; i < list.length; i += 19) {
+    const part = list.slice(i, i + 19);
+    inserts.push(
+      env.DB.prepare(
+        `INSERT INTO alert_incidents (id, rule_id, project_id, state, opened_at, last_notified_at, summary, context, attempt_id, env, pending)
+         SELECT v.column1, v.column2, ?1, 'firing', ?2, 0, v.column3, v.column4, v.column5, ?3, 1
+         FROM (VALUES ${part.map((_, k) => `(?${4 + k * 5}, ?${5 + k * 5}, ?${6 + k * 5}, ?${7 + k * 5}, ?${8 + k * 5})`).join(", ")}) AS v
+         WHERE NOT EXISTS (SELECT 1 FROM alert_incidents i WHERE i.rule_id = v.column2 AND i.attempt_id = v.column5 AND i.state = 'firing')`,
+      ).bind(projectId, t, envName, ...part.flat()),
+    );
+  }
+  // A payment that ends up paid closes its payment_failed incident quietly; a fulfilled one closes paid_not_fulfilled.
+  const paidNow = [...new Set(transitions.filter((tr) => tr.payment.status === "paid" && tr.old?.status !== "paid").map((tr) => tr.payment.attempt_id))];
+  const fulfilled = [...new Set(transitions.filter((tr) => tr.event.type === "payment.fulfilled").map((tr) => tr.payment.attempt_id))];
+  for (let i = 0; i < Math.max(paidNow.length, fulfilled.length); i += 45) {
+    const a = paidNow.slice(i, i + 45);
+    const b = fulfilled.slice(i, i + 45);
+    const inList = (n: number) => (n ? Array.from({ length: n }, () => "?").join(",") : "NULL");
+    inserts.push(
+      env.DB.prepare(
+        `UPDATE alert_incidents SET state = 'resolved', resolved_at = ?, pending = 0 WHERE project_id = ? AND state = 'firing' AND (
+           (attempt_id IN (${inList(a.length)}) AND rule_id IN (SELECT id FROM alert_rules WHERE project_id = ? AND type = 'payment_failed'))
+           OR (attempt_id IN (${inList(b.length)}) AND rule_id IN (SELECT id FROM alert_rules WHERE project_id = ? AND type = 'paid_not_fulfilled')))`,
+      ).bind(t, projectId, ...a, projectId, ...b, projectId),
+    );
   }
   if (inserts.length) await env.DB.batch(inserts);
 
@@ -390,17 +424,24 @@ export async function flushPending(env: Env, t = now(), projectId?: string): Pro
     const slot = await env.DB.prepare("INSERT OR IGNORE INTO notify_slots (channel_id, minute) VALUES (?, ?)").bind(chId, minute).run();
     if (!slot.meta.changes) continue;
     // Claim each incident for this channel, so an incident is never sent twice to the same channel.
-    const rowIds = owedIncs.map(() => newId("ntf", t));
-    const claims = await env.DB.batch(
-      owedIncs.map((i, k) =>
+    // Multi-row claims (48 per statement) keep the ingest path inside its D1 query budget.
+    const claimStmts: D1PreparedStatement[] = [];
+    for (let i = 0; i < owedIncs.length; i += 48) {
+      const part = owedIncs.slice(i, i + 48);
+      claimStmts.push(
         env.DB.prepare(
-          "INSERT INTO notifications (id, incident_id, channel_id, sent_at, ok, error) SELECT ?, ?, ?, ?, 0, 'sending' WHERE NOT EXISTS (SELECT 1 FROM notifications WHERE incident_id = ? AND channel_id = ?)",
-        ).bind(rowIds[k], i.id, chId, t, i.id, chId),
-      ),
-    );
+          `INSERT INTO notifications (id, incident_id, channel_id, sent_at, ok, error)
+           SELECT v.column1, v.column2, ?1, ?2, 0, 'sending' FROM (VALUES ${part.map((_, k) => `(?${3 + k * 2}, ?${4 + k * 2})`).join(", ")}) AS v
+           WHERE NOT EXISTS (SELECT 1 FROM notifications n WHERE n.incident_id = v.column2 AND n.channel_id = ?1)
+           RETURNING id, incident_id`,
+        ).bind(chId, t, ...part.flatMap((inc) => [newId("ntf", t), inc.id])),
+      );
+    }
+    const claims = (await env.DB.batch(claimStmts)).flatMap((r) => r.results as { id: string; incident_id: string }[]);
     owedIncs.forEach((i) => delivered.add(`${i.id}|${chId}`));
-    const incs = owedIncs.filter((_, k) => claims[k].meta.changes);
-    const claimed = rowIds.filter((_, k) => claims[k].meta.changes);
+    const claimedFor = new Set(claims.map((c) => c.incident_id));
+    const incs = owedIncs.filter((i) => claimedFor.has(i.id));
+    const claimed = claims.map((c) => c.id);
     if (!incs.length) {
       await env.DB.prepare("DELETE FROM notify_slots WHERE channel_id = ? AND minute = ?").bind(chId, minute).run();
       continue;
@@ -444,6 +485,17 @@ export async function runAlertCron(env: Env, t = now()): Promise<Record<string, 
       if (!ev) continue;
       const outcome = await applyEvaluation(env, rule, ev, t, true);
       counts[outcome] = (counts[outcome] ?? 0) + 1;
+    } catch (e) {
+      console.error(JSON.stringify({ msg: "rule evaluation failed", rule: rule.id, error: String(e) }));
+    }
+  }
+  const cronRules = (
+    await env.DB.prepare(`SELECT * FROM alert_rules WHERE enabled = 1 AND type IN (${CRON_PER_PAYMENT.map(() => "?").join(",")})`).bind(...CRON_PER_PAYMENT).all<RuleRow>()
+  ).results;
+  for (const rule of cronRules) {
+    try {
+      const opened = await openPaidNotFulfilled(env, rule, t);
+      if (opened) counts.opened_per_payment = (counts.opened_per_payment ?? 0) + opened;
     } catch (e) {
       console.error(JSON.stringify({ msg: "rule evaluation failed", rule: rule.id, error: String(e) }));
     }
