@@ -1,5 +1,5 @@
-import type { Env, Incident, Me, Page, Project } from "@paynp/shared";
-import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import type { Env, Incident, Me, Page, Project, RefundCase } from "@paynp/shared";
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { ApiFailure, api, errorMessage, items, onUnauthorized } from "../lib/api.ts";
 import { invalidate, useQuery } from "../lib/query.ts";
@@ -176,8 +176,8 @@ export function ProjectShell() {
   }, [p.data, env]);
 
   if (envParam !== "test" && envParam !== "live") return <Navigate to={`/p/${pid}/test/overview`} replace />;
-  // The dev server has no alerts, keys, members or sessions.
-  if (local && /^\/p\/[^/]+\/[^/]+\/(alerts|settings)(\/|$)/.test(loc.pathname)) return <Navigate to={`/p/${pid}/${env}/overview`} replace />;
+  // The dev server has no alerts, keys, members or sessions, and statements and exports need the cloud.
+  if (local && /^\/p\/[^/]+\/[^/]+\/(alerts|settings|reconcile|exports)(\/|$)/.test(loc.pathname)) return <Navigate to={`/p/${pid}/${env}/overview`} replace />;
   if (p.error instanceof ApiFailure && p.error.status === 404) return <ProjectGone />;
   if (!p.data) return <ShellFrame env={env} />;
   const org = me.orgs.find((o) => o.id === p.data!.org_id) ?? { id: p.data.org_id, name: "Organization", role: "viewer" as const };
@@ -482,17 +482,31 @@ function UserMenu() {
 
 function Tabs({ ctx }: { ctx: ProjectCtx }) {
   const firing = useQuery<Page<Incident>>(ctx.local ? null : `/api/projects/${ctx.project.id}/incidents?state=firing`, { refreshMs: 60_000 });
+  // Same key as the Refunds page (refundsKey there), so the badge and the page agree and share one request.
+  const refunds = useQuery<Page<RefundCase> & { open_count?: number }>(`/api/projects/${ctx.project.id}/refunds?env=${ctx.env}&limit=200`, { refreshMs: 60_000 });
   const n = items(firing.data).length;
-  const tabs: { to: string; label: string; extra?: ReactNode }[] = [
+  const open = refunds.data?.open_count ?? items(refunds.data).filter((c) => c.status === "open" || c.status === "requested" || c.status === "failed").length;
+  const nav = useRef<HTMLElement>(null);
+  const loc = useLocation();
+  // On a phone the tab strip scrolls; keep the current tab in view after navigating.
+  useEffect(() => {
+    nav.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [loc.pathname]);
+  const tabs: { to: string; label: string; extra?: ReactNode; cloud?: boolean }[] = [
     { to: "overview", label: "Overview" },
     { to: "payments", label: "Payments" },
     { to: "live", label: "Live", extra: <span className="live-dot" aria-hidden="true" /> },
     { to: "analytics", label: "Analytics" },
-    { to: "alerts", label: "Alerts", extra: n ? <span className="tag" style={{ background: "var(--tone-cream)", borderColor: "var(--tone-cream-line)", color: "var(--ink)" }} aria-label={`${n} firing`}>{n}</span> : null },
-    { to: "settings", label: "Settings" },
-  ].filter((t) => !ctx.local || (t.to !== "alerts" && t.to !== "settings"));
+    { to: "support", label: "Support" },
+    { to: "refunds", label: "Refunds", extra: open ? <span className="tab-count" aria-label={`${open} open`}>{open}</span> : null },
+    { to: "reconcile", label: "Reconcile", cloud: true },
+    { to: "exports", label: "Exports", cloud: true },
+    { to: "go-live", label: "Go-live" },
+    { to: "alerts", label: "Alerts", cloud: true, extra: n ? <span className="tab-count tab-count-warn" aria-label={`${n} firing`}>{n}</span> : null },
+    { to: "settings", label: "Settings", cloud: true },
+  ].filter((t) => !ctx.local || !t.cloud);
   return (
-    <nav className="tabs" aria-label="Project">
+    <nav className="tabs" aria-label="Project" ref={nav}>
       {tabs.map((t) => (
         <NavLink key={t.to} to={`${ctx.base}/${t.to}`} className="tab">
           {t.label}

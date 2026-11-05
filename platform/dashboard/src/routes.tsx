@@ -29,6 +29,11 @@ export function App() {
               <Route path="payments/:attempt" element={page(() => import("./pages/PaymentDetail.tsx"))} />
               <Route path="live" element={page(() => import("./pages/Live.tsx"))} />
               <Route path="analytics" element={page(() => import("./pages/Analytics.tsx"))} />
+              <Route path="support" element={page(() => import("./pages/Support.tsx"))} />
+              <Route path="refunds" element={page(() => import("./pages/Refunds.tsx"))} />
+              <Route path="reconcile" element={page(() => import("./pages/Reconcile.tsx"))} />
+              <Route path="exports" element={page(() => import("./pages/Exports.tsx"))} />
+              <Route path="go-live" element={page(() => import("./pages/GoLive.tsx"))} />
               <Route path="alerts" element={<Navigate to="rules" replace />} />
               <Route path="alerts/:tab" element={page(() => import("./pages/Alerts.tsx"))} />
               <Route path="settings" element={<Navigate to="general" replace />} />
