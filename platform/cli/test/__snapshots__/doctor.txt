@@ -1,0 +1,30 @@
+paynp doctor  /srv/shop
+
+Config and code  (.env.production)
+  CRITICAL  Gateway mode and credentials disagree  gateway_env_mismatch, .env.production
+            ESEWA_ENV=production, but ESEWA_PRODUCT_CODE=EPAYTEST is eSewa's public sandbox value.
+            fix: Put the production credentials from eSewa in .env.production, or set ESEWA_ENV=sandbox while testing.
+  CRITICAL  Return URL is not https in production config  http_return_url, .env.production
+            BASE_URL=http://shop.np is plain http in production config (.env.production is the production config). Gateways send the buyer back over it; some refuse http, and the callback can be changed in transit.
+            fix: Set BASE_URL to the public https URL of the site.
+  ok        Production config uses a live paynp key (or none here).
+  ok        No secret is exposed through NEXT_PUBLIC_, VITE_, PUBLIC_ or next.config env.
+  ok        No action route in the code (refunds and re-checks from the dashboard are off).
+  skipped   No blog gateway module or nepal-payments adapter import found.
+  skipped   Not a git repository.
+
+Live traffic  (project prj_shop, live env, https://paynp.discerns.app)
+  CRITICAL  Live payments are going to a sandbox gateway  sandbox_gateway_in_live
+            14 times, last 1h ago, gateway esewa, e.g. attempt att_01
+            Sandbox hosts (rc-epay.esewa.com.np, dev.khalti.com, dev-clientapi.fonepay.com, uat connectIPS) never move real money. Buyers see a test page or payments silently never settle.
+            fix: Set the gateway's production base URL and live credentials in the production environment (for example ESEWA_ENV=production), then redeploy.
+            docs: https://github.com/broisnees/nepal-payments-skill/blob/main/skills/nepal-payments/references/env.md
+  WARNING   No reconcile job  no_reconcile
+            1 time, last 1h ago
+            Live payments have been open for over an hour and nothing asked the gateway about them in the last 24 h. Buyers who paid but never returned stay unpaid.
+            fix: Run a reconcile job every few minutes that calls the status API for open attempts older than 5 minutes.
+            docs: https://github.com/broisnees/nepal-payments-skill/blob/main/skills/nepal-payments/references/architecture.md
+  ok        No bursts of failed signature checks.
+  skipped   Needs an hour of live traffic first.
+
+3 critical, 1 warning. Fix the critical ones before going live.
