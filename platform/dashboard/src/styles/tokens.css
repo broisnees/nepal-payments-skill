@@ -1,0 +1,172 @@
+/* Same tokens as website/src/styles/landing.css, plus the roles the dashboard adds (status, series, chart chrome).
+   Dark is declared twice on purpose: once for the OS setting, once for the toggle, so either can win. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --ink: #0a0a0a;
+  --text: #1f1f1f;
+  --muted: #5c5c5c;
+  --subtle: #8a8a8a;
+  --line: #e6e6e6;
+  --line-strong: #d6d6d6;
+  --hover: #f5f5f5;
+  --brand: #c8102e;
+  --on-ink: #ffffff;
+  --ink-hover: #262626;
+  --surface-2: #fafafa;
+  --overlay: rgb(10 10 10 / 0.24);
+
+  --panel: #0a0a0a;
+  --panel-2: #161616;
+  --panel-line: #232323;
+  --panel-text: #ededed;
+  --panel-muted: #8f8f8f;
+
+  --ok: #3ecf8e;
+  --ok-ink: #12804f;
+  --warn: #f2994a;
+  --warn-ink: #b54708;
+  --crit: #d03b3b;
+  --crit-ink: #b42318;
+
+  --tone-lavender: #f4f3fa;
+  --tone-lavender-line: #e2dff2;
+  --tone-sky: #ebf7fc;
+  --tone-sky-line: #cbe8f4;
+  --tone-rose: #fcf1f4;
+  --tone-rose-line: #f2d8e0;
+  --tone-mint: #ebfbe9;
+  --tone-mint-line: #c3ebc0;
+  --tone-slate: #f2f3f8;
+  --tone-slate-line: #dee1ec;
+  --tone-cream: #fbf8dc;
+  --tone-cream-line: #ece4a6;
+
+  /* Status marks (charts, dots). Text never wears these. */
+  --st-paid: #0ca30c;
+  --st-failed: #d03b3b;
+  --st-open: #e59a00;
+  --st-neutral: #a3a3a3;
+  --st-refunded: #2a78d6;
+
+  /* Gateway identity, validated all-pairs for CVD in both modes (dataviz validator). */
+  --series-1: #2a78d6;
+  --gw-esewa: #1baf7a;
+  --gw-khalti: #6250d6;
+  --gw-fonepay: #eb6834;
+  --gw-connectips: #2a78d6;
+  --gw-other: #8a8a8a;
+
+  --grid: #efefef;
+  --axis: #d6d6d6;
+
+  --font: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  --gutter: 16px;
+  --top: 48px;
+}
+
+@media (min-width: 720px) {
+  :root {
+    --gutter: 24px;
+  }
+}
+
+@media (min-width: 1200px) {
+  :root {
+    --gutter: 32px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0a0a0a;
+    --ink: #fafafa;
+    --text: #e5e5e5;
+    --muted: #a3a3a3;
+    --subtle: #737373;
+    --line: #232323;
+    --line-strong: #333333;
+    --hover: #161616;
+    --on-ink: #0a0a0a;
+    --ink-hover: #d4d4d4;
+    --surface-2: #121212;
+    --overlay: rgb(0 0 0 / 0.6);
+    --panel: #0f0f0f;
+    --panel-2: #141414;
+    --panel-line: #222222;
+    --ok-ink: #3ecf8e;
+    --warn-ink: #f2994a;
+    --crit-ink: #f07272;
+    --tone-lavender: #15131d;
+    --tone-lavender-line: #2a2640;
+    --tone-sky: #0e171c;
+    --tone-sky-line: #1c3440;
+    --tone-rose: #1c1216;
+    --tone-rose-line: #3b2430;
+    --tone-mint: #0e1a10;
+    --tone-mint-line: #1f3d24;
+    --tone-slate: #131419;
+    --tone-slate-line: #2a2c36;
+    --tone-cream: #1a180e;
+    --tone-cream-line: #3a361f;
+    --st-neutral: #6b6b6b;
+    --st-refunded: #3987e5;
+    --series-1: #3987e5;
+    --gw-esewa: #199e70;
+    --gw-khalti: #9085e9;
+    --gw-fonepay: #d95926;
+    --gw-connectips: #3987e5;
+    --gw-other: #737373;
+    --grid: #1a1a1a;
+    --axis: #2e2e2e;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --ink: #fafafa;
+  --text: #e5e5e5;
+  --muted: #a3a3a3;
+  --subtle: #737373;
+  --line: #232323;
+  --line-strong: #333333;
+  --hover: #161616;
+  --on-ink: #0a0a0a;
+  --ink-hover: #d4d4d4;
+  --surface-2: #121212;
+  --overlay: rgb(0 0 0 / 0.6);
+  --panel: #0f0f0f;
+  --panel-2: #141414;
+  --panel-line: #222222;
+  --ok-ink: #3ecf8e;
+  --warn-ink: #f2994a;
+  --crit-ink: #f07272;
+  --tone-lavender: #15131d;
+  --tone-lavender-line: #2a2640;
+  --tone-sky: #0e171c;
+  --tone-sky-line: #1c3440;
+  --tone-rose: #1c1216;
+  --tone-rose-line: #3b2430;
+  --tone-mint: #0e1a10;
+  --tone-mint-line: #1f3d24;
+  --tone-slate: #131419;
+  --tone-slate-line: #2a2c36;
+  --tone-cream: #1a180e;
+  --tone-cream-line: #3a361f;
+  --st-neutral: #6b6b6b;
+  --st-refunded: #3987e5;
+  --series-1: #3987e5;
+  --gw-esewa: #199e70;
+  --gw-khalti: #9085e9;
+  --gw-fonepay: #d95926;
+  --gw-connectips: #3987e5;
+  --gw-other: #737373;
+  --grid: #1a1a1a;
+  --axis: #2e2e2e;
+}
