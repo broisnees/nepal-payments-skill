@@ -286,3 +286,80 @@ class ImePayTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Regressions(unittest.TestCase):
+    """TODO.md correctness list; mirrors the "regressions" block in scripts/ts/test/adapters.test.ts."""
+    e = Esewa("sandbox", SANDBOX["product_code"], SANDBOX["secret_key"],
+              SANDBOX["intent_product_code"], SANDBOX["intent_access_key"])
+
+    def test_money_sign_and_strict_parse(self):
+        self.assertEqual([paisa_to_rupees(p) for p in (-5, -99, -100, -12345)], ["-0.05", "-0.99", "-1", "-123.45"])
+        for bad in ("1e3", "+5", "NaN", ""):
+            with self.assertRaises(ValueError):
+                rupees_to_paisa(bad)
+
+    def test_basic_auth_utf8(self):
+        from nepal_payments.core import basic_auth
+        self.assertEqual(basic_auth("ü", "पासवर्ड"), "Basic " + base64.b64encode("ü:पासवर्ड".encode()).decode())
+
+    def test_esewa_malformed_data_is_400(self):
+        for data in ("!!!!", base64.b64encode(b"not json").decode(), base64.b64encode(b"{").decode(),
+                     base64.b64encode(b"\xff\xfe").decode()):
+            with self.assertRaises(PaymentError) as cm:
+                self.e.verify("X", 1000, callback={"data": data})
+            self.assertEqual((cm.exception.code, cm.exception.http_status), ("malformed_callback", 400))
+
+    def test_esewa_error_bodies(self):
+        cases = [(resp({"code": 0, "errorMessage": "Service is currently unavailable"}, 503), "esewa_0"),
+                 (resp("<html>bad gateway</html>", 502), "http_502")]
+        for r, code in cases:
+            with mock.patch("nepal_payments.esewa.http", return_value=r):
+                with self.assertRaises(PaymentError) as cm:
+                    self.e.verify("X", 1000)
+            self.assertEqual(cm.exception.code, code)
+            if code == "esewa_0":
+                self.assertIn("Service is currently unavailable", str(cm.exception))
+        with mock.patch("nepal_payments.esewa.http", return_value=resp({"code": "IP-400", "error_message": "Invalid Signature"}, 400)):
+            with self.assertRaises(PaymentError) as cm:
+                self.e.intent_book("X", 10000, "https://c", "https://r")
+        self.assertEqual(cm.exception.code, "esewa_IP-400")
+        self.assertIn("Invalid Signature", str(cm.exception))
+
+    def test_esewa_order_id_from_callback_key_order(self):
+        self.assertEqual(Esewa.order_id_from_callback({"orderId": "A", "order_id": "B"}), "A")
+
+    def test_intent_callback_formats(self):
+        key = SANDBOX["intent_access_key"]
+        order = ["product_code", "amount", "reference_code", "status"]
+        names = ",".join(order)
+        base = {"product_code": "INTENT", "reference_code": "R1", "status": "SUCCESS"}
+        sig_exact = esewa_sign(key, {**base, "amount": "100.0"}, order)
+        raw = ('{"product_code":"INTENT","amount":100.0,"reference_code":"R1","status":"SUCCESS",'
+               f'"signed_field_names":"{names}","signature":"{sig_exact}"}}')
+        self.assertTrue(self.e.intent_callback_valid(raw))
+        self.assertTrue(self.e.intent_callback_valid(raw.encode()))
+        self.assertFalse(self.e.intent_callback_valid(json.loads(raw)))  # parsed: 100.0 signs as "100"
+        sig_js = esewa_sign(key, {**base, "amount": "100"}, order)
+        raw2 = raw.replace(sig_exact, sig_js)
+        self.assertTrue(self.e.intent_callback_valid(raw2))
+        self.assertTrue(self.e.intent_callback_valid(json.loads(raw2)))
+        sig_null = esewa_sign(key, {**base, "amount": ""}, order)
+        self.assertTrue(self.e.intent_callback_valid({**base, "amount": None, "signed_field_names": names, "signature": sig_null}))
+        self.assertFalse(self.e.intent_callback_valid(raw.replace("100.0", "1.0")))
+        self.assertFalse(self.e.intent_callback_valid("not json"))
+        self.assertFalse(self.e.intent_callback_valid("[1]"))
+
+    def test_nps_null_data_is_unknown(self):
+        n = Nps("sandbox", "9", "M", "u", "p", "s")
+        with mock.patch("nepal_payments.nps.http", return_value=resp({"code": "0", "message": "", "errors": [], "data": None})):
+            v = n.verify("T1", 10000)
+        self.assertEqual((v.status, v.amount_paisa), ("unknown", None))
+
+    def test_cybersource_empty_reference_number_falls_back(self):
+        cs = CyberSource("sandbox", "p", "a", "s")
+        p = {"decision": "ACCEPT", "reason_code": "100", "req_reference_number": "", "req_transaction_uuid": "T1",
+             "req_amount": "10.00", "req_currency": "NPR", "transaction_id": "X1"}
+        p["signed_field_names"] = ",".join([*p, "signed_field_names"])
+        p["signature"] = cybersource_sign("s", p)
+        self.assertEqual(cs.verify("T1", 1000, callback=p).status, "paid")
