@@ -1,0 +1,322 @@
+/* Starlight theme matching the landing page: Inter, ink accent, square corners, hairline borders. */
+:root {
+  --sl-font: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --sl-font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --sl-content-width: 46rem;
+  --sl-nav-height: 4rem;
+
+  /* dark */
+  --sl-color-accent-low: #262626;
+  --sl-color-accent: #ededed;
+  --sl-color-accent-high: #ffffff;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #ededed;
+  --sl-color-gray-2: #c7c7c7;
+  --sl-color-gray-3: #9a9a9a;
+  --sl-color-gray-4: #6b6b6b;
+  --sl-color-gray-5: #333333;
+  --sl-color-gray-6: #1a1a1a;
+  --sl-color-black: #0a0a0a;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #f2f2f2;
+  --sl-color-accent: #0a0a0a;
+  --sl-color-accent-high: #0a0a0a;
+  --sl-color-white: #0a0a0a;
+  --sl-color-gray-1: #1f1f1f;
+  --sl-color-gray-2: #3d3d3d;
+  --sl-color-gray-3: #5c5c5c;
+  --sl-color-gray-4: #8a8a8a;
+  --sl-color-gray-5: #e3e3e3;
+  --sl-color-gray-6: #f5f5f5;
+  --sl-color-gray-7: #fafafa;
+  --sl-color-black: #ffffff;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #ffffff;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.02em;
+}
+
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+[data-page-title] {
+  font-weight: 500;
+}
+
+.site-title {
+  color: var(--sl-color-white);
+  font-weight: 500;
+  font-size: var(--sl-text-lg);
+  letter-spacing: -0.015em;
+}
+
+/* square everything */
+.sl-markdown-content :not(pre) > code,
+starlight-tabs [role="tab"],
+.card,
+.sl-link-card,
+.starlight-aside,
+site-search button,
+dialog,
+.sidebar-content a[aria-current="page"],
+.sl-link-button,
+input,
+select {
+  border-radius: 0 !important;
+}
+
+.sl-markdown-content :not(pre) > code {
+  padding: 0.12em 0.4em;
+  border: 1px solid var(--sl-color-gray-5);
+  background: var(--sl-color-gray-6);
+  font-size: 0.85em;
+}
+
+/* sidebar: current page as an ink block */
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover {
+  background: var(--sl-color-white);
+  color: var(--sl-color-black);
+  font-weight: 450;
+}
+
+.sidebar-content .large {
+  font-weight: 500;
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-white);
+}
+
+/* links: ink with a quiet underline */
+.sl-markdown-content a:not(.sl-link-card a, .np-card) {
+  color: var(--sl-color-white);
+  text-decoration-color: var(--sl-color-gray-4);
+  text-underline-offset: 4px;
+}
+
+.sl-markdown-content a:not(.sl-link-card a, .np-card):hover {
+  text-decoration-color: var(--sl-color-white);
+}
+
+.sl-markdown-content table {
+  font-size: var(--sl-text-sm);
+}
+
+.sl-markdown-content blockquote {
+  border-inline-start: 2px solid var(--sl-color-white);
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-sm);
+}
+
+/* provider grid cards on docs pages */
+.np-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  border-top: 1px solid var(--sl-color-gray-5);
+  border-inline-start: 1px solid var(--sl-color-gray-5);
+}
+
+.np-card {
+  display: block;
+  padding: 1rem 1.1rem;
+  border-inline-end: 1px solid var(--sl-color-gray-5);
+  border-bottom: 1px solid var(--sl-color-gray-5);
+  text-decoration: none;
+  color: var(--sl-color-gray-3);
+  transition-property: background-color;
+  transition-duration: 150ms;
+}
+
+a.np-card:hover {
+  background: var(--sl-color-gray-6);
+}
+
+.np-card strong {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--sl-color-white);
+  font-weight: 500;
+}
+
+.np-card span {
+  font-size: var(--sl-text-sm);
+}
+
+.np-grid + * {
+  margin-top: 1.5rem;
+}
+
+/* Code: no ligatures, so === and != read exactly as typed. */
+.expressive-code pre,
+.sl-markdown-content code {
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+
+/* Build-time SVG diagrams (scripts/diagrams.mjs). */
+.np-diagram {
+  --d-ink: #171717;
+  --d-muted: #6b6b6b;
+  --d-line: #3d3d3d;
+  --d-reply: #8a8a8a;
+  --d-life: #d4d4d4;
+  --d-box: #ffffff;
+  --d-box-line: #d4d4d4;
+  --d-note: #f5f5f5;
+  --d-good: #e9f9ef;
+  --d-good-line: #8fd6ad;
+  --d-bad: #fdf0f0;
+  --d-bad-line: #efb3b3;
+  margin: 1.5rem 0;
+  border: 1px solid var(--sl-color-gray-5);
+  background: var(--sl-color-gray-7, var(--sl-color-gray-6));
+}
+
+:root[data-theme="dark"] .np-diagram {
+  --d-ink: #ededed;
+  --d-muted: #9a9a9a;
+  --d-line: #c7c7c7;
+  --d-reply: #7a7a7a;
+  --d-life: #3a3a3a;
+  --d-box: #1a1a1a;
+  --d-box-line: #3a3a3a;
+  --d-note: #242424;
+  --d-good: #0f2a1c;
+  --d-good-line: #2f7a52;
+  --d-bad: #2e1414;
+  --d-bad-line: #7a3434;
+}
+
+.np-diagram-scroll {
+  overflow-x: auto;
+  padding: 0.75rem;
+}
+
+.np-diagram svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-inline: auto;
+  font-family: var(--sl-font);
+  font-size: 13px;
+}
+
+/* Phones: keep the diagram legible and let it scroll sideways instead of shrinking. */
+@media (max-width: 50rem) {
+  .np-diagram svg {
+    min-width: var(--d-min);
+  }
+}
+
+.np-diagram figcaption {
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--sl-color-gray-5);
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-gray-3);
+}
+
+.np-diagram .d-life {
+  stroke: var(--d-life);
+  stroke-dasharray: 4 4;
+}
+
+.np-diagram .d-actor,
+.np-diagram .d-state {
+  fill: var(--d-box);
+  stroke: var(--d-box-line);
+}
+
+.np-diagram .d-good {
+  fill: var(--d-good);
+  stroke: var(--d-good-line);
+}
+
+.np-diagram .d-bad {
+  fill: var(--d-bad);
+  stroke: var(--d-bad-line);
+}
+
+.np-diagram .d-actor-t,
+.np-diagram .d-state-t {
+  fill: var(--d-ink);
+  font-weight: 600;
+}
+
+.np-diagram .d-state-sub,
+.np-diagram .d-small,
+.np-diagram .d-num {
+  fill: var(--d-muted);
+  font-size: 11.5px;
+}
+
+.np-diagram .d-num {
+  font-family: var(--sl-font-mono);
+  font-size: 10.5px;
+}
+
+.np-diagram .d-msg {
+  stroke: var(--d-line);
+  stroke-width: 1.4;
+}
+
+.np-diagram .d-reply {
+  stroke: var(--d-reply);
+  stroke-width: 1.4;
+  stroke-dasharray: 5 4;
+}
+
+.np-diagram .d-head {
+  fill: var(--d-line);
+}
+
+.np-diagram .d-head-reply {
+  fill: var(--d-reply);
+}
+
+.np-diagram .d-label,
+.np-diagram .d-note-t {
+  fill: var(--d-ink);
+}
+
+.np-diagram .d-note {
+  fill: var(--d-note);
+  stroke: var(--d-box-line);
+}
+
+.np-diagram .d-code {
+  font-family: var(--sl-font-mono);
+  font-size: 12px;
+}
+
+
+/* Same as the landing page and blog: reserve the scrollbar's width so the layout never shifts between pages. */
+html {
+  scrollbar-gutter: stable;
+}
+
+/* Line the docs header and sidebar up with the landing page and blog: same edge padding at every breakpoint
+   (16, 32 and 48 px, landing.css --gutter). */
+:root {
+  --sl-nav-pad-x: 16px;
+  --sl-sidebar-pad-x: 16px;
+}
+
+@media (min-width: 720px) {
+  :root {
+    --sl-nav-pad-x: 32px;
+    --sl-sidebar-pad-x: 32px;
+  }
+}
+
+@media (min-width: 1200px) {
+  :root {
+    --sl-nav-pad-x: 48px;
+    --sl-sidebar-pad-x: 48px;
+  }
+}
