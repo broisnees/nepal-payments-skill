@@ -1,18 +1,22 @@
 // Plans the edits that wire paynp into a JS/TS app. Nothing is written here: the plan holds the
 // before and after text of every file, `applyPlan` writes them.
 import MagicString from "magic-string";
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, relative, sep } from "node:path";
 import type { StackId } from "../stacks.ts";
 import { exportedNames, hasMultilineTemplate, indentAt, lastImport, lineStart, parseFile, styleOf, walk, type t } from "./ast.ts";
 import { dirtyFiles, insideProject, readAliases, resolveSpec, sourceFiles, type Aliases } from "./files.ts";
-import { GATEWAY_NAMES, MARKER, adapterFile, gatewayFile, type Style } from "./templates.ts";
+import { GATEWAY_NAMES, MARKER, actionsFile, adapterFile, gatewayFile, nextActionRoute, type Style } from "./templates.ts";
 
 export const GATEWAY_IDS = Object.keys(GATEWAY_NAMES);
 const ADAPTER_PACKAGE = "nepal-payments";
 const WRAPPED = new Set([...GATEWAY_IDS, "createPayments"]);
 const HANDLERS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 const PAYNP_EXTS = [".ts", ".mts", ".tsx", ".js", ".mjs", ".jsx"];
+const SOURCE_EXT = /\.[cm]?[jt]sx?$/;
+/** Code that already serves paynp actions. */
+export const ACTION_ROUTE = /\b(?:nodeActionHandler|actionHandler)\s*\(|["'`]\/paynp\/actions["'`]/;
+export const ACTION_PATH = "/paynp/actions";
 
 export interface Change {
   file: string;
@@ -34,6 +38,8 @@ export interface Plan {
 export interface PlanOptions {
   stack: StackId;
   force?: boolean;
+  /** Files this run of init just wrote: their uncommitted changes are init's own, so they stay editable. */
+  wrote?: string[];
 }
 
 type Serverless = { kind: "next"; after: boolean } | { kind: "workers"; hono: boolean } | null;
@@ -54,12 +60,21 @@ class Project {
   readonly cwd: string;
   readonly opts: PlanOptions;
 
-  constructor(cwd: string, opts: PlanOptions) {
+  /** Text of files as another plan leaves them (path -> text), for a plan that builds on one not yet written. */
+  private readonly overlay: Map<string, string>;
+
+  constructor(cwd: string, opts: PlanOptions, overlay = new Map<string, string>()) {
     this.cwd = cwd;
     this.opts = opts;
-    this.files = sourceFiles(cwd);
+    this.overlay = overlay;
+    const onDisk = sourceFiles(cwd);
+    this.files = [...new Set([...onDisk, ...[...overlay.keys()].filter((f) => SOURCE_EXT.test(f))])].sort();
     this.aliases = readAliases(cwd);
     this.dirty = dirtyFiles(cwd);
+  }
+
+  exists(f: string): boolean {
+    return this.overlay.has(f) || existsSync(f);
   }
 
   rel(f: string): string {
@@ -69,7 +84,7 @@ class Project {
   text(f: string): string {
     let s = this.texts.get(f);
     if (s === undefined) {
-      s = readFileSync(f, "utf8");
+      s = this.overlay.get(f) ?? readFileSync(f, "utf8");
       this.texts.set(f, s);
     }
     return s;
@@ -81,7 +96,16 @@ class Project {
   }
 
   resolve(from: string, spec: string): string | null {
-    return resolveSpec(from, spec, this.aliases);
+    const hit = resolveSpec(from, spec, this.aliases);
+    if (hit || !this.overlay.size) return hit;
+    // A file the base plan creates (paynp.ts) is not on disk yet.
+    let base: string | null = null;
+    if (spec.startsWith("./") || spec.startsWith("../")) base = join(dirname(from), spec);
+    else for (const [prefix, targets] of this.aliases.paths) if (spec.startsWith(prefix) && targets[0] !== undefined) base = join(this.aliases.baseUrl, targets[0] + spec.slice(prefix.length));
+    if (!base) return null;
+    const stemmed = base.replace(/\.[cm]?js$/, "");
+    for (const f of this.overlay.keys()) if (f === base || f.replace(/\.[cm]?[jt]sx?$/, "") === stemmed) return f;
+    return null;
   }
 
   /** May this file be edited? Records why not. */
@@ -91,7 +115,7 @@ class Project {
       this.skippedFiles.set(f, "outside the project");
       return false;
     }
-    if (!this.opts.force && this.dirty && existsSync(f) && this.dirty.has(realpathSync(f))) {
+    if (!this.opts.force && !this.overlay.has(f) && !this.opts.wrote?.includes(f) && this.dirty && existsSync(f) && this.dirty.has(realpathSync(f))) {
       this.skippedFiles.set(f, "has uncommitted changes (commit or stash them, or rerun with --force)");
       return false;
     }
@@ -703,5 +727,193 @@ export function applyPlan(cwd: string, plan: Plan): void {
     if (c.before !== null && readFileSync(c.file, "utf8") !== c.before) throw new Error(`${c.rel} changed while init was running; run it again`);
     if (c.before === null && existsSync(c.file)) throw new Error(`${c.rel} appeared while init was running; run it again`);
   }
-  for (const c of plan.changes) writeFileSync(c.file, c.after);
+  for (const c of plan.changes) {
+    if (c.before === null) mkdirSync(dirname(c.file), { recursive: true });
+    writeFileSync(c.file, c.after);
+  }
+}
+
+// ---------------------------------------------------------------- action route (opt-in)
+
+/** "./paynp-actions" from `fromFile` to `toFile`, extension style copied from `like` (an import spec in the app). */
+function specFrom(fromFile: string, toFile: string, like: string): string {
+  let r = relative(dirname(fromFile), toFile).split(sep).join("/");
+  if (!r.startsWith(".")) r = "./" + r;
+  const base = r.slice(0, -extname(r).length);
+  const ext = /\.([cm]?[jt]sx?)$/.exec(like)?.[1];
+  if (!ext) return base;
+  return base + (ext.endsWith("ts") || ext.endsWith("tsx") ? extname(toFile) : extname(toFile).replace(/ts(x?)$/, "js$1"));
+}
+
+/** "@/paynp" when the app imports through a "@/" alias that maps to the project root, else a relative spec. */
+function aliasOrRel(p: Project, fromFile: string, toFile: string, like: string): string {
+  if (like.startsWith("@/")) {
+    const root = p.aliases.paths.find(([prefix, targets]) => prefix === "@/" && targets.some((t) => join(p.aliases.baseUrl, t) === join(p.cwd, "/") || join(p.aliases.baseUrl, t) === p.cwd));
+    if (root) return "@/" + p.rel(toFile).replace(/\.[cm]?[jt]sx?$/, "");
+  }
+  return specFrom(fromFile, toFile, like);
+}
+
+/** The exported function `name` and its file, if exactly one file has it. */
+function exporter(p: Project, name: string): string | null {
+  const hits = p.files.filter((f) => !isPaynpFile(f) && p.text(f).includes(name) && (p.ast(f) ? exportedNames(p.ast(f)!).has(name) : false));
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/** The top-level `const app = express() | Fastify() | new Hono()` in a file. */
+function appDecl(p: Project, f: string, stack: StackId): { decl: t.Statement; name: string; express?: string } | null {
+  const ast = p.ast(f);
+  if (!ast) return null;
+  const defaultImport = (pkg: string) => {
+    for (const s of ast.program.body) {
+      if (s.type === "ImportDeclaration" && s.source.value === pkg) {
+        const d = s.specifiers.find((sp) => sp.type === "ImportDefaultSpecifier");
+        if (d) return d.local.name;
+      }
+    }
+    return null;
+  };
+  const factory = stack === "express" ? defaultImport("express") : stack === "fastify" ? defaultImport("fastify") : null;
+  for (const s of ast.program.body) {
+    const d = s.type === "ExportNamedDeclaration" ? s.declaration : s;
+    if (d?.type !== "VariableDeclaration") continue;
+    for (const v of d.declarations) {
+      if (v.id.type !== "Identifier" || !v.init) continue;
+      const init = v.init;
+      if (stack === "hono" && init.type === "NewExpression" && init.callee.type === "Identifier" && init.callee.name === "Hono") return { decl: s, name: v.id.name };
+      if (factory && init.type === "CallExpression" && init.callee.type === "Identifier" && init.callee.name === factory) {
+        return { decl: s, name: v.id.name, express: stack === "express" ? factory : undefined };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Plans the opt-in action route: paynp-actions.ts next to the paynp file (recheck wired to the app's own
+ * confirm + settle, refund left as a comment), and a POST /paynp/actions route in the app. `base` is a wiring
+ * plan that is not written yet; this plan then applies on top of it.
+ */
+export function planActionRoute(cwd: string, opts: PlanOptions, base?: Plan): Plan {
+  const overlay = new Map((base?.changes ?? []).map((c) => [c.file, c.after]));
+  const p = new Project(cwd, opts, overlay);
+  const route = p.files.find((f) => !isPaynpFile(f) && !/paynp-actions\.[cm]?[jt]sx?$/.test(f) && ACTION_ROUTE.test(p.text(f)));
+  if (route) {
+    p.found = true;
+    p.already.add(p.rel(route));
+    return p.plan();
+  }
+  const paynpFiles = p.files.filter((f) => isPaynpFile(f) && wrappedIn(p, f).length);
+  if (!paynpFiles.length) {
+    if (p.files.some((f) => isPaynpFile(f) && p.text(f).includes("wrapAdapter"))) {
+      p.found = true;
+      p.manual.push(`Action route: for the nepal-payments adapters, add it by hand: \`paynp.actionHandler({ recheck, refund })\` on POST ${ACTION_PATH} (see the @paynp/sdk README).`);
+    }
+    return p.plan();
+  }
+  p.found = true;
+  if (paynpFiles.length > 1) {
+    p.manual.push(`Action route: several paynp files (${paynpFiles.map((f) => p.rel(f)).join(", ")}). Add POST ${ACTION_PATH} by hand (see the @paynp/sdk README).`);
+    return p.plan();
+  }
+  const paynpFile = paynpFiles[0];
+  const ids = wrappedIn(p, paynpFile);
+  if (ids.length !== 1) {
+    p.manual.push(`Action route: ${p.rel(paynpFile)} wraps ${ids.join(", ")}; a recheck has to pick the module by \`a.gateway\`. Add POST ${ACTION_PATH} by hand (see the @paynp/sdk README).`);
+    return p.plan();
+  }
+  const gid = ids[0];
+  const exportName = exportedNames(p.ast(paynpFile)!).has("gateway") ? "gateway" : gid;
+  const actionsPath = join(dirname(paynpFile), `paynp-actions${extname(paynpFile)}`);
+  if (p.exists(actionsPath)) {
+    p.manual.push(`${p.rel(actionsPath)} exists but no route uses it. Add POST ${ACTION_PATH} with \`paynp.actionHandler(actions)\`.`);
+    return p.plan();
+  }
+  // The spec style the paynp file uses for the gateway module: "./esewa", "./esewa.js" or "./esewa.ts".
+  const gwSpec = /from\s+["'](\.[^"']+)["']/.exec(p.text(paynpFile))?.[1] ?? "./x";
+  const sl = serverless(p);
+  const style = styleFor(p, paynpFile, sl?.kind === "workers");
+  const settleFile = exporter(p, "settle");
+  const storeFile = exporter(p, "getAttempt");
+  const both = settleFile && storeFile;
+
+  // Where the route goes, before anything is created: no route means no actions file either.
+  const stack = opts.stack;
+  if (stack === "nextjs") {
+    const routes = p.files.filter((f) => isRouteFile(p.rel(f)));
+    const appDir = routes.length ? p.rel(routes[0]).replace(/(^|\/)app\/.*$/, "$1app") : existsSync(join(cwd, "src", "app")) ? "src/app" : existsSync(join(cwd, "app")) ? "app" : null;
+    if (!appDir) {
+      p.manual.push(`Action route: no app/ directory found. Add app/paynp/actions/route.ts with \`export const POST = paynp.actionHandler(actions)\`.`);
+      return p.plan();
+    }
+    const routeFile = join(cwd, appDir, "paynp", "actions", `route${extname(paynpFile) === ".js" ? ".js" : ".ts"}`);
+    if (!p.editable(routeFile)) return p.plan();
+    const like = routes.length ? (/from\s+["'](@\/[^"']+|\.[^"']+)["']/.exec(p.text(routes[0]))?.[1] ?? "./x") : "./x";
+    p.create(routeFile, nextActionRoute(style, aliasOrRel(p, routeFile, paynpFile, like), aliasOrRel(p, routeFile, actionsPath, like)), `POST ${ACTION_PATH}: refunds and re-checks from the dashboard`);
+  } else if (stack === "express" || stack === "fastify" || stack === "hono") {
+    const candidates = p.files.filter((f) => !isPaynpFile(f) && appDecl(p, f, stack));
+    const server = candidates.find((f) => p.text(f).includes("paynp")) ?? candidates[0];
+    if (!server) {
+      p.manual.push(`Action route: no top-level \`const app = ${stack === "hono" ? "new Hono()" : stack === "fastify" ? "Fastify()" : "express()"}\` found. Add POST ${ACTION_PATH} by hand (see the @paynp/sdk README).`);
+      return p.plan();
+    }
+    if (!p.editable(server)) return p.plan();
+    const code = p.text(server);
+    const ast = p.ast(server)!;
+    const app = appDecl(p, server, stack)!;
+    const { q, semi } = styleOf(code, ast);
+    const ms = p.edit(server, `adds POST ${ACTION_PATH} for refunds and re-checks from the dashboard`);
+    const comment = "// Refunds and re-checks from the paynp dashboard, signed with PAYNP_ACTION_SECRET.";
+    let line: string;
+    if (stack === "express") {
+      const raw = app.express ? `${app.express}.raw({ type: ${q}application/json${q} }), ` : "";
+      line = `${app.name}.post(${q}${ACTION_PATH}${q}, ${raw}paynp.nodeActionHandler(actions))${semi}`;
+    } else if (stack === "fastify") {
+      line = `${app.name}.post(${q}${ACTION_PATH}${q}, paynp.nodeActionHandler(actions))${semi}`;
+    } else if (sl?.kind === "workers") {
+      const env = style.ts ? `(c.env as { PAYNP_ACTION_SECRET?: string })` : "c.env";
+      line = `${app.name}.post(${q}${ACTION_PATH}${q}, (c) => paynp.actionHandler({ ...actions, secret: ${env}.PAYNP_ACTION_SECRET })(c.req.raw))${semi}`;
+    } else {
+      line = `${app.name}.post(${q}${ACTION_PATH}${q}, (c) => paynp.actionHandler(actions)(c.req.raw))${semi}`;
+    }
+    // Right after the app is created. On Hono, after the waitUntil middleware init may have added there.
+    let at = app.decl.end!;
+    if (stack === "hono") {
+      const next = ast.program.body[ast.program.body.indexOf(app.decl) + 1];
+      if (next && code.slice(next.start!, next.end!).includes(".flush()") && code.slice(next.start!, next.end!).startsWith(`${app.name}.use(`)) at = next.end!;
+    }
+    ms.appendLeft(at, `\n\n${comment}\n${line}`);
+    // imports: paynp from the paynp file, actions from paynp-actions
+    const paynpImport = ast.program.body.find((s): s is t.ImportDeclaration => s.type === "ImportDeclaration" && s.importKind !== "type" && p.resolve(server, s.source.value) === paynpFile);
+    const likeSpec = paynpImport?.source.value ?? gwSpec;
+    const imports: string[] = [];
+    if (paynpImport) {
+      const named = paynpImport.specifiers.filter((sp): sp is t.ImportSpecifier => sp.type === "ImportSpecifier");
+      if (!named.some((sp) => sp.local.name === "paynp")) {
+        if (named.length) ms.appendLeft(named[named.length - 1].end!, ", paynp");
+        else imports.push(`import { paynp } from ${q}${likeSpec}${q}${semi}`);
+      }
+    } else imports.push(`import { paynp } from ${q}${specFrom(server, paynpFile, likeSpec)}${q}${semi}`);
+    imports.push(`import { actions } from ${q}${specFrom(server, actionsPath, likeSpec)}${q}${semi}`);
+    const last = lastImport(ast);
+    if (last) ms.appendLeft(last.end!, `\n${imports.join("\n")}`);
+    else ms.prependLeft(0, `${imports.join("\n")}\n`);
+  } else {
+    p.manual.push(`Action route: add POST ${ACTION_PATH} to the server with \`paynp.nodeActionHandler(actions)\` (Node http) or \`paynp.actionHandler(actions)\` (Fetch API). See the @paynp/sdk README.`);
+    return p.plan();
+  }
+
+  if (!p.editable(actionsPath)) return p.plan();
+  p.create(
+    actionsPath,
+    actionsFile(style, {
+      gateway: gid,
+      gatewaySpec: specFrom(actionsPath, paynpFile, gwSpec),
+      exportName,
+      settle: both ? { spec: specFrom(actionsPath, settleFile, gwSpec) } : undefined,
+      store: both ? { spec: specFrom(actionsPath, storeFile, gwSpec) } : undefined,
+    }),
+    `the recheck (and refund) callbacks the action route runs`,
+  );
+  return p.plan();
 }

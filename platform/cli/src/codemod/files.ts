@@ -51,7 +51,10 @@ export function insideProject(cwd: string, p: string): boolean {
     if (!existsSync(cur)) break;
     if (lstatSync(cur).isSymbolicLink()) return false;
   }
-  const parent = realpathSync(existsSync(abs) ? abs : dirname(abs));
+  // A file in folders that don't exist yet (app/paynp/actions/route.ts): judge by the nearest existing folder.
+  let near = existsSync(abs) ? abs : dirname(abs);
+  while (!existsSync(near) && dirname(near) !== near) near = dirname(near);
+  const parent = realpathSync(near);
   return parent === root || parent.startsWith(root + sep);
 }
 

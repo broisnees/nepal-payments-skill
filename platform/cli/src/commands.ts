@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { basename, join } from "node:path";
 import type { LiveMessage, Project } from "../../shared/src/api.ts";
@@ -10,12 +10,13 @@ import { readCredentials, readLink, writeCredentials, writeLink, type ProjectLin
 import { addToEnvFile, ensureGitignored, readEnvFile } from "./envfile.ts";
 import { formatEvent } from "./format.ts";
 import { colorDiff, unifiedDiff } from "./codemod/diff.ts";
-import { applyPlan, planWiring } from "./codemod/plan.ts";
+import { ACTION_PATH, applyPlan, planActionRoute, planWiring, type Plan } from "./codemod/plan.ts";
 import { detectGateway, detectStack, envHint, snippet, type Stack } from "./stacks.ts";
 import { syntheticEsewaTrace } from "../../shared/src/synthetic.ts";
 import { VERSION } from "./version.ts";
 import { choose, openBrowser, paint, type Io } from "./ui.ts";
 import { connect } from "./ws.ts";
+import { doctorJson, renderDoctor, runDoctor } from "./doctor/index.ts";
 
 export type Flags = Record<string, string | boolean | undefined>;
 
@@ -29,6 +30,13 @@ export interface Ctx {
 }
 
 export class CliError extends Error {}
+
+/** Ends the command with this exit code and no error message (the command already printed why). */
+export class ExitCode extends Error {
+  constructor(readonly code: number) {
+    super(`exit ${code}`);
+  }
+}
 
 const sleep = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve) => {
@@ -300,6 +308,7 @@ async function wire(ctx: Ctx, stack: Stack, gateway: string): Promise<void> {
     }
     list("Not edited:", skipped);
     list("Still to do by hand:", plan.manual);
+    if (plan.found) await offerActions(ctx, stack);
     return outro();
   }
 
@@ -331,7 +340,93 @@ async function wire(ctx: Ctx, stack: Stack, gateway: string): Promise<void> {
     for (const ch of plan.changes) io.out(`  ${ch.before === null ? "created" : "edited "} ${ch.rel}: ${ch.what.join("; ")}`);
   }
   list("Still to do by hand:", plan.manual);
+  // The action route builds on the wiring: offered once that is in place (or, in a dry run, on top of its diff).
+  if (apply || dry) await offerActions(ctx, stack, dry ? { base: plan } : { wrote: plan.changes.map((ch) => ch.file) });
   outro();
+}
+
+const ACTION_SECRET_LINES = [
+  "# Refunds and re-checks from the paynp dashboard. Copy the secret from Settings, Action endpoint (shown once).",
+  `# Until it is set, ${ACTION_PATH} answers 500 and nothing runs.`,
+  "PAYNP_ACTION_SECRET=",
+];
+
+/**
+ * Opt-in: the POST /paynp/actions route the dashboard's Re-check and Send refund buttons call. Shown as a diff;
+ * asked separately (default no). --actions says yes, --no-actions skips it, --yes alone leaves it out with a hint.
+ */
+async function offerActions(ctx: Ctx, stack: Stack, from: { base?: Plan; wrote?: string[] } = {}): Promise<void> {
+  const io = ctx.io;
+  if (ctx.flags["no-actions"]) return;
+  const dry = !!ctx.flags["dry-run"];
+  const plan = planActionRoute(ctx.cwd, { stack: stack.id, force: !!ctx.flags.force, wrote: from.wrote }, from.base);
+  if (!plan.changes.length) {
+    if (plan.manual.length && (ctx.flags.actions || dry || io.interactive)) {
+      io.out("");
+      io.out(c(ctx, "bold", "Refunds and re-checks from the dashboard:"));
+      for (const m of plan.manual) io.out(`  - ${m}`);
+    }
+    return;
+  }
+  const envPath = join(ctx.cwd, ".env");
+  const hasSecretLine = Object.hasOwn(readEnvFile(envPath).values, "PAYNP_ACTION_SECRET");
+  const show = () => {
+    io.out("");
+    io.out(c(ctx, "bold", `Optional: a route for refunds and re-checks from the dashboard (POST ${ACTION_PATH})`));
+    io.out(c(ctx, "gray", "paynp never holds gateway keys: the dashboard sends a signed request here and this server acts with its own."));
+    for (const ch of plan.changes) {
+      io.out("");
+      io.out(colorDiff(unifiedDiff(ch.rel, ch.before, ch.after), io.color));
+    }
+    if (!hasSecretLine) {
+      io.out("");
+      io.out(colorDiff(unifiedDiff(".env", null, ACTION_SECRET_LINES.join("\n") + "\n").replace("--- /dev/null", "--- a/.env").replace("+++ b/.env", "+++ b/.env (appended)"), io.color));
+    }
+  };
+  if (dry) {
+    show();
+    io.out("");
+    io.out(`Dry run: nothing written. ${NAME} init --actions adds this route.`);
+    return;
+  }
+  let apply = !!ctx.flags.actions;
+  if (!apply && io.interactive && !ctx.flags.yes) {
+    show();
+    io.out("");
+    const a = await io.ask(`Add the ${ACTION_PATH} route? [y/N] `);
+    apply = /^y(es)?$/i.test(a);
+  } else if (!apply) {
+    io.out("");
+    io.out(`Refunds and re-checks from the dashboard: rerun ${c(ctx, "bold", `${NAME} init --actions`)} to add the ${ACTION_PATH} route (shown as a diff first with ${NAME} init --dry-run).`);
+    return;
+  } else show();
+  if (!apply) {
+    io.out(`Left it out. ${NAME} init --actions adds it later.`);
+    return;
+  }
+  applyPlan(ctx.cwd, plan);
+  if (!hasSecretLine) {
+    const text = readEnvFile(envPath).text;
+    writeFileSync(envPath, `${text}${text && !text.endsWith("\n") ? "\n" : ""}${ACTION_SECRET_LINES.join("\n")}\n`, { mode: 0o600 });
+  }
+  io.out("");
+  io.out(c(ctx, "green", `Added the action route:`));
+  for (const ch of plan.changes) io.out(`  ${ch.before === null ? "created" : "edited "} ${ch.rel}: ${ch.what.join("; ")}`);
+  if (!hasSecretLine) io.out("  edited  .env: PAYNP_ACTION_SECRET placeholder");
+  list(ctx, "Still to do by hand:", plan.manual);
+  const workers = existsSync(join(ctx.cwd, "wrangler.toml")) || existsSync(join(ctx.cwd, "wrangler.json")) || existsSync(join(ctx.cwd, "wrangler.jsonc"));
+  io.out("");
+  io.out(c(ctx, "bold", "To turn it on:"));
+  io.out(`  1. Deploy, then in the dashboard open Settings, Action endpoint and enter https://<your site>${ACTION_PATH}.`);
+  io.out(`  2. Copy the secret it shows once into PAYNP_ACTION_SECRET${workers ? " (wrangler secret put PAYNP_ACTION_SECRET)" : " on the server (and in .env to try it locally)"}.`);
+  io.out(`  3. Press Test. ${NAME} doctor warns while the route has no secret.`);
+}
+
+function list(ctx: Ctx, title: string, items: string[]): void {
+  if (!items.length) return;
+  ctx.io.out("");
+  ctx.io.out(c(ctx, "bold", title));
+  for (const i of items) ctx.io.out(`  - ${i}`);
 }
 
 // ---------------------------------------------------------------- tail
@@ -468,4 +563,12 @@ export async function open(ctx: Ctx): Promise<void> {
   const url = link ? `${dashboard(ctx)}/p/${encodeURIComponent(link.project)}/${env}/overview` : `${dashboard(ctx)}/`;
   const opened = !ctx.flags["no-browser"] && openBrowser(url);
   ctx.io.out(opened ? `Opened ${url}` : url);
+}
+
+// ---------------------------------------------------------------- doctor
+
+export async function doctor(ctx: Ctx): Promise<void> {
+  const r = await runDoctor(ctx);
+  ctx.io.out(ctx.flags.json ? JSON.stringify(doctorJson(r), null, 2) : renderDoctor(r, { color: ctx.io.color, cwd: ctx.cwd, endpoint: ctx.endpoint }));
+  if (r.critical) throw new ExitCode(1);
 }

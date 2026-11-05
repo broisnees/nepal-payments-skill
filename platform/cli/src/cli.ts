@@ -1,11 +1,11 @@
 import { NAME } from "../../shared/src/brand.ts";
-import { CliError, init, keys, login, logout, open, tail, test, type Ctx, type Flags } from "./commands.ts";
+import { CliError, ExitCode, doctor, init, keys, login, logout, open, tail, test, type Ctx, type Flags } from "./commands.ts";
 import { resolveEndpoint } from "./config.ts";
 import { dev } from "./dev/index.ts";
 import { defaultIo, type Io } from "./ui.ts";
 import { VERSION } from "./version.ts";
 
-const BOOLEAN = new Set(["yes", "y", "json", "no-browser", "skip-install", "help", "h", "version", "v", "live", "new-key", "create", "fresh", "open", "quiet", "memory", "dry-run", "force"]);
+const BOOLEAN = new Set(["yes", "y", "json", "no-browser", "skip-install", "help", "h", "version", "v", "live", "new-key", "create", "fresh", "open", "quiet", "memory", "dry-run", "force", "local", "actions", "no-actions"]);
 
 export function parseArgs(argv: string[]): { args: string[]; flags: Flags } {
   const args: string[] = [];
@@ -46,6 +46,9 @@ Usage: ${NAME} <command> [options]
   keys create        New key                                --env test|live  --name <name>
   keys revoke <id>   Revoke a key
   open               Open the linked project in the dashboard
+  doctor             Go-live checks: env files, wrangler vars and code, then findings from live traffic
+                       --json  --env test|live (server findings, default live)  --local (skip the server)
+                       Exits 1 when anything is critical
   dev                Local dashboard and ingest on http://localhost:4040, no account or key
                        --port <n>  --fresh (clear .paynp/dev)  --open (browser)  --quiet
 
@@ -55,9 +58,10 @@ Options:
   --no-browser       Print URLs instead of opening them
   init: --org <id> --project <id|slug|name> [--create] --gateway <id> --skip-install --new-key
         --dry-run (print the code edits, change nothing)  --force (also edit files with uncommitted changes)
+        --actions (also add the refund and re-check route, /paynp/actions)  --no-actions (don't ask)
 `;
 
-const COMMANDS: Record<string, (ctx: Ctx) => Promise<void>> = { login, logout, init, tail, test, keys, open, dev };
+const COMMANDS: Record<string, (ctx: Ctx) => Promise<void>> = { login, logout, init, tail, test, keys, open, dev, doctor };
 
 /** Runs one command. Returns the exit code; never calls process.exit. */
 export async function run(argv: string[], opts: { cwd?: string; io?: Io; signal?: AbortSignal } = {}): Promise<number> {
@@ -89,6 +93,7 @@ export async function run(argv: string[], opts: { cwd?: string; io?: Io; signal?
     await fn({ cwd, io, endpoint, flags, args: rest, signal: opts.signal });
     return 0;
   } catch (err) {
+    if (err instanceof ExitCode) return err.code;
     if (err instanceof CliError) io.err(`${NAME}: ${err.message}`);
     else io.err(`${NAME}: ${(err as Error)?.stack ?? String(err)}`);
     return 1;

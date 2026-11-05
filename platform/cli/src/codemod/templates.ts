@@ -50,6 +50,9 @@ export function gatewayFile(s: Style, modules: { id: string; spec: string; expor
     ...client(s),
     ...modules.map((m) => `export const ${m.exportName} = paynp.wrapGateway(${q}${m.id}${q}, ${local(m)})${semi}`),
     "",
+    `// To find payments by the buyer's phone or email in the dashboard, pass who paid (paynp keeps both only hashed):`,
+    `// export const ${modules[0].exportName} = paynp.wrapGateway(${q}${modules[0].id}${q}, ${local(modules[0])}, { customer: (input) => ({ phone: input.phone, email: input.email }) })${semi}`,
+    "",
   ].join("\n");
 }
 
@@ -86,6 +89,78 @@ export function adapterFile(s: Style, libSpec: string, factories: string[], hasC
       `}`,
     );
   }
-  out.push("");
+  out.push(
+    "",
+    `// To find payments by the buyer's phone or email in the dashboard, pass who paid (paynp keeps both only hashed):`,
+    `// paynp.wrapAdapter(adapter, { customer: (input) => input.customer })${semi}`,
+    "",
+  );
   return out.join("\n");
+}
+
+/** Gateways with a refund API (references/khalti.md, cybersource.md); the rest get a manual checklist in the dashboard. */
+const REFUND_API: Record<string, string> = {
+  khalti: "Khalti has a refund API: the @paynp/sdk README has a working refund callback to paste here.",
+  cybersource: "CyberSource has a REST refund API (POST /pts/v2/payments/{id}/refunds) that needs REST keys; see the @paynp/sdk README.",
+};
+
+/** paynp-actions.ts: what the dashboard's Re-check and Send refund buttons run on this server. */
+export function actionsFile(
+  s: Style,
+  o: { gateway: string; gatewaySpec: string; exportName: string; settle?: { spec: string }; store?: { spec: string } },
+): string {
+  const { q, semi } = s;
+  const name = GATEWAY_NAMES[o.gateway] ?? o.gateway;
+  const typed = s.ts ? ": ActionHandlerOptions" : "";
+  const lines = [
+    `// What the paynp dashboard's "Re-check" and "Send refund" buttons run on this server. ${MARKER}.`,
+    `// paynp signs each request with PAYNP_ACTION_SECRET (dashboard: Settings, Action endpoint); the route checks the`,
+    `// signature, the timestamp and replays before it calls these.`,
+    ...(s.ts ? [`import type { ActionHandlerOptions } from ${q}@paynp/sdk${q}${semi}`] : []),
+    `import { ${o.exportName} } from ${q}${o.gatewaySpec}${q}${semi}`,
+    ...(o.settle ? [`import { settle } from ${q}${o.settle.spec}${q}${semi}`] : []),
+    ...(o.store ? [`import { getAttempt } from ${q}${o.store.spec}${q}${semi}`] : []),
+    "",
+    `export const actions${typed} = {`,
+    `  // Re-check: ask ${name} again, the same call the reconcile job makes.`,
+    `  async recheck(a) {`,
+  ];
+  if (o.settle && o.store) {
+    lines.push(
+      `    const attempt = getAttempt(a.attemptId)${semi}`,
+      `    if (!attempt) return { ok: false, error: ${q}no such payment attempt on this server${q} }${semi}`,
+      `    const outcome = await ${o.exportName}.confirmPayment({ attemptId: attempt.id, amountPaisa: attempt.amountPaisa, providerRef: attempt.providerRef, params: {} })${semi}`,
+      `    settle(attempt, outcome)${semi}`,
+      `    return { status: outcome.status }${semi}`,
+    );
+  } else {
+    lines.push(
+      `    const outcome = await ${o.exportName}.confirmPayment({ attemptId: a.attemptId, amountPaisa: a.amountPaisa ?? 0, providerRef: a.providerRef ?? null, params: {} })${semi}`,
+      `    return { status: outcome.status }${semi}`,
+    );
+  }
+  lines.push(`  },`);
+  lines.push(
+    REFUND_API[o.gateway]
+      ? `  // Send refund: ${REFUND_API[o.gateway]}`
+      : `  // Send refund: ${name} has no refund API, so the dashboard shows a manual checklist instead and this stays out.`,
+    `  // async refund(a) { /* refund a.refund?.amountPaisa of a.providerRef */ return { refundRef: ${q}...${q} }${semi} },`,
+    `}${semi}`,
+    "",
+  );
+  // `a` is typed through ActionHandlerOptions in TS; plain JS has no annotation to add.
+  return lines.join("\n");
+}
+
+/** app/paynp/actions/route.ts for Next.js. */
+export function nextActionRoute(s: Style, paynpSpec: string, actionsSpec: string): string {
+  const { q, semi } = s;
+  return [
+    `// POST /paynp/actions: refunds and re-checks from the paynp dashboard, signed with PAYNP_ACTION_SECRET. ${MARKER}.`,
+    `import { paynp } from ${q}${paynpSpec}${q}${semi}`,
+    `import { actions } from ${q}${actionsSpec}${q}${semi}`,
+    "",
+    `export const POST = paynp.actionHandler(actions)${semi}`,
+    "",
+  ].join("\n");
 }
