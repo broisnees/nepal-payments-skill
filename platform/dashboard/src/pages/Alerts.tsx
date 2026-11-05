@@ -84,8 +84,27 @@ const PARAMS: Record<RuleType, { defaults: Record<string, unknown>; fields: Fiel
   },
   double_fulfilment: { defaults: {}, fields: [] },
   no_traffic: { defaults: { window_min: 60 }, fields: [{ key: "window_min", label: "No payment started for", kind: "number", unit: "min", min: 5 }] },
+  double_payment: { defaults: {}, fields: [] },
+  paid_not_fulfilled: {
+    defaults: { after_min: 15 },
+    fields: [{ key: "after_min", label: "Not fulfilled after", kind: "number", unit: "min", min: 1, hint: "Checks payments paid in the last 24 hours" }],
+  },
 };
-const PER_EVENT: RuleType[] = ["payment_failed", "amount_mismatch", "double_fulfilment"];
+const PER_EVENT: RuleType[] = ["payment_failed", "amount_mismatch", "double_fulfilment", "double_payment", "paid_not_fulfilled"];
+
+/** What a rule needs from the app before it can fire, said once in the editor. */
+const RULE_NOTES: Partial<Record<RuleType, ReactNode>> = {
+  double_payment: (
+    <>
+      Matches a second paid payment for the same order id, or the same customer paying the same amount within 30 minutes. The second one lands in Refunds. Customer matching needs <code>customer: (i) =&gt; ({"{ phone }"})</code> in <code>wrapGateway</code>.
+    </>
+  ),
+  paid_not_fulfilled: (
+    <>
+      Stays quiet until the app reports fulfilment: call <code>paynp.fulfilled()</code> when an order ships. Projects that never sent a fulfilment in the last 30 days are skipped, so this rule cannot fire for them.
+    </>
+  ),
+};
 
 function summary(r: Pick<AlertRule, "type" | "params">): string {
   const p = r.params as Record<string, number | string | string[] | undefined>;
@@ -108,6 +127,8 @@ function summary(r: Pick<AlertRule, "type" | "params">): string {
       return `Average above ${formatDuration(Number(p.avg_ms))} over ${p.window_min} min${gw}`;
     case "no_traffic":
       return `Nothing for ${p.window_min} min`;
+    case "paid_not_fulfilled":
+      return `Paid, not fulfilled after ${p.after_min} min`;
     default:
       return "Every occurrence";
   }
@@ -331,6 +352,12 @@ function RuleDialog({ rule, channels, onClose }: { rule: AlertRule | null; chann
             {f.hint && <span className="hint">{f.hint}</span>}
           </div>
         ))}
+        {RULE_NOTES[type] && (
+          <div className="note">
+            <Icon name="info" />
+            <span>{RULE_NOTES[type]}</span>
+          </div>
+        )}
         {!spec.fields.length && (
           <div className="note">
             <Icon name="info" />
