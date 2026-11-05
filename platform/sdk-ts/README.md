@@ -69,11 +69,39 @@ after(() => paynp.flush());
 
 | Call | Events |
 |---|---|
-| `startPayment` / `initiate` | `payment.started` (status `initiated`, amount), the gateway requests it made, then `payment.redirected` with the form or redirect path and `provider_ref`, or `error` |
+| `startPayment` / `initiate` | `payment.started` (status `initiated`, amount, `return_https`, `customer` from the getter), the gateway requests it made, then `payment.redirected` with the form or redirect path, `provider_ref` and `gw_env`, or `error` |
 | `confirmPayment` / `verify` with callback params | `callback.received`, `signature.checked` (eSewa `data`, Fonepay `DV`, CyberSource `signature`), the gateway requests, then the outcome status on the last of these; or `error` |
 | `confirmPayment` / `verify` with empty params (the reconcile job) | the gateway requests, then `reconcile.checked` carrying the outcome status |
 
 Outcome statuses map onto the event schema: `paid`, `pending`, `failed`, `canceled`, `refunded` as is, `partially_refunded` becomes `refunded`, and `not_found` sends no status (the gateway has no record yet, which says nothing about the attempt). For adapters, a `paid` whose amount differs from the stored one is sent as status `unknown` with reason `amount_mismatch`, the same rule as `decideTransition()`.
+
+### Sandbox or production (`gw_env`)
+
+Every `gateway.request` and `payment.redirected` carries `gw_env: "sandbox" | "production"`, worked out from the host the module called or redirected to. The host itself is never sent. Sandbox hosts, from the gateway references:
+
+| Gateway | Sandbox hosts |
+|---|---|
+| eSewa | `rc-epay.esewa.com.np`, `rc.esewa.com.np`, `rc-checkout.esewa.com.np`, `rc-links.esewa.com.np`, `uat.esewa.com.np` |
+| Khalti | `dev.khalti.com`, `test-pay.khalti.com`, `test-admin.khalti.com` |
+| Fonepay | `dev-clientapi.fonepay.com`, `dev-merchantapi.fonepay.com`, `dev-merchant-login.fonepay.com` |
+| connectIPS | `uat.connectips.com` |
+| CyberSource | `testsecureacceptance.cybersource.com`, `apitest.cybersource.com`, `businesscentertest.cybersource.com` |
+| NPS | `apisandbox.nepalpayment.com`, `gatewaysandbox.nepalpayment.com` |
+| IME Pay | `stg.imepay.com.np` (port 7979) |
+
+Any other host under the gateway's domain counts as production. A host outside every gateway domain (a mock on localhost, a custom `hosts` entry) gets no `gw_env`. paynp flags a live key whose events say `sandbox`, the classic "went live with test credentials" bug. `gwEnvOf(url)` and `SANDBOX_HOSTS` are exported.
+
+`payment.started` also carries `return_https` when the start input has an absolute `returnUrl` (the blog modules and the skill adapters both take one). An `http://` return URL on live traffic is flagged too: some gateways refuse it, and the callback travels in clear text.
+
+### Who paid (`customer`)
+
+```ts
+export const gateway = paynp.wrapGateway("esewa", esewa, {
+  customer: (input) => ({ phone: input.phone, email: input.email, name: input.name }),
+});
+```
+
+The getter gets the `startPayment` / `initiate` input and runs once per start; its result goes on `payment.started`. paynp keeps phone and email only as a salted hash plus a masked form (`98XXXXX123`), so support can find "I already paid" payments by phone without storing the number. A getter that throws or returns nothing sends no customer, and the start goes on as normal. When the details live elsewhere (the order, a session), I attach them later with `paynp.annotate()`.
 
 Within one attempt, timestamps strictly increase (at least 1 ms apart) so a timeline sorted by time shows events in the order they were recorded.
 
@@ -132,6 +160,132 @@ paynp.error({ attemptId, gateway, error, reason, op });
 ```
 
 Statuses can be the blog's or the adapters' (`not_found`, `partially_refunded` are mapped as above).
+
+```ts
+// order and buyer details, no status change (payment.annotated)
+paynp.annotate({ attemptId, gateway, orderId, customer: { phone, email, name } });
+// a refund made by hand in the gateway's portal (payment.refunded); amountPaisa is what was refunded
+paynp.refunded({ attemptId, gateway, amountPaisa: 5000, refundRef: "RF-123", reason: "duplicate payment" });
+```
+
+The server marks the payment `refunded` once the refunds add up to its amount.
+
+## Refunds and re-checks from the dashboard (action endpoint)
+
+paynp never holds my gateway keys. When I press "Send refund via your server" or "Re-check" in the dashboard, paynp sends a signed request to an endpoint on my own server, and my server talks to the gateway with its own keys.
+
+1. Add the route (below) and deploy it.
+2. In the dashboard: Settings, Action endpoint, enter the URL (one per environment: test and live). The secret is shown once.
+3. Set it on the server as `PAYNP_ACTION_SECRET`, then press "Test".
+
+The handler:
+
+- accepts only `POST` with `X-Paynp-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>` and `X-Paynp-Timestamp: <unix seconds>`; anything else gets `401`;
+- rejects timestamps more than 5 minutes old (or ahead) and action ids it has already handled (`409`; an in-memory list of the last 10,000 ids per process);
+- calls my `refund` or `recheck` callback with the action, then answers `200 {"ok": true, "refund_ref"?, "status"?}`, or `200 {"ok": false, "error"}` when the callback threw or returned `{ ok: false, error }`;
+- after a successful refund, sends `payment.refunded` (refunded amount, `refund_ref`, `refund_reason`, `action_id`); after a re-check, `reconcile.checked` with the status and `action_id`. It sends these before answering, waiting at most 3 seconds;
+- works without `PAYNP_KEY`: the refund still runs, nothing is reported.
+- answers the dashboard's "Test" button (a `ping` action) with `{"ok": true}` once the signature checks out, without calling anything.
+
+The action my callback gets:
+
+```ts
+interface PaynpAction {
+  id: string;                    // act_...
+  kind: "refund" | "recheck";
+  attemptId: string;
+  gateway: string;
+  orderId?: string;
+  amountPaisa?: number;          // the payment's amount
+  providerRef?: string;          // the last gateway reference paynp saw
+  refund?: { amountPaisa?: number; reason?: string }; // no amountPaisa = full refund
+}
+```
+
+### Khalti refund callback
+
+From the Khalti reference: `POST https://dev.khalti.com/api/merchant-transaction/{transaction_id}/refund/` in sandbox, `https://khalti.com/api/merchant-transaction/{transaction_id}/refund/` in production (not under `/api/v2/`), with `Authorization: Key <secret key>`. An empty body refunds everything; `{ "amount": <paisa> }` refunds part of it. Success is `{"detail": "Transaction refund successful."}`, with no refund id.
+
+```ts
+// paynp-actions.ts
+import type { ActionHandlerOptions } from "@paynp/sdk";
+import { gateway } from "./paynp";
+
+const KHALTI = process.env.KHALTI_ENV === "production" ? "https://khalti.com" : "https://dev.khalti.com";
+const auth = { Authorization: `Key ${process.env.KHALTI_SECRET_KEY}`, "Content-Type": "application/json" };
+
+// The refund API takes Khalti's transaction_id. paynp sends the last reference it saw: the transaction_id once a
+// confirm ran, the pidx before that. Lookup turns a pidx into the transaction_id; a transaction_id gets a 404.
+async function khaltiTransactionId(ref: string): Promise<string> {
+  const res = await fetch(`${KHALTI}/api/v2/epayment/lookup/`, { method: "POST", headers: auth, body: JSON.stringify({ pidx: ref }) });
+  const body = (await res.json().catch(() => ({}))) as { transaction_id?: string };
+  return body.transaction_id || ref;
+}
+
+export const actions: ActionHandlerOptions = {
+  async refund(a) {
+    if (a.gateway !== "khalti") return { ok: false, error: `${a.gateway} has no refund API; use the checklist in the dashboard` };
+    if (!a.providerRef) return { ok: false, error: "no Khalti reference on this payment" };
+    const id = await khaltiTransactionId(a.providerRef);
+    const amount = a.refund?.amountPaisa;
+    const partial = amount !== undefined && amount !== a.amountPaisa;
+    const res = await fetch(`${KHALTI}/api/merchant-transaction/${encodeURIComponent(id)}/refund/`, {
+      method: "POST",
+      headers: auth,
+      // Wallet payments. For bank payments Khalti also wants the payer's "mobile".
+      body: JSON.stringify(partial ? { amount } : {}),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`Khalti refund failed: HTTP ${res.status} ${JSON.stringify(body)}`);
+    return { refundRef: id }; // Khalti gives no refund id; the transaction id identifies it in their portal
+  },
+  async recheck(a) {
+    // The wrapped gateway with empty params is the reconcile path: it asks the status API.
+    const r = await gateway.confirmPayment({ attemptId: a.attemptId, amountPaisa: a.amountPaisa ?? 0, providerRef: a.providerRef ?? null, params: {} });
+    return { status: r.status };
+  },
+};
+```
+
+The Khalti docs show a partial `amount` as paisa in the text and `50.00` in their example, so I test a partial refund in sandbox before relying on it.
+
+### Gateways without a refund API
+
+For these, the dashboard shows a manual checklist on the refund case instead of the "Send refund" button, and I record the refund reference there (or call `paynp.refunded()`):
+
+| Gateway | Refund API | What to do instead |
+|---|---|---|
+| Khalti | Yes, `merchant-transaction/{id}/refund/` | Use the callback above, or refund from the merchant dashboard |
+| eSewa (ePay v2) | No | Refund in the eSewa merchant portal or through eSewa merchant support with the transaction code; the status API then shows `FULL_REFUND` / `PARTIAL_REFUND` |
+| Fonepay | No public API | Merchant panel or the acquiring bank, with the PRN and Fonepay trace id (`UID`) |
+| connectIPS | No | connectIPS / the bank, with the `TXNID` |
+| NPS | No | NPS merchant support, with the `MerchantTxnId` and `GatewayReferenceNo` |
+| IME Pay | No | IME Pay merchant support, with the `RefId` and `TransactionId` |
+| CyberSource | Yes, REST `POST /pts/v2/payments/{id}/refunds` (needs REST API keys, not the Secure Acceptance profile) | Wire it like Khalti, or refund in the Business Center |
+
+### Mounting the route
+
+```ts
+// Hono (Node, Bun, Workers)
+app.post("/paynp/actions", (c) => paynp.actionHandler({ ...actions, secret: c.env?.PAYNP_ACTION_SECRET })(c.req.raw));
+
+// Next.js: app/paynp/actions/route.ts
+const handle = paynp.actionHandler(actions);
+export async function POST(req: Request) {
+  return handle(req);
+}
+
+// Cloudflare Workers: secrets are on env, not process.env
+export default { fetch: (req, env) => paynp.actionHandler({ ...actions, secret: env.PAYNP_ACTION_SECRET })(req) };
+
+// Express: before express.json(), or with express.raw(), so the handler sees the exact bytes paynp signed
+app.post("/paynp/actions", express.raw({ type: "application/json" }), paynp.nodeActionHandler(actions));
+
+// Fastify
+app.post("/paynp/actions", paynp.nodeActionHandler(actions));
+```
+
+The signature covers the raw body. When a JSON body parser already ran (`express.json()`, Fastify's default parser), the handler serializes the parsed object again. That matches because paynp sends compact `JSON.stringify` output, but a raw body (`express.raw()`, `req.rawBody`) is the safer choice. Every handler made from one `createPaynp()` shares the replay list. On serverless with several instances the list is per instance, so the 5-minute timestamp window is what stops an old request from being replayed elsewhere.
 
 ## Local dev server
 
