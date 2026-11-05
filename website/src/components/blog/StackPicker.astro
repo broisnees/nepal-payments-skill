@@ -1,0 +1,43 @@
+---
+// One page per framework. The select navigates between them and keeps the reader's place.
+import { frameworks, langs, stackUrl } from "../../data/stacks";
+
+interface Props {
+  postId: string;
+  current: string;
+}
+const { postId, current } = Astro.props;
+---
+
+<div class="stack-picker">
+  <label for="stack-select">
+    <span class="stack-label">Your stack</span>
+    <span class="stack-hint">Every code block on this page is for this framework.</span>
+  </label>
+  <div class="stack-select-wrap">
+    <select id="stack-select" data-stack-select>
+      {
+        langs.map((l) => (
+          <optgroup label={l.name}>
+            {frameworks.filter((f) => f.lang === l.id).map((f) => <option value={f.id} data-url={stackUrl(postId, f.id)} selected={f.id === current}>{f.name}</option>)}
+          </optgroup>
+        ))
+      }
+    </select>
+    <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+  </div>
+</div>
+
+<script>
+  for (const select of document.querySelectorAll<HTMLSelectElement>("[data-stack-select]")) {
+    select.addEventListener("change", () => {
+      const option = select.selectedOptions[0];
+      try {
+        localStorage.setItem("np-stack", option.value);
+      } catch {}
+      // Land on the same section of the other framework's page.
+      const here = document.querySelector<HTMLAnchorElement>(".toc a[aria-current]")?.hash ?? "";
+      location.assign(option.dataset.url! + here);
+    });
+  }
+</script>
