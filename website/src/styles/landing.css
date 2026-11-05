@@ -1680,3 +1680,47 @@ img {
   font-size: 14px;
   color: var(--muted);
 }
+
+/* Supported gateways strip under the hero */
+.gw-strip {
+  padding-block: 8px 40px;
+}
+
+.gw-strip-title {
+  font: 12px var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--subtle);
+  margin-block-end: 16px;
+}
+
+.gw-strip ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px 40px;
+}
+
+.gw-strip a {
+  display: inline-flex;
+  opacity: 0.85;
+  transition: opacity 150ms var(--ease);
+}
+
+.gw-strip a:hover {
+  opacity: 1;
+}
+
+.logo-list li a {
+  align-items: center;
+  min-height: 28px;
+}
+
+.guide-logo {
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+}

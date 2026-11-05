@@ -7,6 +7,7 @@ import Feature from "../components/Feature.astro";
 import SiteNav from "../components/SiteNav.astro";
 import SiteFooter from "../components/SiteFooter.astro";
 import { getPosts } from "../data/blog";
+import GatewayLogo from "../components/GatewayLogo.astro";
 import {
   REPO,
   INSTALL,
@@ -186,6 +187,12 @@ const posts = await getPosts();
       </div>
     </section>
 
+    <!-- Gateways -->
+    <section class="container gw-strip" aria-label="Supported gateways">
+      <p class="gw-strip-title">Works with every major Nepali gateway</p>
+      <ul>{providers.map((p) => <li><a href={`/docs/providers/${p.slug}/`} title={p.name}><GatewayLogo slug={p.slug} name={p.name} height={26} /></a></li>)}</ul>
+    </section>
+
     <!-- Features -->
     <section class="section container" id="providers" aria-labelledby="features-title">
       <div class="split section-head">
@@ -344,7 +351,7 @@ const posts = await getPosts();
         {posts.map((p) => (
           <li>
             <a href={`/blog/${p.id}/`}>
-              <span class="mono guide-label">{p.data.label}</span>
+              {p.data.provider ? <span class="guide-logo"><GatewayLogo slug={p.data.provider} name={p.data.label} height={18} /></span> : <span class="mono guide-label">{p.data.label}</span>}
               <span class="guide-title">{p.data.title}</span>
               <span class="guide-more">Read the guide<Icon name="chevron" size={14} /></span>
             </a>
@@ -397,7 +404,7 @@ const posts = await getPosts();
         <div class="start-col">
           <h3>Providers <span class="count">{providers.length}</span></h3>
           <p class="sub">Wallets, banks and cards.</p>
-          <ul>{providers.map((p) => <li><a href={`/docs/providers/${p.slug}/`}><span class="sq"></span>{p.name}</a></li>)}</ul>
+          <ul class="logo-list">{providers.map((p) => <li><a href={`/docs/providers/${p.slug}/`}><GatewayLogo slug={p.slug} name={p.name} height={16} /><span class="sr-only">{p.name}</span></a></li>)}</ul>
         </div>
         <div class="start-col">
           <h3>Frameworks <span class="count">{frameworks.length}</span></h3>
