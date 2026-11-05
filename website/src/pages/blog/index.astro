@@ -6,6 +6,7 @@ import Icon from "../../components/Icon.astro";
 import { getPosts } from "../../data/blog";
 import { SITE_NAME } from "../../data/site";
 import "../../styles/blog.css";
+import GatewayLogo from "../../components/GatewayLogo.astro";
 
 const posts = await getPosts();
 const title = "Nepal payment gateway integration guides";
@@ -39,7 +40,7 @@ const jsonLd = [
         posts.map((p) => (
           <li>
             <a href={`/blog/${p.id}/`}>
-              <span class="mono guide-label">{p.data.label}</span>
+              {p.data.provider ? <span class="guide-logo"><GatewayLogo slug={p.data.provider} name={p.data.label} height={18} /></span> : <span class="mono guide-label">{p.data.label}</span>}
               <span class="guide-title">{p.data.title}</span>
               <span class="guide-desc">{p.data.description}</span>
               <span class="guide-more">Read the guide<Icon name="chevron" size={14} /></span>

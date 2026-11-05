@@ -10,6 +10,7 @@ import { INSTALL, SITE_NAME } from "../data/site";
 import { DEFAULT_FW, frameworks, fwName, stackRedirectScript, stackUrl } from "../data/stacks";
 import type { Post } from "../data/blog";
 import "../styles/blog.css";
+import GatewayLogo from "../components/GatewayLogo.astro";
 
 interface Props {
   post: Post;
@@ -86,6 +87,7 @@ const jsonLd = [
           {stack && !isDefault ? <a href={`/blog/${post.id}/`}>{label}</a> : <span>{label}</span>}
           {stack && !isDefault && (<><span aria-hidden="true">/</span><span>{fwName(fw)}</span></>)}
         </nav>
+        {post.data.provider && <div class="article-logo"><GatewayLogo slug={post.data.provider} name={label} height={30} /></div>}
         <h1>{title}</h1>
         <p class="lede">{description}</p>
         <p class="meta">
@@ -152,7 +154,7 @@ const jsonLd = [
               {related.map((p) => (
                 <li>
                   <a href={`/blog/${p.id}/`}>
-                    <span class="mono guide-label">{p.data.label}</span>
+                    {p.data.provider ? <span class="guide-logo"><GatewayLogo slug={p.data.provider} name={p.data.label} height={18} /></span> : <span class="mono guide-label">{p.data.label}</span>}
                     <span class="guide-title">{p.data.title}</span>
                   </a>
                 </li>
