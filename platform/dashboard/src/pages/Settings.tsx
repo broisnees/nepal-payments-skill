@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 import { NavLink, useNavigate, useParams } from "react-router";
 import { Icon, type IconName } from "../components/Icon.tsx";
 import { useMe, useProject } from "../components/Shell.tsx";
-import { CodeBlock, Command, CopyButton, Dialog, EmptySmall, Seg, Skeleton, Switch, Time, confirmAction, toast, useNow } from "../components/ui.tsx";
+import { CodeBlock, Command, CopyButton, Dialog, EmptySmall, Seg, Skeleton, Switch, Time, confirmAction, toast, useNow, Select, type SelectOption } from "../components/ui.tsx";
 import { api, errorMessage, items } from "../lib/api.ts";
 import { formatDateTime, formatFull, formatRelative } from "../lib/format.ts";
 import { ApiFailure } from "../lib/api.ts";
@@ -507,11 +507,7 @@ function Members() {
               <span className="label">Invite by email</span>
               <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@company.com.np" />
             </label>
-            <select className="select" style={{ width: 120 }} value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label="Role">
-              <option value="viewer">Viewer</option>
-              <option value="admin">Admin</option>
-              {org.role === "owner" && <option value="owner">Owner</option>}
-            </select>
+            <Select style={{ width: 120 }} value={role} onChange={setRole} aria-label="Role" options={[{ value: "viewer", label: "Viewer" }, { value: "admin", label: "Admin" }, ...(org.role === "owner" ? [{ value: "owner" as Role, label: "Owner" }] : [])] as SelectOption<Role>[]} />
             <button className="btn btn-primary" disabled={busy}>
               {busy && <span className="spinner" />}
               Send invite
@@ -564,11 +560,7 @@ function Members() {
                 </td>
                 <td>
                   {admin && m.user_id !== me.user.id && (org.role === "owner" || m.role !== "owner") ? (
-                    <select className="select" style={{ height: 28, width: 112 }} value={m.role} onChange={(e) => void changeRole(m.user_id, e.target.value as Role)} aria-label={`Role of ${m.email}`}>
-                      <option value="viewer">Viewer</option>
-                      <option value="admin">Admin</option>
-                      {org.role === "owner" && <option value="owner">Owner</option>}
-                    </select>
+                    <Select style={{ height: 28, width: 112 }} value={m.role} onChange={(v) => void changeRole(m.user_id, v)} aria-label={`Role of ${m.email}`} options={[{ value: "viewer", label: "Viewer" }, { value: "admin", label: "Admin" }, ...(org.role === "owner" ? [{ value: "owner" as Role, label: "Owner" }] : [])] as SelectOption<Role>[]} />
                   ) : (
                     <span className="tag">{m.role}</span>
                   )}

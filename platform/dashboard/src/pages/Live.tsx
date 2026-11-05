@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { Icon } from "../components/Icon.tsx";
 import { TestPaymentButton } from "../components/Setup.tsx";
 import { useProject } from "../components/Shell.tsx";
-import { Command, Gateway, Money, StatusPill } from "../components/ui.tsx";
+import { Command, Gateway, Money, StatusPill, Select } from "../components/ui.tsx";
 import { describe, tone } from "../lib/describe.ts";
 import { formatCount, formatTimeMs } from "../lib/format.ts";
 import { useLive } from "../lib/live.ts";
@@ -91,20 +91,8 @@ export default function Live() {
       </div>
 
       <div className="filters">
-        <select className="select" aria-label="Event type" value={type} onChange={(e) => setType(e.target.value)}>
-          <option value="">Every event type</option>
-          {EVENT_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <select className="select" aria-label="Gateway" value={gateway} onChange={(e) => setGateway(e.target.value)}>
-          <option value="">Any gateway</option>
-          <option value="esewa">eSewa</option>
-          <option value="khalti">Khalti</option>
-          <option value="fonepay">Fonepay</option>
-        </select>
+        <Select aria-label="Event type" value={type} onChange={setType} options={[{ value: "", label: "Every event type" }, ...EVENT_TYPES.map((t) => ({ value: t, label: t }))]} />
+        <Select aria-label="Gateway" value={gateway} onChange={setGateway} options={[{ value: "", label: "Any gateway" }, { value: "esewa", label: "eSewa" }, { value: "khalti", label: "Khalti" }, { value: "fonepay", label: "Fonepay" }]} />
         <label className="check">
           <input type="checkbox" checked={onlyProblems} onChange={(e) => setOnlyProblems(e.target.checked)} />
           Only problems

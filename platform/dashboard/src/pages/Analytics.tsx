@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { Chart, type ChartSeries } from "../components/Chart.tsx";
 import { useProject } from "../components/Shell.tsx";
-import { EmptySmall, Gateway, Money, Seg, Skeleton } from "../components/ui.tsx";
+import { EmptySmall, Gateway, Money, Seg, Skeleton, Select } from "../components/ui.tsx";
 import { qs } from "../lib/api.ts";
 import { formatCount, formatCountCompact, formatDuration, formatMoney, formatMoneyCompact, formatPct, moneyParts } from "../lib/format.ts";
 import { reasonLabel } from "../lib/labels.ts";
@@ -55,12 +55,7 @@ export default function Analytics() {
           </p>
         </div>
         <div className="actions">
-          <select className="select" style={{ width: "auto", height: 32 }} aria-label="Gateway" value={gateway} onChange={(e) => set("gateway", e.target.value)}>
-            <option value="">All gateways</option>
-            <option value="esewa">eSewa</option>
-            <option value="khalti">Khalti</option>
-            <option value="fonepay">Fonepay</option>
-          </select>
+          <Select style={{ width: "auto" }} aria-label="Gateway" value={gateway} onChange={(v) => set("gateway", v)} options={[{ value: "", label: "All gateways" }, { value: "esewa", label: "eSewa" }, { value: "khalti", label: "Khalti" }, { value: "fonepay", label: "Fonepay" }]} />
           <Seg label="Bucket" value={bucket} onChange={(v) => set("bucket", v)} options={[{ value: "hour", label: "Hour" }, { value: "day", label: "Day" }]} />
           <Seg label="Range" value={range} onChange={(v) => set("range", v)} options={[{ value: "24h", label: "24h" }, { value: "7d", label: "7d" }, { value: "30d", label: "30d" }]} />
         </div>

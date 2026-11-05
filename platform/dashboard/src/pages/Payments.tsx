@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { Icon } from "../components/Icon.tsx";
 import { SetupEmpty } from "../components/Setup.tsx";
 import { useProject } from "../components/Shell.tsx";
-import { EmptySmall, Gateway, Money, Skeleton, StatusPill, Time, useNow } from "../components/ui.tsx";
+import { EmptySmall, Gateway, Money, Skeleton, StatusPill, Time, useNow, Select } from "../components/ui.tsx";
 import { api, errorMessage, items, qs } from "../lib/api.ts";
 import { formatDuration, formatRelative, formatTime, parseRupees } from "../lib/format.ts";
 import { reasonLabel } from "../lib/labels.ts";
@@ -196,27 +196,9 @@ export default function Payments() {
           />
           {!search && <span className="kbd hide-sm">/</span>}
         </label>
-        <select className="select" aria-label="Status" value={status} onChange={(e) => set("status", e.target.value)}>
-          {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <select className="select" aria-label="Gateway" value={gateway} onChange={(e) => set("gateway", e.target.value)}>
-          {GATEWAY_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <select className="select" aria-label="Time" value={time} onChange={(e) => set("time", e.target.value)}>
-          {TIME_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+        <Select aria-label="Status" value={status} onChange={(v) => set("status", v)} options={STATUS_OPTIONS} />
+        <Select aria-label="Gateway" value={gateway} onChange={(v) => set("gateway", v)} options={GATEWAY_OPTIONS} />
+        <Select aria-label="Time" value={time} onChange={(v) => set("time", v)} options={TIME_OPTIONS} />
         <AmountFilter min={min} max={max} onApply={(a, b) => {
           const next = new URLSearchParams(params);
           a ? next.set("min", a) : next.delete("min");

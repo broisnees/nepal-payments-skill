@@ -2,7 +2,7 @@ import { FISCAL_YEARS, fiscalYearOf, type YearRow, type YearSummary } from "@pay
 import { useState } from "react";
 import { Icon, type IconName } from "../components/Icon.tsx";
 import { useProject } from "../components/Shell.tsx";
-import { EmptySmall, Gateway, Money, Skeleton, toast } from "../components/ui.tsx";
+import { EmptySmall, Gateway, Money, Skeleton, toast, Select } from "../components/ui.tsx";
 import { download, errorMessage, qs } from "../lib/api.ts";
 import { adMonthLabel, formatCount, formatDate, formatMoney, nptDateToMs, recentMonths } from "../lib/format.ts";
 import { bsLabelForAdMonth } from "../lib/nepali.ts";
@@ -79,14 +79,7 @@ export default function Exports() {
           <h2>Monthly files</h2>
           <div className="month-pick">
             <Icon name="calendar" className="subtle" />
-            <select className="select" aria-label="Month" value={month} onChange={(e) => setMonth(e.target.value)}>
-              {months.map((m) => (
-                <option key={m} value={m}>
-                  {adMonthLabel(m)}
-                  {bsLabelForAdMonth(m) ? `  (${bsLabelForAdMonth(m)})` : ""}
-                </option>
-              ))}
-            </select>
+            <Select aria-label="Month" value={month} onChange={setMonth} options={months.map((m) => ({ value: m, label: adMonthLabel(m), hint: bsLabelForAdMonth(m) || undefined }))} />
           </div>
         </div>
         <p className="hint">
@@ -124,13 +117,7 @@ export default function Exports() {
             <p className="hint">Shrawan 1 to the end of Asar.{s ? ` ${formatDate(s.from)} to ${formatDate(s.to - 1)}.` : ""}</p>
           </div>
           <div className="row wrap">
-            <select className="select" style={{ width: "auto" }} aria-label="Fiscal year" value={fy} onChange={(e) => setFy(e.target.value)}>
-              {fys.map((x) => (
-                <option key={x} value={x}>
-                  FY {x.replace("-", "/")}
-                </option>
-              ))}
-            </select>
+            <Select style={{ width: "auto" }} aria-label="Fiscal year" value={fy} onChange={setFy} options={fys.map((x) => ({ value: x, label: `FY ${x.replace("-", "/")}` }))} />
             <button className="btn btn-secondary" disabled={busy === "year"} onClick={() => void get(`${base}/year-summary.csv${qs({ env, fy })}`, `paynp-year-summary-${fy}.csv`)}>
               {busy === "year" ? <span className="spinner" /> : <Icon name="download" size={14} />}
               CSV

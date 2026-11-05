@@ -6,7 +6,7 @@ import { api, errorMessage } from "../lib/api.ts";
 import { formatDate, formatMoney, parseRupees } from "../lib/format.ts";
 import { invalidate } from "../lib/query.ts";
 import { Icon } from "./Icon.tsx";
-import { CopyButton, Dialog, toast } from "./ui.tsx";
+import { CopyButton, Dialog, Select, toast } from "./ui.tsx";
 
 const REFUND_LABEL: Record<RefundStatus, string> = {
   open: "Needs action",
@@ -79,11 +79,7 @@ export function StatusLinkDialog({ projectId, attemptId, onClose, onCreated }: {
         <form className="stack" onSubmit={create}>
           <label className="field">
             <span className="label">Link works for</span>
-            <select className="select" style={{ width: 160 }} value={days} onChange={(e) => setDays(Number(e.target.value))}>
-              <option value={1}>1 day</option>
-              <option value={7}>7 days</option>
-              <option value={30}>30 days</option>
-            </select>
+            <Select style={{ width: 160 }} aria-label="Link works for" value={String(days)} onChange={(v) => setDays(Number(v))} options={[{ value: "1", label: "1 day" }, { value: "7", label: "7 days" }, { value: "30", label: "30 days" }]} />
           </label>
           {err && <p className="err">{err}</p>}
           <div className="actions" style={{ justifyContent: "flex-end" }}>

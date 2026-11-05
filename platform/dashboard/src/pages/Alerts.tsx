@@ -3,7 +3,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, NavLink, useParams, useSearchParams } from "react-router";
 import { Icon, type IconName } from "../components/Icon.tsx";
 import { useProject } from "../components/Shell.tsx";
-import { Dialog, EmptySmall, Menu, confirmAction, Seg, Skeleton, StatusPill, Switch, Time, toast, useNow } from "../components/ui.tsx";
+import { Dialog, EmptySmall, Menu, confirmAction, Seg, Skeleton, StatusPill, Switch, Time, toast, useNow, Select } from "../components/ui.tsx";
 import { api, errorMessage, items, qs } from "../lib/api.ts";
 import { formatDuration, formatMoney, formatRelative, gatewayName, parseRupees } from "../lib/format.ts";
 import { RULES } from "../lib/labels.ts";
@@ -329,12 +329,7 @@ function RuleDialog({ rule, channels, onClose }: { rule: AlertRule | null; chann
               </div>
             )}
             {f.kind === "gateway" && (
-              <select className="select" style={{ width: 200 }} value={String(params[f.key] ?? "")} onChange={(e) => setParams({ ...params, [f.key]: e.target.value || undefined })} aria-label={f.label}>
-                <option value="">Any gateway</option>
-                <option value="esewa">eSewa</option>
-                <option value="khalti">Khalti</option>
-                <option value="fonepay">Fonepay</option>
-              </select>
+              <Select style={{ width: 200 }} value={String(params[f.key] ?? "")} onChange={(v) => setParams({ ...params, [f.key]: v || undefined })} aria-label={f.label} options={[{ value: "", label: "Any gateway" }, { value: "esewa", label: "eSewa" }, { value: "khalti", label: "Khalti" }, { value: "fonepay", label: "Fonepay" }]} />
             )}
             {f.kind === "gateways" && (
               <div className="row wrap" style={{ gap: 16 }}>

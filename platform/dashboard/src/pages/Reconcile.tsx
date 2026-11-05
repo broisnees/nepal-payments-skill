@@ -4,7 +4,7 @@ import { Link, useSearchParams } from "react-router";
 import { Chart, type ChartSeries } from "../components/Chart.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { useProject } from "../components/Shell.tsx";
-import { EmptySmall, Gateway, Money, Seg, Skeleton, confirmAction, toast } from "../components/ui.tsx";
+import { EmptySmall, Gateway, Money, Seg, Skeleton, confirmAction, toast, Select, type SelectOption } from "../components/ui.tsx";
 import { ApiFailure, api, errorMessage, items, qs, upload } from "../lib/api.ts";
 import { parseCsv } from "../lib/csv.ts";
 import { formatCount, formatDate, formatDateTime, formatFeePct, formatMoney, formatMoneyCompact, gatewayName, parseStatementAmount } from "../lib/format.ts";
@@ -85,13 +85,7 @@ export default function Reconcile() {
         </div>
         {statements.length > 0 && !pending && (
           <div className="stmt-pick">
-            <select className="select" aria-label="Statement" value={id ?? ""} onChange={(e) => pick(e.target.value)}>
-              {statements.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {gatewayName(s.gateway)}: {period(s)}
-                </option>
-              ))}
-            </select>
+            <Select aria-label="Statement" value={id ?? ""} onChange={pick} options={statements.map((s) => ({ value: s.id, label: `${gatewayName(s.gateway)}: ${period(s)}` }))} />
           </div>
         )}
       </div>
@@ -123,13 +117,7 @@ function Upload({ gateway, setGateway, busy, onFile, compact }: { gateway: strin
         <h2>{compact ? "Upload another statement" : "Upload a statement"}</h2>
         <label className="row">
           <span className="hint">Gateway</span>
-          <select className="select" style={{ width: "auto" }} value={gateway} onChange={(e) => setGateway(e.target.value)}>
-            {GATEWAYS.map((g) => (
-              <option key={g} value={g}>
-                {gatewayName(g)}
-              </option>
-            ))}
-          </select>
+          <Select style={{ width: "auto" }} aria-label="Gateway" value={gateway} onChange={setGateway} options={GATEWAYS.map((g) => ({ value: g, label: gatewayName(g) }))} />
         </label>
       </div>
       <div className="card-body stack" style={{ gap: 12 }}>
@@ -224,19 +212,20 @@ function Mapping({ pending, busy, onCancel, onSubmit }: { pending: Pending; busy
                 {f.label}
                 {!f.required && <span className="subtle" style={{ fontWeight: 400 }}> (optional)</span>}
               </span>
-              <select className="select" value={(map[f.key] as string) ?? ""} onChange={(e) => setMap({ ...map, [f.key]: e.target.value || undefined })} aria-invalid={(f.required && err && !map[f.key]) || undefined}>
-                <option value="">{f.required ? "Choose a column" : "Not in this file"}</option>
-                {headers.map((h, i) => {
-                  // A sample value next to each column name makes the choice obvious without a second table.
-                  const ex = body.find((r) => (r[i] ?? "").trim())?.[i]?.trim();
-                  return (
-                    <option key={`${h}-${i}`} value={h}>
-                      {h || `Column ${i + 1}`}
-                      {ex ? `: ${ex.length > 24 ? `${ex.slice(0, 24)}...` : ex}` : ""}
-                    </option>
-                  );
-                })}
-              </select>
+              <Select
+                aria-label={f.label}
+                value={(map[f.key] as string) ?? ""}
+                onChange={(v) => setMap({ ...map, [f.key]: v || undefined })}
+                invalid={Boolean(f.required && err && !map[f.key])}
+                options={[
+                  { value: "", label: f.required ? "Choose a column" : "Not in this file" },
+                  ...headers.map((h, i) => {
+                    // A sample value next to each column name makes the choice obvious without a second table.
+                    const ex = body.find((r) => (r[i] ?? "").trim())?.[i]?.trim();
+                    return { value: h, label: h || `Column ${i + 1}`, hint: ex ? (ex.length > 24 ? `${ex.slice(0, 24)}...` : ex) : undefined };
+                  }),
+                ]}
+              />
               <span className="hint">{f.hint}</span>
             </label>
           ))}
@@ -247,11 +236,16 @@ function Mapping({ pending, busy, onCancel, onSubmit }: { pending: Pending; busy
           </div>
           <label className="field">
             <span className="label">Dates like 03/04/2026 are</span>
-            <select className="select" value={map.date_order ?? "auto"} onChange={(e) => setMap({ ...map, date_order: e.target.value as StatementMapping["date_order"] })}>
-              <option value="auto">Work it out from the file</option>
-              <option value="dmy">Day first (3 April)</option>
-              <option value="mdy">Month first (4 March)</option>
-            </select>
+            <Select
+              aria-label="Date order"
+              value={map.date_order ?? "auto"}
+              onChange={(v) => setMap({ ...map, date_order: v })}
+              options={[
+                { value: "auto", label: "Work it out from the file" },
+                { value: "dmy", label: "Day first (3 April)" },
+                { value: "mdy", label: "Month first (4 March)" },
+              ] as SelectOption<NonNullable<StatementMapping["date_order"]>>[]}
+            />
           </label>
         </div>
 
