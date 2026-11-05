@@ -1,0 +1,53 @@
+---
+import Landing from "../../layouts/Landing.astro";
+import SiteNav from "../../components/SiteNav.astro";
+import SiteFooter from "../../components/SiteFooter.astro";
+import Icon from "../../components/Icon.astro";
+import { getPosts } from "../../data/blog";
+import { SITE_NAME } from "../../data/site";
+import "../../styles/blog.css";
+
+const posts = await getPosts();
+const title = "Nepal payment gateway integration guides";
+const description =
+  "Step-by-step guides to integrate eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS and IME Pay in Express, Laravel, Django, Next.js, Spring and more.";
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Blog",
+    name: title,
+    description,
+    url: new URL("/blog/", Astro.site).href,
+    blogPost: posts.map((p) => ({ "@type": "TechArticle", headline: p.data.title, url: new URL(`/blog/${p.id}/`, Astro.site).href })),
+  },
+];
+---
+
+<Landing title={`${title} · ${SITE_NAME}`} description={description} jsonLd={jsonLd}>
+  <a class="skip" href="#main">Skip to content</a>
+  <SiteNav current="blog" />
+  <main id="main" class="blog-index container">
+    <header class="blog-index-head">
+      <h1>{title}</h1>
+      <p>
+        One guide per gateway. Each builds a working checkout in the framework you pick, explains every request and
+        signature, and ends with the sandbox logins and error codes you will need.
+      </p>
+    </header>
+    <ul class="guides">
+      {
+        posts.map((p) => (
+          <li>
+            <a href={`/blog/${p.id}/`}>
+              <span class="mono guide-label">{p.data.label}</span>
+              <span class="guide-title">{p.data.title}</span>
+              <span class="guide-desc">{p.data.description}</span>
+              <span class="guide-more">Read the guide<Icon name="chevron" size={14} /></span>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </main>
+  <SiteFooter />
+</Landing>
