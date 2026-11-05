@@ -54,6 +54,11 @@ export interface Payment {
   event_count: number;
   error_count: number;
   fulfil_count: number;
+  /** v2 (SPEC-v2 section 1): masked phone or email, never the raw value. */
+  customer_mask?: string | null;
+  refunded_paisa?: number;
+  gw_env?: "sandbox" | "production" | null;
+  fulfilled_at?: number | null;
 }
 
 export interface StoredEvent extends PaymentEvent {
@@ -118,7 +123,9 @@ export type RuleType =
   | "gateway_errors"
   | "gateway_slow"
   | "double_fulfilment"
-  | "no_traffic";
+  | "no_traffic"
+  | "double_payment"
+  | "paid_not_fulfilled";
 export interface AlertRule {
   id: string;
   env: Env;
