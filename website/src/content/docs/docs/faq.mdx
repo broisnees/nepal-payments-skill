@@ -1,0 +1,21 @@
+---
+title: FAQ
+description: Common questions about the Nepal Payments skill and adapters, covering agents, providers, mobile apps, sandboxes and going live.
+---
+
+import { faqs } from "../../../data/site";
+
+{faqs.map((f) => (
+  <>
+    <h2>{f.q}</h2>
+    <p>{f.a}</p>
+  </>
+))}
+
+## How do I test without merchant accounts?
+
+eSewa and Fonepay have public sandbox credentials, and Khalti gives you a test key at test-admin.khalti.com. connectIPS, CyberSource, NPS and IME Pay need credentials from the provider or your bank. [Testing and go-live](/docs/guides/testing/) lists every sandbox value and test login.
+
+## A provider changed its API. What now?
+
+Open an issue or pull request on [GitHub](https://github.com/broisnees/nepal-payments-skill) with the source: an official doc, an SDK commit or a captured sandbox response. New adapters need the provider's published test vectors as tests before the implementation.

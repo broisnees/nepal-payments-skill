@@ -1,0 +1,26 @@
+---
+title: Docs for AI tools
+description: Feed the Nepal Payments docs to ChatGPT, Claude, Cursor or any LLM with llms.txt, llms-full.txt and a Markdown version of every page.
+---
+
+import { LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+These docs are built to be read by coding agents and chat assistants as well as people.
+
+<CardGrid>
+  <LinkCard title="llms.txt" description="An index of the docs in the llms.txt format, with links to every set." href="/llms.txt" />
+  <LinkCard title="llms-full.txt" description="Every page in one Markdown file, including the integration code for all six languages." href="/llms-full.txt" />
+  <LinkCard title="llms-small.txt" description="A compact version with non-essential content removed, for small context windows." href="/llms-small.txt" />
+</CardGrid>
+
+## Markdown for any page
+
+Add `.md` to a page's path to get it as plain Markdown, for example [`/docs/providers/esewa.md`](/docs/providers/esewa.md) for the eSewa integration guide. The **Settings** menu in the header has the same actions for the page you're on:
+
+- **Copy page as Markdown** puts the page on your clipboard, ready to paste into a chat.
+- **View as Markdown** opens the raw page.
+- **Open in ChatGPT** and **Open in Claude** start a chat that reads the page.
+
+## Prefer the skill for coding
+
+For writing the integration itself, [install the skill](/docs/install/) instead. The agent then reads the same references on demand, plus the tested adapters it copies into your project.

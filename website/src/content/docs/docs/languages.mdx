@@ -1,0 +1,55 @@
+---
+title: Languages
+description: Runtime requirements, dependencies, test counts and test commands for the Nepal Payments adapters in TypeScript, Python, Java, Kotlin, PHP and Go.
+---
+
+import { languages, totalTests, REPO } from "../../../data/site";
+
+All six adapters implement the same providers and the [same interface](/docs/api/). Every suite runs the providers' signature test vectors and the same mocked-provider cases, {totalTests} tests in total, and each language has a live eSewa and Fonepay sandbox check.
+
+<table>
+  <thead>
+    <tr><th>Language</th><th>Runtime</th><th>Dependencies</th><th>Tests</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    {languages.map((l) => (
+      <tr>
+        <td><strong>{l.name}</strong></td>
+        <td>{l.runtime}</td>
+        <td>{l.deps}</td>
+        <td>{l.tests}</td>
+        <td><a href={`${REPO}/tree/main/skills/nepal-payments/${l.path}`}><code>{l.path}</code></a></td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+
+## Run the tests
+
+From `skills/nepal-payments/scripts`:
+
+```bash
+(cd ts && npm ci && npm test && npm run typecheck)
+(cd python && python -m unittest discover -s tests)   # connectIPS tests need `pip install cryptography`
+(cd java && ./gradlew test)
+(cd kotlin && ./gradlew test)
+(cd php && composer install && vendor/bin/phpunit)
+(cd go && go test -race ./...)
+```
+
+No local PHP? Run each PHP command in Docker: `docker run --rm -v "$PWD":/app -w /app composer:2 <command>`.
+
+## Live sandbox checks
+
+```bash
+node test/sandbox.ts       # TypeScript (add KHALTI_SECRET_KEY=... for Khalti)
+./gradlew sandbox          # Java, Kotlin
+php tests/sandbox.php      # PHP
+go run ./cmd/sandbox       # Go
+```
+
+TypeScript also has an end-to-end demo against the eSewa and Fonepay sandboxes: `cd ts && node examples/server.ts`, then open `http://localhost:3000`.
+
+## Other languages
+
+For C#, Ruby, Rust or a Dart server, port from the TypeScript adapter of each provider. Write the provider's test vectors as tests first (each provider page has them), port until they pass, then run the sandbox checks in [Testing and go-live](/docs/guides/testing/).
