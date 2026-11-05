@@ -1,0 +1,319 @@
+---
+title: "connectIPS Payment Gateway Integration: Step by Step in Any Framework"
+description: "Build connectIPS checkout in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: RSA TOKEN from your .pfx, registered return URL and validatetxn."
+label: connectIPS
+provider: connectips
+published: 2026-11-05
+order: 40
+stack: true
+stackTitle: "connectIPS Payment Gateway Integration in {stack}: Step by Step"
+stackDescription: "Integrate connectIPS in {stack}: RSA-signed form from your .pfx key, the registered return URL, validatetxn, reconciliation and the errors that break it."
+faq:
+  - q: "What are the connectIPS sandbox (UAT) credentials?"
+    a: "There are none to share. connectIPS publishes no test merchant. Your bank lists you with NCHL, and NCHL emails your MERCHANTID, APPID, APPNAME, an app password and a CREDITOR.pfx with its password. Test payer accounts come from connectIPS technical support by email. The UAT host is https://uat.connectips.com."
+  - q: "How do I extract the private key from the connectIPS .pfx file?"
+    a: "Run openssl pkcs12 -in CREDITOR.pfx -nocerts -nodes and pipe it to openssl pkcs8 -topk8 -nocrypt -out creditor.key.pem. On OpenSSL 3, add -legacy to the pkcs12 command if it fails with an unsupported RC2-40-CBC error."
+  - q: "Why does connectIPS say 403 session expired after the OTP?"
+    a: "Your success or failure URL isn't registered with NCHL. connectIPS doesn't take a return URL per payment. Ask NCHL to register both URLs for your APPID (localhost is allowed in UAT). In a mobile WebView the same message after the captcha means cookies are blocked."
+  - q: "Is connectIPS TXNAMT in rupees or paisa?"
+    a: "Paisa, as an integer, in the form and in validatetxn. Rs 100 is TXNAMT=10000. validatetxn must get the same paisa amount you posted in the form."
+  - q: "What referenceId does connectIPS validatetxn expect?"
+    a: "The TXNID you sent in the form, not your REFERENCEID field. The validatetxn token signs MERCHANTID, APPID, REFERENCEID (set to that TXNID) and TXNAMT, in that order, with the same RSA key."
+  - q: "Can I use a UUID as the connectIPS TXNID?"
+    a: "No. TXNID takes at most 20 characters and a UUID has 36, so connectIPS answers invalid input. Use 20 random hex characters, which also fit every other Nepali gateway's order id rules."
+  - q: "Does connectIPS have webhooks or a refund API?"
+    a: "No. The gateway API has no webhook and no refund endpoint. The redirect with TXNID, the validatetxn call and a reconcile job that re-checks open payments are all you get."
+---
+
+import { Code } from "astro-expressive-code/components";
+import CodeGroup from "../../components/blog/CodeGroup.astro";
+import Note from "../../components/blog/Note.astro";
+import { app, gatewayNames, part, whole } from "../../data/blog-code";
+import { bridge, connectips, testKey, vectors } from "../../data/blog-code/connectips";
+
+export const code = app(gatewayNames("connectips", "connectIPS", "Connectips"));
+
+By the end of this guide you'll have a checkout that takes connectIPS payments from Nepali bank accounts and marks an order paid only after NCHL confirms the money moved. Pick your framework above and the whole guide switches to it. The code runs as-is once you have a connectIPS merchant app, and until then you can run every route against a local stand-in.
+
+connectIPS has no public sandbox account, so I couldn't pay in UAT for this guide, and I won't pretend I did. Here is what I tested in November 2026: every block compiles in its language; the signing code in all six languages produces the same signatures as `openssl dgst -sha256 -sign` for a throwaway key; the `openssl` commands below pull that key out of both a modern and an RC2-encrypted `.pfx`; and all twelve framework setups ran the full flow (form, redirect, `validatetxn`, a mismatched `TXNID`, a wrong amount) against a local mock built from NCHL's documented requests and responses. The endpoints, field limits and status values come from NCHL's merchant docs, three community SDKs and live probes of the endpoints.
+
+## How a connectIPS payment works
+
+connectIPS is run by NCHL (Nepal Clearing House) and debits the buyer's bank account directly. Like eSewa, your server never asks connectIPS for a payment link. It builds an HTML form, signs it, and the buyer's browser posts that form to NCHL's login page:
+
+<ol class="steps">
+  <li>Your server creates a <strong>payment attempt</strong>, builds ten form fields and signs them into a <code>TOKEN</code> with the RSA private key from the <code>.pfx</code> file NCHL gave you.</li>
+  <li>The browser auto-submits the form to connectIPS. The buyer logs in, picks a bank account and enters the OTP.</li>
+  <li>connectIPS sends the buyer to the success or failure URL that <strong>NCHL registered for your app</strong>, adding only <code>?TXNID=</code> with your attempt id. No status, no signature.</li>
+  <li>Your server calls <strong>validatetxn</strong> with Basic auth and the amount it stored. That answer, not the redirect, decides whether the order is paid.</li>
+</ol>
+
+Three rules fall out of this, and most broken connectIPS integrations break one of them:
+
+- **Sign on the server.** The `.pfx`, its password and the key inside it never reach the browser or a mobile app.
+- **A redirect is not a payment.** The return URL carries nothing but an id. Anyone can type it into a browser.
+- **Use your own numbers.** Send `validatetxn` the paisa amount you stored, and check the amount it sends back.
+
+## What you need
+
+A merchant app from NCHL. Enrol through your bank (KYC and a creditor account), the bank lists you with NCHL, and NCHL emails you:
+
+- `MERCHANTID` (an integer), `APPID` (like `MER-550-APP-1`) and `APPNAME`
+- an app **password**, used as Basic auth on `validatetxn`
+- the creditor certificate **`.pfx`** and its password (`CREDITOR.pfx` in UAT)
+
+Test payer accounts come from connectIPS technical support by email. One merchant can have several apps, one per bank account, and each app has its own `APPID`, password and `TXNID` space.
+
+| | UAT | Production |
+|---|---|---|
+| Gateway form (POST) | `uat.connectips.com/connectipswebgw/loginpage` | `login.connectips.com/connectipswebgw/loginpage` |
+| validatetxn (POST) | `uat.connectips.com/connectipswebws/api/creditor/validatetxn` | `login.connectips.com/connectipswebws/api/creditor/validatetxn` |
+| Credentials | from NCHL, through your bank | from NCHL, through your bank |
+
+The module reads six environment variables, plus `CONNECTIPS_ENV=production` when you go live:
+
+```bash
+CONNECTIPS_MERCHANT_ID=550
+CONNECTIPS_APP_ID=MER-550-APP-1
+CONNECTIPS_APP_NAME='Your App Name'
+CONNECTIPS_APP_PASSWORD='app-password-from-nchl'
+CONNECTIPS_PRIVATE_KEY_PEM='-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----'
+BASE_URL=https://shop.example.com   # where connectIPS sends the buyer back
+```
+
+<Note type="warn" title="The return URL is registered, not sent">
+  connectIPS has no return URL field. NCHL registers your success and failure URLs against the app, and until it does, every test payment ends in <code>403 session expired</code> after the OTP. Ask NCHL to register <code>BASE_URL/connectips/return</code> as both. Localhost is allowed in UAT.
+</Note>
+
+Several community libraries use `https://connectips.com/...` or `uat.connectips.com:7443`. The first returns 404 and the second times out. Use the hosts in the table.
+
+## Get the private key out of the .pfx
+
+The `TOKEN` is signed with the private key inside the `.pfx`. Convert it once on your own machine into a PKCS#8 PEM, the one format every language below reads without extra libraries:
+
+```bash
+openssl pkcs12 -in CREDITOR.pfx -nocerts -nodes -passin pass:"$PFX_PASSWORD" \
+  | openssl pkcs8 -topk8 -nocrypt -out creditor.key.pem
+```
+
+The output starts with `-----BEGIN PRIVATE KEY-----`. On OpenSSL 3, an older `.pfx` encrypted with RC2 fails like this:
+
+```text
+Error outputting keys and certificates
+...:error:0308010C:digital envelope routines:inner_evp_generic_fetch:unsupported:...Algorithm (RC2-40-CBC : 0)...
+```
+
+Add `-legacy` to the first command. It works on new `.pfx` files too, so a script can always pass it:
+
+```bash
+openssl pkcs12 -legacy -in CREDITOR.pfx -nocerts -nodes -passin pass:"$PFX_PASSWORD" \
+  | openssl pkcs8 -topk8 -nocrypt -out creditor.key.pem
+```
+
+Environment variables hold one line, so store the PEM with `\n` escapes. The module turns them back into newlines:
+
+```bash
+# bash: export the key as one line
+export CONNECTIPS_PRIVATE_KEY_PEM="$(awk '{printf "%s\\n", $0}' creditor.key.pem)"
+```
+
+In a `.env` file (Laravel, Docker, most hosts), wrap the same one line in double quotes. Never commit the `.pfx`, its password or the PEM, and keep them in your secret manager in production.
+
+## Set up the project
+
+Create the project and install the framework. The commands below match the stack you picked.
+
+<CodeGroup by="fw" blocks={code.setup} />
+
+<CodeGroup by="lang" blocks={{ python: { file: "terminal", lang: "bash", code: "# Python's standard library has no RSA signing, so the connectIPS module needs one package\npip install cryptography" } }} />
+
+## Step 1: Store payment attempts
+
+Every click on "Pay" creates a **payment attempt**: one row with its own id, the amount, and a status that starts at `initiated`. The order can have several attempts (the buyer cancels and tries again), and each attempt's id is what connectIPS sees as `TXNID`, so it is never reused. connectIPS refuses a repeated `TXNID` within an app.
+
+In production this is a table:
+
+```sql
+CREATE TABLE payment_attempts (
+  id            VARCHAR(20) PRIMARY KEY,   -- sent to connectIPS as TXNID (20 is also TXNID's limit)
+  order_id      VARCHAR(64) NOT NULL,
+  amount_paisa  BIGINT      NOT NULL,      -- what we charge, in paisa (Rs 100 = 10000)
+  status        VARCHAR(16) NOT NULL,      -- initiated, pending, paid, failed, canceled, expired
+  provider_ref  VARCHAR(64),               -- stays empty for connectIPS: validatetxn looks up by TXNID
+  created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+To keep this guide runnable with zero setup, the store below keeps attempts in memory (or in a JSON file for PHP, which forgets everything between requests). Swap its functions for queries when you move to a database. The function that matters is `transition`: it changes the status only if the current status is one you expect, in one atomic step. That single rule is what stops an order from being fulfilled twice when the buyer refreshes the return page.
+
+<CodeGroup by="lang" blocks={code.store} />
+
+Next, the types every gateway module speaks, plus `settle`. `settle` takes the connectIPS answer and applies it: `paid` moves the attempt to paid and fulfils the order exactly once, `pending` waits, and `not_found` is left for the reconcile job in step 4.
+
+<CodeGroup by="lang" blocks={code.types} />
+
+## Step 2: Write the connectIPS module
+
+This file is the only connectIPS-specific code in the project besides one small route in step 3. It exports two functions: `startPayment`, which builds the signed form, and `confirmPayment`, which asks NCHL what happened. It's the same file for every framework in your language.
+
+### Configuration
+
+The module reads the variables from the setup section. Unlike eSewa, connectIPS has no public test credentials to fall back to, so the module stops with an error if any of the five is missing, in UAT and in production alike. Two details here save debugging later:
+
+- `TXNDATE` is the date **in Nepal** (UTC+5:45), formatted `DD-MM-YYYY`. A server in UTC sends yesterday's date for the first 5 hours 45 minutes of every Nepali day if it uses its own clock.
+- `CONNECTIPS_BASE_URL` overrides the NCHL host. Leave it unset in real use; it exists so you can point the module at a local stand-in until NCHL sends credentials.
+
+<CodeGroup by="lang" blocks={part(connectips, "config")} />
+
+### Signing
+
+The `TOKEN` is an RSA signature, PKCS#1 v1.5 with SHA-256, encoded as standard base64. The signed text is every form field in a fixed order as `NAME=value`, joined with bare commas and ending with the literal `TOKEN=TOKEN`. With the values from NCHL's docs:
+
+```text
+MERCHANTID=550,APPID=MER-550-APP-1,APPNAME=Test,TXNID=txn123,TXNDATE=15-03-2022,TXNCRNCY=NPR,TXNAMT=500,REFERENCEID=REF-001,REMARKS=RMKS-001,PARTICULARS=PART-001,TOKEN=TOKEN
+```
+
+NCHL's docs describe it as "SHA-256 digest, then sign". SHA256withRSA does both, so **don't hash the string yourself first**. Go's API takes the digest instead, so the Go code hashes once and the other five don't hash at all. One template in the docs shows `", "` separators, but the worked example and every SDK use bare commas.
+
+<CodeGroup by="lang" blocks={part(connectips, "sign")} />
+
+connectIPS publishes no test key, so there's no official signature to check against. RSA PKCS#1 v1.5 is deterministic, though: the same key and text always give the same signature. Sign the docs string with your code and with `openssl`, using the same key, and the two must match:
+
+```bash
+printf '%s' 'MERCHANTID=550,APPID=MER-550-APP-1,REFERENCEID=txn123,TXNAMT=500' \
+  | openssl dgst -sha256 -sign creditor.key.pem | base64 -w0
+```
+
+To check your code before NCHL sends a key, use mine. I generated this throwaway 2048-bit key only for these vectors and it signs nothing real. All six modules on this page reproduce the three signatures below, which came from the `openssl` command above.
+
+<details class="full-file">
+  <summary>The throwaway key and its three signatures</summary>
+  <div class="code-group">
+    <Code code={testKey} lang="text" title="test.key.pem" />
+    <Code code={vectors.map((v) => `${v.message}\n${v.signature}`).join("\n\n")} lang="text" title="message, then base64 signature" />
+  </div>
+</details>
+
+If your signature differs, look for a pre-hashed message, `", "` separators, a missing `,TOKEN=TOKEN`, a field out of order, or hex instead of base64.
+
+### Starting a payment
+
+`startPayment` returns the form. connectIPS wants all ten fields plus the token, and rejects any value over its length limit with "invalid input":
+
+| Field | Max | Value |
+|---|---|---|
+| `MERCHANTID` | 20 | integer from NCHL |
+| `APPID` | 15 | from NCHL |
+| `APPNAME` | 30 | from NCHL |
+| `TXNID` | **20** | the attempt id: letters, digits and `-`, unique per attempt |
+| `TXNDATE` | 10 | `DD-MM-YYYY`, Nepal time |
+| `TXNCRNCY` | 3 | `NPR` |
+| `TXNAMT` | 20 | **paisa**, as an integer: Rs 100 is `10000` |
+| `REFERENCEID` | 20 | your own reference; the module sends the attempt id again |
+| `REMARKS` | 50 | free text, here `Order demo` |
+| `PARTICULARS` | 100 | free text, here `Order demo` |
+| `TOKEN` | 512 | from the signing step |
+
+The attempt ids from step 1 are exactly 20 hex characters, so they fit `TXNID` with nothing to spare. A UUID is 36 and would be refused, so the module checks the length before it signs. Free text goes inside the signed string, where a `,` or `=` would shift every field after it, so the module swaps both for spaces and clips to the limit.
+
+There is no return URL in the list. `startPayment` receives one like every gateway module, and ignores it: connectIPS sends the buyer to the URLs NCHL registered.
+
+<CodeGroup by="lang" blocks={part(connectips, "start")} />
+
+### Confirming a payment
+
+`confirmPayment` runs in two places: on the return route, with the `TXNID` connectIPS appended, and in the reconcile job, with nothing. It works the same way in both:
+
+1. If there's a `TXNID`, check it names this attempt. It's unsigned, so a match proves nothing, but a mismatch means a broken or tampered link, and the route answers 400.
+2. Call `validatetxn` with Basic auth (`APPID:app password`, not the `.pfx` password). The body sends `referenceId` = **the `TXNID`** (not `REFERENCEID`) and `txnAmt` = the paisa amount **you stored**, plus a token over `MERCHANTID,APPID,REFERENCEID,TXNAMT` signed with the same key.
+3. Map the answer to our status, and treat a success for any other amount as an error.
+
+```json
+{"merchantId":550,"appId":"MER-550-APP-1","referenceId":"txn123","txnAmt":"500","token":null,
+ "status":"SUCCESS","statusDesc":"TRANSACTION SUCCESSFUL"}
+```
+
+| `status` / `statusDesc` | Means | Our status |
+|---|---|---|
+| `SUCCESS` / TRANSACTION SUCCESSFUL | Paid | `paid` |
+| `FAILED` / TRANSACTION UNSUCCESSFUL | The debit failed | `failed` |
+| `ERROR` / TRANSACTION INCOMPLETE | The buyer hasn't entered the OTP yet | `pending` |
+| `ERROR` / TRANSACTION NOT FOUND | Never reached connectIPS, or the wrong `referenceId` | `not_found` |
+
+`status` is `ERROR` for both of the last two, so the module reads `statusDesc` to tell them apart, and anything it doesn't recognise counts as `pending` so the reconcile job keeps asking. `txnAmt` comes back as text (`"500"`), so it's converted before the comparison. A `401` means a wrong `APPID` or app password: that's a configuration problem rather than a bad payment, so the module throws a plain error and the route answers 502.
+
+<CodeGroup by="lang" blocks={part(connectips, "confirm")} />
+
+<details class="full-file">
+  <summary>The whole connectIPS module in one block</summary>
+  <CodeGroup by="lang" blocks={whole(connectips, ["config", "sign", "start", "confirm"])} />
+</details>
+
+## Step 3: Add the routes
+
+Four routes are shared by every gateway on this site. None of them mention connectIPS: they call `startPayment` and `confirmPayment` on whichever gateway module you import.
+
+- `GET /` shows a demo order and a Pay button.
+- `POST /pay/{orderId}` creates an attempt, calls `startPayment`, and sends back a page that auto-posts the form to connectIPS.
+- `GET` and `POST /pay/return/{attemptId}` collect the callback's parameters, call `confirmPayment` with the **stored** amount, apply the answer with `settle`, and redirect to the order. Frameworks with CSRF protection exempt this one route, because other gateways post back to it.
+- `GET /orders/{orderId}` shows the order's payment status.
+
+<CodeGroup by="fw" blocks={code.routes} />
+
+connectIPS needs one more. The return route takes the attempt id in its path, but NCHL registers one fixed URL per app and only appends `?TXNID=`. So register `BASE_URL/connectips/return` with NCHL, as both the success and the failure URL, and add a route there that looks the attempt up and forwards the buyer to `/pay/return/<attemptId>`:
+
+<CodeGroup by="fw" blocks={bridge} />
+
+It answers 404 for an id it doesn't know and passes `TXNID` along, so `confirmPayment` sees what connectIPS sent. Both URLs point at the same route on purpose: which one fired proves nothing, and `validatetxn` decides.
+
+## Step 4: Catch payments the redirect missed
+
+Buyers close the tab after the OTP, lose signal, or never make it back. connectIPS has no webhook, so nothing tells your server. The reconcile job fixes that: every minute it finds attempts still open after two minutes and runs `confirmPayment` on them with no callback data, which goes straight to `validatetxn`. Paid ones get settled, and attempts connectIPS still doesn't know after an hour are marked `expired`. Anything still open after three days drops out of the loop: the job logs it as needing manual review, because a payment that old needs a person, not another status call.
+
+<CodeGroup by="lang" blocks={code.reconcile} />
+
+## Step 5: Pay in UAT
+
+Once NCHL has sent your UAT credentials and registered `BASE_URL/connectips/return`, start the server with the run command from the setup step, then:
+
+<ol class="steps">
+  <li>Open the app and click <strong>Pay with connectIPS</strong>. The browser posts the signed form and you land on connectIPS's UAT login page.</li>
+  <li>Log in with the test payer account from connectIPS support, pick a bank account and enter the OTP.</li>
+  <li>connectIPS redirects to <code>/connectips/return?TXNID=&lt;attemptId&gt;</code>, which forwards to the return route. Your server calls <code>validatetxn</code> and settles the attempt.</li>
+  <li>The order page shows <strong>paid</strong>, and the server log prints the fulfilment line once. Refresh the return URL as often as you like: it never prints again.</li>
+</ol>
+
+Before NCHL answers, you can still run every route. Set `CONNECTIPS_BASE_URL` to a small local server that accepts the form at `/connectipswebgw/loginpage` and answers `validatetxn` with the JSON shapes in step 2. That's how I tested all twelve frameworks: my stand-in verified every `TOKEN` with `openssl`, sent the browser back with `?TXNID=`, and answered `INCOMPLETE`, then `SUCCESS`, then `SUCCESS` with the wrong amount. A mock proves your code matches the documentation. Only UAT proves the documentation matches connectIPS.
+
+## Common connectIPS errors
+
+| Error | Cause | Fix |
+|---|---|---|
+| `403 session expired` after the OTP | Your success or failure URL isn't registered with NCHL. | Ask NCHL to register `BASE_URL/connectips/return` as both for this `APPID`. |
+| "session expired" after the captcha in an app | The WebView blocks cookies. | Enable cookies, including third-party cookies on Android. |
+| 403 "multiple gateway payments at once" | `TXNID` reused within the app. | Create a new attempt per click. |
+| "invalid input" | A field is over its limit, often a UUID in `TXNID`. | Keep `TXNID` at 20 characters or less and clip the free text. |
+| `401` from validatetxn | Wrong `APPID` or app password in Basic auth. | Use `APPID:app password`, not the `.pfx` password. |
+| `ERROR` / TRANSACTION NOT FOUND after paying | `referenceId` wasn't the `TXNID` you posted. | Send the `TXNID` as `referenceId`, with the same paisa amount as the form. |
+| `ERROR` / TRANSACTION INCOMPLETE | The buyer hasn't entered the OTP yet. | Nothing. It stays pending and the reconcile job asks again. |
+| `unsupported ... RC2-40-CBC` from openssl | OpenSSL 3 can't read the old `.pfx` encryption by default. | Add `-legacy` to `openssl pkcs12`. |
+| "must be PKCS#8 (BEGIN PRIVATE KEY)" at startup | The PEM is PKCS#1 (`BEGIN RSA PRIVATE KEY`) or still has the certificate. | Run both `openssl` commands above, including `pkcs8 -topk8`. |
+| 404 or timeout on the gateway | `connectips.com` or `uat.connectips.com:7443` from an old library. | Use `uat.connectips.com` or `login.connectips.com`. |
+
+## Going live
+
+1. Get NCHL activation through your bank, with the live `MERCHANTID`, `APPID`, app password and a live `.pfx`.
+2. Extract the live key as above and store it in your secret manager.
+3. Ask NCHL to register the live `https://your-domain/connectips/return` as the success and failure URL.
+4. Set `CONNECTIPS_ENV=production` and the five credentials, and make sure `CONNECTIPS_BASE_URL` is unset. The module switches to `login.connectips.com`.
+5. Replace the store with your database. Keep `transition` atomic: an `UPDATE ... WHERE id = ? AND status IN (...)` that reports how many rows changed.
+6. Run the reconcile job from a scheduler (cron, a queue worker, or the framework's scheduler) instead of the web process.
+7. Make one real low-value payment end to end. connectIPS has no refund API, so settle a refund through your bank.
+
+For settlement, `gettxndetail` takes the same request as `validatetxn` and adds the debit bank, NCHL's own `txnId`, charges and `creditStatus` (`000`, `999` or `DEFER` mean the credit is fine). The [connectIPS reference](/docs/providers/connectips/reference/#5-validation-apis) has the full field list.
+
+## connectIPS in React, Vue or a mobile app
+
+**React, Vue, Svelte or any SPA:** the frontend never signs anything. It POSTs the order id to your server's `/pay/{orderId}` route and lets the browser follow the auto-post page, or fetches the eleven fields as JSON and submits a form it builds itself. A private key in a client bundle lets anyone sign any amount against your merchant account.
+
+**Flutter, React Native, Android, iOS:** connectIPS has no mobile SDK in the gateway API. Open your server's `/pay/{orderId}` page in a WebView and let the server confirm when the WebView reaches `/connectips/return`. The WebView **must accept cookies**: with cookies blocked, connectIPS shows "session expired" right after the captcha. On Android, call `CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)`.
