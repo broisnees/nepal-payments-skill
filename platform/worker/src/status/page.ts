@@ -41,7 +41,7 @@ h2{font-size:15px;margin:32px 0 12px;font-weight:600}
 .list{border:1px solid var(--line);background:var(--card);margin-top:16px}
 .gw{display:grid;grid-template-columns:minmax(150px,1.1fr) 1fr 1.4fr;gap:8px 20px;align-items:center;padding:16px;border-top:1px solid var(--line)}
 .gw:first-child{border-top:0}
-.gw .name{font-weight:600;font-size:16px;color:var(--fg);display:inline-flex;align-items:center;gap:10px;text-decoration:none}.logo{display:inline-flex;line-height:0}.logo img{width:auto}.hero-logo{margin:4px 0 14px}@media (prefers-color-scheme:dark){.logo.chip{padding:2px 5px;background:#fff;border-radius:2px}}.gw .meta{color:var(--muted);font-size:13px;margin-top:2px}
+.gw .name{font-weight:600;font-size:16px;color:var(--fg);display:inline-flex;align-items:center;gap:10px;text-decoration:none}.logo{display:inline-flex;line-height:0}.gw-tile{display:inline-grid;place-items:center;width:26px;height:26px;padding:0;background:#fff;border:1px solid var(--line);border-radius:6px;flex:none}.gw-tile img{width:18px;height:18px;display:block}.logo img{width:auto}.hero-logo{margin:4px 0 14px}@media (prefers-color-scheme:dark){.logo.chip{padding:2px 5px;background:#fff;border-radius:2px}}.gw .meta{color:var(--muted);font-size:13px;margin-top:2px}
 .label{font-size:12px;color:var(--faint);margin-bottom:4px}
 svg{display:block;width:100%;height:auto;overflow:visible}
 .bars rect.u-ok{fill:var(--ok)}.bars rect.u-warn{fill:var(--warn)}.bars rect.u-bad{fill:var(--bad)}.bars rect.u-none{fill:var(--none)}
@@ -71,6 +71,12 @@ function logo(gateway: string, name: string, height: number): string {
   const w = Math.round(h * l.ratio);
   const dark = l.dark ? `<source media="(prefers-color-scheme: dark)" srcset="${esc(l.dark)}">` : "";
   return `<picture class="logo${l.chip ? " chip" : ""}">${dark}<img src="${esc(l.light)}" alt="${esc(name)}" width="${w}" height="${h}"></picture>`;
+}
+
+/** The gateway's square icon on a light tile, for list rows. */
+function icon(gateway: string): string {
+  const l = GATEWAY_LOGOS[gateway];
+  return l ? `<span class="gw-tile"><img src="${esc(l.icon)}" alt="" width="18" height="18"></span>` : "";
 }
 
 function layout(o: { title: string; description: string; canonical: string; body: string }): string {
@@ -217,7 +223,7 @@ export function renderOverview(r: StatusReport, origin: string): string {
   const rows = r.gateways
     .map(
       (g) => `<div class="gw s-${g.state}">
-<div><a class="name" href="/status/${esc(g.gateway)}">${logo(g.gateway, g.name, 20)}<span>${esc(g.name)}</span></a><div class="meta"><span class="pill s-${g.state}"><span class="dot s-${g.state}"></span>${STATE_LABEL[g.state]}</span></div></div>
+<div><a class="name" href="/status/${esc(g.gateway)}">${icon(g.gateway)}<span>${esc(g.name)}</span></a><div class="meta"><span class="pill s-${g.state}"><span class="dot s-${g.state}"></span>${STATE_LABEL[g.state]}</span></div></div>
 <div><div class="label">Last 15 min</div><div>${g.state === "no_data" ? "n/a" : `${esc(pct(g.error_rate))} errors, p95 ${esc(ms(g.p95_ms))}`}</div></div>
 <div class="uptime"><div class="label">90 days${g.uptime_90d_pct !== null ? `: ${esc(pct(g.uptime_90d_pct, 2))} healthy` : ""}</div>${uptimeBars(g, 22)}</div>
 </div>`,
