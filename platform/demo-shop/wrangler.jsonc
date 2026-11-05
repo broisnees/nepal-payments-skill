@@ -1,0 +1,22 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "paynp-demo-shop",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-05",
+  // nodejs_compat puts vars in process.env, which the eSewa module reads.
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "routes": [{ "pattern": "paynp-shop.discerns.app", "custom_domain": true }],
+  // Shares the paynp database (the free plan caps the number of databases); every table is prefixed shop_.
+  "d1_databases": [{ "binding": "DB", "database_name": "paynp", "database_id": "90432197-a1ce-436a-bb1d-24ff35c054df", "migrations_dir": "migrations", "migrations_table": "shop_migrations" }],
+  // Events go straight to the paynp Worker instead of a public round trip.
+  "services": [{ "binding": "PAYNP", "service": "paynp" }],
+  // Every minute: confirm payments where the buyer never came back.
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    "ESEWA_ENV": "sandbox",
+    "PAYNP_ENDPOINT": "https://paynp.discerns.app",
+    "DASHBOARD_URL": "https://paynp.discerns.app/p/prj_01M6N90FHB6ZDRKXSF0QPKCCQC/test/payments"
+  }
+  // Secret: PAYNP_KEY (a pnp_test_ key of the paynp-demo project).
+}

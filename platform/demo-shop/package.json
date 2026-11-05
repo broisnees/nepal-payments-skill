@@ -1,0 +1,16 @@
+{
+  "name": "@paynp/demo-shop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "gen": "node scripts/gen.mjs",
+    "dev": "npm run gen && wrangler dev",
+    "deploy": "npm run gen && wrangler deploy",
+    "typecheck": "npm run gen && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261104.1",
+    "typescript": "5.9.3"
+  }
+}
