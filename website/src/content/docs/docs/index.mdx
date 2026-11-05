@@ -5,6 +5,7 @@ description: Nepal Payments is an Agent Skill plus tested adapters for eSewa, Kh
 
 import { LinkCard, CardGrid } from "@astrojs/starlight/components";
 import { providers, languages, totalTests } from "../../../data/site";
+import GatewayLogo from "../../../components/GatewayLogo.astro";
 
 Nepal Payments is an [Agent Skill](https://agentskills.io) for integrating Nepali payment gateways into any backend, web app or mobile app. Ask a coding agent to "add eSewa and Khalti checkout to this app" and it follows a tested recipe: server-side signing, server-to-server verification, exactly-once fulfilment and reconciliation.
 
@@ -15,7 +16,8 @@ The skill ships working adapters in {languages.length} languages, covered by {to
 <div class="np-grid">
   {providers.map((p) => (
     <a class="np-card" href={`/docs/providers/${p.slug}/`}>
-      <strong>{p.name}</strong>
+      <span class="np-card-logo"><GatewayLogo slug={p.slug} name={p.name} height={24} /></span>
+      <strong>{p.name} <span class="np-card-kind">{p.kind}</span></strong>
       <span>{p.flows}</span>
     </a>
   ))}

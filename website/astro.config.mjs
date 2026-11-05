@@ -37,6 +37,7 @@ export default defineConfig({
         "@fontsource-variable/inter/opsz.css",
         "@fontsource-variable/jetbrains-mono",
         "./src/styles/docs.css",
+        "./src/styles/logos.css",
       ],
       components: {
         Head: "./src/components/DocsHead.astro",
@@ -66,6 +67,7 @@ export default defineConfig({
       sidebar: [
         {
           label: "Getting started",
+          collapsed: true,
           items: [
             { label: "Introduction", slug: "docs" },
             { label: "Install the skill", slug: "docs/install" },
@@ -76,6 +78,7 @@ export default defineConfig({
         },
         {
           label: "Providers",
+          collapsed: true,
           items: [
             { label: "Overview", slug: "docs/providers" },
             ...providerNav.map(([label, key]) => ({
@@ -89,10 +92,11 @@ export default defineConfig({
             { label: "Other gateways", slug: "docs/providers/others" },
           ],
         },
-        { label: "Guides", items: [{ autogenerate: { directory: "docs/guides" } }] },
+        { label: "Guides", collapsed: true, items: [{ autogenerate: { directory: "docs/guides" } }] },
         { label: "Blog", link: "/blog/" },
         {
           label: "Reference",
+          collapsed: true,
           items: [
             { label: "Adapter API", slug: "docs/api" },
             { label: "Languages", slug: "docs/languages" },

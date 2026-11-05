@@ -320,3 +320,78 @@ html {
     --sl-sidebar-pad-x: 48px;
   }
 }
+
+/* Sidebar: denser, quieter group headings, and a scrollbar that only shows on hover. */
+.sidebar-pane {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.sidebar-pane:hover,
+.sidebar-pane:focus-within {
+  scrollbar-color: var(--sl-color-gray-5) transparent;
+}
+
+.sidebar-content {
+  --sl-sidebar-item-padding-y: 0.3rem;
+}
+
+.sidebar-content a {
+  font-size: var(--sl-text-sm);
+}
+
+/* Top-level group headings read as section labels, not links. */
+.sidebar-content > ul > li > details > summary .large,
+.sidebar-content > ul > li > a.large {
+  font: 500 12px var(--sl-font-mono, ui-monospace, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sl-color-gray-3);
+}
+
+.sidebar-content > ul > li + li {
+  margin-top: 0.35rem;
+}
+
+.sidebar-content details summary {
+  border-radius: 0;
+}
+
+.sidebar-content details summary:hover .large {
+  color: var(--sl-color-white);
+}
+
+/* Provider cards lead with the gateway's logo. */
+.np-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1.1rem 1.2rem 1.2rem;
+  transition-property: background-color, border-color;
+}
+
+.np-card-logo {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  margin-bottom: 0.35rem;
+}
+
+.np-card strong {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0;
+}
+
+.np-card-kind {
+  font: 400 11px var(--sl-font-mono, ui-monospace, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sl-color-gray-3);
+}
+
+.np-card > span:last-child {
+  line-height: 1.5;
+}
