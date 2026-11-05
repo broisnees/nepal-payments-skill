@@ -6,7 +6,19 @@ import { useMe, useProject } from "../components/Shell.tsx";
 import { CodeBlock, Command, CopyButton, Dialog, EmptySmall, Seg, Skeleton, Switch, Time, confirmAction, toast, useNow } from "../components/ui.tsx";
 import { api, errorMessage, items } from "../lib/api.ts";
 import { formatDateTime, formatFull, formatRelative } from "../lib/format.ts";
+import { ApiFailure } from "../lib/api.ts";
 import { invalidate, setData, useQuery } from "../lib/query.ts";
+import type { ActionEndpoint, ActionRecord } from "../lib/v2.ts";
+
+interface ActionTest {
+  ok: boolean;
+  ms?: number;
+  error?: string | null;
+}
+/** POST /action-endpoint/test answers with the ping action record: 200 when ok, 502 when it failed. */
+function testResult(r: ActionRecord): ActionTest {
+  return { ok: r.status === "ok", ms: r.finished_at ? r.finished_at - r.created_at : undefined, error: r.response?.error ?? (r.response?.http_status ? `HTTP ${r.response.http_status}` : null) };
+}
 import type { Invite, Member, MeUser, Pat } from "../lib/types.ts";
 import { deviceName } from "../lib/ua.ts";
 
@@ -14,6 +26,7 @@ const SECTIONS: [string, string, IconName][] = [
   ["general", "Project", "settings"],
   ["account", "Account", "mail"],
   ["keys", "API keys", "key"],
+  ["actions", "Action endpoint", "zap"],
   ["members", "Members", "users"],
   ["sessions", "Sessions", "laptop"],
   ["tokens", "CLI tokens", "terminal"],
@@ -39,7 +52,7 @@ export default function Settings() {
           ))}
         </nav>
         <div>
-          {section === "keys" ? <Keys /> : section === "members" ? <Members /> : section === "sessions" ? <Sessions /> : section === "tokens" ? <Tokens /> : section === "account" ? <Account /> : <General />}
+          {section === "keys" ? <Keys /> : section === "actions" ? <Actions /> : section === "members" ? <Members /> : section === "sessions" ? <Sessions /> : section === "tokens" ? <Tokens /> : section === "account" ? <Account /> : <General />}
         </div>
       </div>
     </>
@@ -722,6 +735,208 @@ function Tokens() {
       <div style={{ maxWidth: 360 }}>
         <Command cmd="npx paynp login" />
       </div>
+    </section>
+  );
+}
+
+// ------------------------------------------------------------------ action endpoint
+const ACTION_ROUTE = `// A route on your server. paynp signs every request; the SDK checks the signature.
+import { paynp } from "./paynp";
+
+export const POST = paynp.actionHandler({
+  async refund(a) {
+    // a.gateway, a.providerRef, a.refund?.amountPaisa (none = full refund)
+    // Call the gateway's refund API with your own keys, then:
+    return { refundRef: "..." };
+  },
+});`;
+
+function Actions() {
+  const { project, env, canAdmin } = useProject();
+  const key = `/api/projects/${project.id}/action-endpoint?env=${env}`;
+  const q = useQuery<ActionEndpoint>(key);
+  const none = q.error instanceof ApiFailure && q.error.status === 404;
+  const ep = none ? null : q.data;
+  const [url, setUrl] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState<"save" | "test" | null>(null);
+  const [err, setErr] = useState("");
+  const [created, setCreated] = useState<ActionEndpoint | null>(null);
+  const [test, setTest] = useState<ActionTest | null>(null);
+  const now = useNow();
+
+  const save = async (e: FormEvent | null, rotate = false) => {
+    e?.preventDefault();
+    const u = rotate && ep ? ep.url : url.trim();
+    if (!/^https:\/\/\S+$/.test(u) && !/^http:\/\/localhost(:\d+)?\//.test(u)) return setErr("Use the https URL of the route on your server");
+    setBusy("save");
+    setErr("");
+    try {
+      const r = await api<ActionEndpoint>(`/api/projects/${project.id}/action-endpoint?env=${env}`, { method: "PUT", body: { env, url: u, rotate } });
+      // The full secret comes back only when it was created or rotated.
+      if (!r.secret.includes("*")) setCreated(r);
+      else toast("URL saved", { sub: "The secret did not change." });
+      setEditing(false);
+      setTest(null);
+      setData<ActionEndpoint>(key, () => ({ ...r, secret: `${r.secret.slice(0, 5)}****` }));
+      void q.refresh();
+      invalidate(`/api/projects/${project.id}/refunds`);
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const runTest = async () => {
+    setBusy("test");
+    setTest(null);
+    try {
+      const r = await api<ActionRecord>(`/api/projects/${project.id}/action-endpoint/test?env=${env}`, { method: "POST", body: { env } });
+      setTest(testResult(r));
+      void q.refresh();
+    } catch (e) {
+      const rec = e instanceof ApiFailure ? (e.body as ActionRecord | undefined) : undefined;
+      setTest(rec?.status ? testResult(rec) : { ok: false, error: errorMessage(e) });
+      void q.refresh();
+    } finally {
+      setBusy(null);
+    }
+  };
+  const remove = async () => {
+    if (!(await confirmAction({ title: "Remove the action endpoint?", body: "Refund buttons go back to manual checklists. Your server keeps working; it just stops getting requests.", action: "Remove", danger: true }))) return;
+    try {
+      await api(`/api/projects/${project.id}/action-endpoint?env=${env}`, { method: "DELETE" });
+      setData<ActionEndpoint>(key, () => undefined);
+      void q.refresh();
+      invalidate(`/api/projects/${project.id}/refunds`);
+      toast("Action endpoint removed");
+    } catch (e) {
+      toast("Could not remove", { kind: "error", sub: errorMessage(e) });
+    }
+  };
+
+  const form = (
+    <form className="stack" onSubmit={save} style={{ gap: 12 }}>
+      <label className="field">
+        <span className="label">URL on your server ({env})</span>
+        <input className="input mono" autoFocus={editing} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://shop.example.com.np/api/paynp/actions" spellCheck={false} />
+        {err && <span className="err">{err}</span>}
+      </label>
+      <div className="actions">
+        <button className="btn btn-primary" disabled={busy === "save" || !canAdmin}>
+          {busy === "save" && <span className="spinner" />}
+          {ep ? "Save URL" : "Save and show the secret"}
+        </button>
+        {editing && (
+          <button type="button" className="btn btn-secondary" onClick={() => setEditing(false)}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
+  );
+
+  return (
+    <section className="set-section">
+      <Head title="Action endpoint">
+        A route on your server that paynp calls, signed, to refund a payment when someone presses Send in Refunds. Your server uses its own gateway keys; paynp never sees them. One per environment.
+      </Head>
+      {!q.data && !q.error ? (
+        <Skeleton h={80} />
+      ) : q.error && !none ? (
+        <p className="err">{errorMessage(q.error)}</p>
+      ) : ep && !editing ? (
+        <div className="card">
+          <div className="card-body stack" style={{ gap: 14 }}>
+            <dl className="facts" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
+              <div className="fact">
+                <dt>URL ({env})</dt>
+                <dd className="mono" style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>
+                  {ep.url}
+                </dd>
+              </div>
+            </dl>
+            <div className="row wrap" style={{ gap: 16, fontSize: 12.5 }}>
+              <span className="muted">Added {formatDateTime(ep.created_at, now)}</span>
+              {ep.last_ok_at ? <span style={{ color: "var(--ok-ink)" }}>Last answered {formatRelative(ep.last_ok_at, now)}</span> : <span className="muted">Not reached yet</span>}
+              {ep.last_error && <span className="err">Last error: {ep.last_error}</span>}
+            </div>
+            {test && (
+              <div className="note" style={{ color: test.ok ? "var(--ok-ink)" : "var(--crit-ink)" }}>
+                <Icon name={test.ok ? "check" : "alert"} />
+                <span>{test.ok ? `Your server answered and the signature checked out${test.ms ? ` (${test.ms} ms)` : ""}.` : `Test failed: ${test.error ?? "no answer"}`}</span>
+              </div>
+            )}
+            {canAdmin && (
+              <div className="actions">
+                <button className="btn btn-secondary" disabled={busy === "test"} onClick={() => void runTest()}>
+                  {busy === "test" ? <span className="spinner" /> : <Icon name="send" />}
+                  Send a test
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setUrl(ep.url);
+                    setEditing(true);
+                  }}
+                >
+                  Change URL
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  disabled={busy === "save"}
+                  onClick={async () => {
+                    if (await confirmAction({ title: "Make a new secret?", body: "The old secret stops working at once. Requests fail until the server has the new PAYNP_ACTION_SECRET.", action: "Make new secret" })) void save(null, true);
+                  }}
+                >
+                  New secret
+                </button>
+                <button className="btn btn-danger" style={{ marginInlineStart: "auto" }} onClick={() => void remove()}>
+                  Remove
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : canAdmin ? (
+        <div className="card">
+          <div className="card-body">{form}</div>
+        </div>
+      ) : (
+        <EmptySmall icon="zap" title="No action endpoint">
+          An admin can add one.
+        </EmptySmall>
+      )}
+      <div className="field">
+        <span className="label">The route, with @paynp/sdk</span>
+        <CodeBlock code={ACTION_ROUTE} />
+        <span className="hint">Works in any Fetch API handler (Hono, Workers, Next.js). For Express use <code>paynp.nodeActionHandler</code>. Only Khalti has a refund API; other gateways keep the manual checklist.</span>
+      </div>
+      {created && (
+        <Dialog
+          open
+          onClose={() => setCreated(null)}
+          title="Copy the secret now"
+          description="This is the only time it is shown. Set it on the server, then send a test."
+          wide
+          footer={
+            <button className="btn btn-primary" onClick={() => setCreated(null)}>
+              I have stored it
+            </button>
+          }
+        >
+          <div className="reveal">
+            <div className="secret">
+              <span style={{ flex: 1 }}>{created.secret}</span>
+              <CopyButton text={created.secret} label="Copy secret" />
+            </div>
+            <div className="field">
+              <span className="label">Add it to the server's .env</span>
+              <CodeBlock code={`PAYNP_ACTION_SECRET=${created.secret}`} />
+            </div>
+          </div>
+        </Dialog>
+      )}
     </section>
   );
 }
