@@ -14,17 +14,21 @@ export function installMock() {
     const req = new Request(input, init);
     const url = new URL(req.url, location.href);
     if (url.origin !== location.origin || !/^\/(api|auth|v1)\//.test(url.pathname)) return realFetch(input, init);
-    const text = await req.text();
     let body: unknown;
-    try {
-      body = text ? JSON.parse(text) : undefined;
-    } catch {
-      body = undefined;
+    if ((req.headers.get("content-type") ?? "").startsWith("multipart/form-data")) body = await req.formData();
+    else {
+      const text = await req.text();
+      try {
+        body = text ? JSON.parse(text) : undefined;
+      } catch {
+        body = undefined;
+      }
     }
     // A little latency so loading states are real, not instant.
     await new Promise((r) => setTimeout(r, 60 + Math.random() * 140));
     const res = await handle({ method: req.method.toUpperCase(), path: url.pathname, query: url.searchParams, body, headers: req.headers });
     if (res.status === 204) return new Response(null, { status: 204 });
+    if (res.raw !== undefined) return new Response(res.raw, { status: res.status, headers: res.headers });
     return new Response(JSON.stringify(res.body ?? null), { status: res.status, headers: { "content-type": "application/json" } });
   };
 

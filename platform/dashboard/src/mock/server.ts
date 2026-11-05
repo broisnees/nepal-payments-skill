@@ -19,6 +19,7 @@ import {
 import { NPT_OFFSET_MS, nptStartOfDay } from "../lib/format.ts";
 import { ME, setSignedIn, type Db } from "./db.ts";
 import type { Hub } from "./hub.ts";
+import { createOps } from "./ops.ts";
 
 export interface MockRequest {
   method: string;
@@ -30,6 +31,9 @@ export interface MockRequest {
 export interface MockResponse {
   status: number;
   body?: unknown;
+  /** A non-JSON body (CSV exports) with its headers. */
+  raw?: string;
+  headers?: Record<string, string>;
 }
 
 const HOUR = 3_600_000;
@@ -52,9 +56,11 @@ export function createServer(db: Db, hub: Hub) {
   const project = (id: string) => db.projects.get(id);
   const envOf = (q: URLSearchParams): Env => (q.get("env") === "test" ? "test" : "live");
 
+  const ops = createOps(db);
+
   return async function handle(req: MockRequest): Promise<MockResponse> {
     const { method, path, query: q } = req;
-    const body = (req.body ?? {}) as Record<string, unknown>;
+    const body = (req.body instanceof FormData ? {} : (req.body ?? {})) as Record<string, unknown>;
     if (method !== "GET" && path.startsWith("/api/") && req.headers.get(CSRF_HEADER) !== "1") {
       return fail(403, "csrf", `Missing ${CSRF_HEADER} header`);
     }
@@ -203,7 +209,7 @@ export function createServer(db: Db, hub: Hub) {
       }
     }
 
-    if (sub === "payments" && method === "GET") {
+    if (sub === "payments" && method === "GET" && !seg[4]) {
       if (seg[3]) {
         const p = b.byId.get(decodeURIComponent(seg[3]));
         if (!p) return fail(404, "not_found", "No payment with that attempt id in this environment");
@@ -218,10 +224,11 @@ export function createServer(db: Db, hub: Hub) {
                 reason: p.last_reason,
                 provider_status: last.find((e) => e.data?.provider_status)?.data?.provider_status,
               });
-        const detail: PaymentDetail = { payment: p, events, explain: ex };
+        const detail: PaymentDetail = { payment: ops.decorate(pd, env, p), events, explain: ex };
         return ok(detail);
       }
-      return ok(page(filterPayments(b.payments, q), q));
+      const pg = page(filterPayments(b.payments, q), q);
+      return ok({ ...pg, items: pg.items.map((p) => ops.decorate(pd, env, p)) });
     }
 
     if (sub === "events" && method === "GET") {
@@ -301,6 +308,9 @@ export function createServer(db: Db, hub: Hub) {
       const withRule = pd.incidents.map((i) => ({ ...i, rule_type: pd.rules.find((r) => r.id === i.rule_id)?.type, env: "live", attempt_id: (i as { attempt_id?: string }).attempt_id ?? null }));
       return ok(page(withRule.filter((i) => !state || i.state === state), q));
     }
+
+    const v2 = await ops.handle(pd, env, method, seg, q, req.body instanceof FormData ? req.body : body);
+    if (v2) return v2;
 
     return fail(404, "not_found", "No such route");
   };
