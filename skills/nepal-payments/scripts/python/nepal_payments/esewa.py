@@ -6,10 +6,11 @@ The example signatures in eSewa's docs are wrong; see tests for verified vectors
 
 from __future__ import annotations
 
+import binascii
 import json
 import re
 import urllib.parse
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Union
 
 from .core import (FormResult, PaymentError, VerifyResult, assert_paisa, b64decode_lenient, b64encode, base64_json,
                    hmac_digest, http, paisa_to_rupees, rupees_to_paisa, safe_equal)
@@ -42,11 +43,38 @@ INTENT_STATUS = {"SUCCESS": "paid", "BOOKED": "pending", "PENDING": "pending", "
 
 def _raw_value(text: str, payload: Mapping[str, Any], field: str) -> str:
     """Exact text of a field as eSewa sent it, so numbers keep their formatting ("1000.0" stays "1000.0")."""
-    v = payload.get(field, "")
+    v = payload.get(field)
     if isinstance(v, bool) or not isinstance(v, (int, float)):
-        return str(v)
+        return _js_string(v)
     m = re.search(rf'"{re.escape(field)}"\s*:\s*(-?[0-9][0-9.eE+-]*)', text)
-    return m.group(1) if m else str(v)
+    return m.group(1) if m else _js_string(v)
+
+
+def _js_string(v: Any) -> str:
+    """A JSON value formatted like JavaScript String(v), so every port signs the same text ("100.0" -> "100")."""
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, float) and v.is_integer() and abs(v) < 1e21:
+        return str(int(v))
+    return str(v)
+
+
+def _error_message(d: Any, text: str) -> str:
+    """Docs say `error_message`; the live Intent sandbox sends `errorMessage`."""
+    if isinstance(d, dict):
+        msg = d.get("error_message") or d.get("errorMessage")
+        if msg is not None:
+            return str(msg)
+    return text[:200]
+
+
+def _error_code(d: Any, status: int) -> str:
+    """`esewa_<code>` when the body carries a code, else `http_<status>`."""
+    if isinstance(d, dict) and d.get("code") is not None:
+        return f"esewa_{_js_string(d['code'])}"
+    return f"http_{status}"
 
 
 def esewa_sign(key: str, fields: Mapping[str, Any], order: list) -> str:
@@ -104,8 +132,11 @@ class Esewa:
 
     def parse_success(self, data: str) -> tuple:
         """Decode + verify the base64 `data` param. Returns (payload, signature_valid). Not proof of payment."""
-        text = b64decode_lenient(data).decode("utf-8")
-        payload = json.loads(text)
+        try:
+            text = b64decode_lenient(data).decode("utf-8")
+            payload = json.loads(text)
+        except (binascii.Error, ValueError) as e:  # UnicodeDecodeError and JSONDecodeError are ValueErrors
+            raise PaymentError("eSewa: success data is not base64 JSON", "esewa", "malformed_callback", 400, data) from e
         if not isinstance(payload, dict) or not isinstance(payload.get("signed_field_names"), str):
             raise PaymentError("eSewa: malformed success payload", "esewa", "malformed_callback", 400, payload)
         order = [s.strip() for s in payload["signed_field_names"].split(",")]
@@ -131,8 +162,8 @@ class Esewa:
         res = http("esewa", f"{self.status_url}?{qs}", timeout=self.timeout, retries=2)
         d = res.data
         if res.status != 200 or not isinstance(d, dict) or "status" not in d:
-            msg = d.get("error_message") if isinstance(d, dict) else res.text[:200]
-            raise PaymentError(f"eSewa status check failed: {msg}", "esewa", f"http_{res.status}", res.status, d)
+            raise PaymentError(f"eSewa status check failed: {_error_message(d, res.text)}", "esewa",
+                               _error_code(d, res.status), res.status, d)
         return VerifyResult("esewa", EPAY_STATUS.get(d["status"], "unknown"), order_id,  # type: ignore[arg-type]
                             rupees_to_paisa(d["total_amount"]) if d.get("total_amount") is not None else None,
                             d.get("ref_id"), {"status": d, "signature_valid": signature_valid})
@@ -144,7 +175,7 @@ class Esewa:
                 return str(base64_json(params["data"]).get("transaction_uuid") or "") or None
             except Exception:
                 return None
-        return params.get("order_id") or params.get("orderId") or params.get("transaction_uuid") or None
+        return params.get("orderId") or params.get("order_id") or params.get("transaction_uuid") or None
 
     # ------------------------------------------------------------- Intent (mobile)
     def _intent(self):
@@ -169,7 +200,8 @@ class Esewa:
         res = http("esewa", f"{base}/book", "POST", body=body, timeout=self.timeout)
         d = (res.data or {}).get("data") if isinstance(res.data, dict) else None
         if not d or not d.get("booking_id"):
-            raise PaymentError(f"eSewa intent book failed: {res.text[:200]}", "esewa", "intent_book_failed", res.status, res.data)
+            raise PaymentError(f"eSewa intent book failed: {_error_message(res.data, res.text)}", "esewa",
+                               _error_code(res.data, res.status), res.status, res.data)
         return {"booking_id": d["booking_id"], "deeplink": d["deeplink"], "correlation_id": d["correlation_id"],
                 "provider_ref": f"{d['booking_id']}|{d['correlation_id']}", "raw": res.data}
 
@@ -183,7 +215,8 @@ class Esewa:
         res = http("esewa", f"{base}/status", "POST", body=body, timeout=self.timeout, retries=2)
         d = (res.data or {}).get("data") if isinstance(res.data, dict) else None
         if not d or not d.get("status"):
-            raise PaymentError(f"eSewa intent status failed: {res.text[:200]}", "esewa", "intent_status_failed", res.status, res.data)
+            raise PaymentError(f"eSewa intent status failed: {_error_message(res.data, res.text)}", "esewa",
+                               _error_code(res.data, res.status), res.status, res.data)
         if d.get("transaction_id") and d["transaction_id"] != order_id:
             raise PaymentError("eSewa intent: status is for a different transaction", "esewa", "callback_mismatch", 400, d)
         return VerifyResult("esewa", INTENT_STATUS.get(d["status"], "unknown"), order_id, amount_paisa,  # type: ignore[arg-type]
@@ -196,10 +229,30 @@ class Esewa:
         body = {**fields, "signed_field_names": ",".join(order), "signature": esewa_sign(key, fields, order)}
         return http("esewa", f"{base}/cancel", "POST", body=body, timeout=self.timeout).data
 
-    def intent_callback_valid(self, body: Mapping[str, Any]) -> bool:
+    def intent_callback_valid(self, body: Union[Mapping[str, Any], str, bytes]) -> bool:
+        """Verify eSewa's Intent callback signature. Still call intent_verify() before fulfilling.
+        Prefer the RAW request body (str/bytes): numbers are then also checked exactly as eSewa sent them ("100.0"),
+        not only in the JavaScript String(v) form ("100"). A parsed dict can only be checked in the String(v) form."""
         _, key, _ = self._intent()
-        names, sig = body.get("signed_field_names"), body.get("signature")
+        text: Optional[str] = None
+        if isinstance(body, (str, bytes)):
+            try:
+                text = body.decode("utf-8") if isinstance(body, bytes) else body
+                payload = json.loads(text)
+            except ValueError:
+                return False
+        else:
+            payload = body
+        if not isinstance(payload, Mapping):
+            return False
+        names, sig = payload.get("signed_field_names"), payload.get("signature")
         if not isinstance(names, str) or not isinstance(sig, str):
             return False
         order = [s.strip() for s in names.split(",")]
-        return safe_equal(esewa_sign(key, {f: str(body.get(f, "")) for f in order}, order), sig)
+        as_string = {f: _js_string(payload.get(f)) for f in order}
+        if safe_equal(esewa_sign(key, as_string, order), sig):
+            return True
+        if text is None:
+            return False
+        exact = {f: _raw_value(text, payload, f) for f in order}
+        return exact != as_string and safe_equal(esewa_sign(key, exact, order), sig)

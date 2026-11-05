@@ -11,6 +11,7 @@ import hashlib
 import hmac as _hmac
 import html
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -125,8 +126,15 @@ def paisa_to_rupees(paisa: int) -> str:
     return f"{sign}{rupees}" if rem == 0 else f"{sign}{rupees}.{rem:02d}"
 
 
+_RUPEES = re.compile(r"-?\d+(\.\d+)?")
+
+
 def rupees_to_paisa(rupees: Union[str, int, float, Decimal]) -> int:
-    d = Decimal(str(rupees).replace(",", "").strip())
+    """'123.45' | 123.45 | '100' -> paisa. Rounds half away from zero on the 3rd decimal."""
+    s = str(rupees).strip().replace(",", "")
+    if not _RUPEES.fullmatch(s):  # Decimal alone would take "1e3", "+5", "NaN"
+        raise ValueError(f"not a rupee amount: {rupees!r}")
+    d = Decimal(s)
     return int((d * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 

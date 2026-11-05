@@ -84,7 +84,7 @@ class Nps:
             if any(e.get("error_code") == "3" for e in r.get("errors") or []):
                 return VerifyResult("nps", "not_found", order_id, None, None, r)
             raise self._fail("CheckTransactionStatus", r)
-        d = r.get("data") or {}
+        d = r.get("data") if isinstance(r.get("data"), dict) else {}  # code "0" + null data: report unknown
         if d.get("MerchantTxnId") and d["MerchantTxnId"] != order_id:
             raise PaymentError("NPS: status is for a different transaction", "nps", "callback_mismatch", 400, d)
         return VerifyResult("nps", STATUS.get(str(d.get("Status", "")).lower(), "unknown"), order_id,  # type: ignore[arg-type]
