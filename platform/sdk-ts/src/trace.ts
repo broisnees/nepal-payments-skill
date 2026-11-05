@@ -12,6 +12,8 @@ export interface RecordedRequest {
   durationMs: number;
   method: string;
   endpoint: string; // path only
+  /** Hostname, used only to tell sandbox from production (gw_env). Never sent. */
+  host?: string;
   httpStatus?: number;
   error?: unknown;
 }
@@ -77,12 +79,13 @@ export function recordingFetch(inner: () => typeof fetch, pick: (url: URL | null
     const ts = Date.now();
     const t0 = now();
     const endpoint = url ? url.pathname : "";
+    const host = url ? url.hostname : undefined;
     try {
       const res = await inner()(input, init);
-      record({ ts, durationMs: now() - t0, method, endpoint, httpStatus: res.status });
+      record({ ts, durationMs: now() - t0, method, endpoint, host, httpStatus: res.status });
       return res;
     } catch (error) {
-      record({ ts, durationMs: now() - t0, method, endpoint, error });
+      record({ ts, durationMs: now() - t0, method, endpoint, host, error });
       throw error;
     }
   } as typeof fetch;
