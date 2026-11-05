@@ -129,7 +129,7 @@ base64.encode(Hmac(sha256, utf8.encode(secret)).convert(utf8.encode(message)).by
 | `FULL_REFUND` / `PARTIAL_REFUND` | `refunded` / `partially_refunded` | |
 | `NOT_FOUND` | `not_found` | Session expired, never paid, **or wrong `total_amount`**. |
 | `CANCELED` | `canceled` | Cancelled or reversed by eSewa. |
-| `{"code":0,"error_message":"Service is currently unavailable"}` | throw, retry later | |
+| `{"code":0,"error_message":"Service is currently unavailable"}` | throw, retry later | The adapters read `error_message` or `errorMessage` and raise code `esewa_<code>` (`esewa_0` here), or `http_<status>` when the body has no code. |
 
 - A wrong `total_amount` returns `NOT_FOUND` rather than an error, so pass the **total you charged** (amount + tax + charges). This doubles as the amount check. `100` and `100.0` both match.
 - No refund API and no webhook in ePay v2. Refunds happen through eSewa and show up as statuses.
@@ -145,9 +145,9 @@ base64.encode(Hmac(sha256, utf8.encode(secret)).convert(utf8.encode(message)).by
     "redirect_url":"https://api.example.com/payments/done",
     "properties":{"customer_id":"CUST12345","remarks":"Internet bill payment"}}
    ```
-   → `{"code":"IP-201","data":{"booking_id":"VkQ=","deeplink":"https://rc-links.esewa.com.np/pay/VkQ=","correlation_id":"01KDJ…"},"message":"Success"}`. Errors look like `{"code":"IP-400","error_message":"Invalid Signature"}`. `properties` keys must be snake_case and are shown to the user. Decimal amounts (e.g. `100.5`, signed as `amount=100.5`) were accepted in sandbox.
+   → `{"code":"IP-201","data":{"booking_id":"VkQ=","deeplink":"https://rc-links.esewa.com.np/pay/VkQ=","correlation_id":"01KDJ…"},"message":"Success"}`. Errors look like `{"code":"IP-400","error_message":"Invalid Signature"}` in the docs; the live sandbox has also sent `{"code":0,"errorMessage":"Service is currently unavailable"}`, so the adapters read both keys. `properties` keys must be snake_case and are shown to the user. Decimal amounts (e.g. `100.5`, signed as `amount=100.5`) were accepted in sandbox.
 2. **App** opens `deeplink` (a smart link: it opens the eSewa app if installed, else a web fallback). Persist `booking_id|correlation_id` as the attempt's `provider_ref`.
-3. eSewa **POSTs `callback_url`** (JSON: `product_code, amount, reference_code, correlation_id, status, signature, signed_field_names`, signed with the access key) and sends the user to `redirect_url`.
+3. eSewa **POSTs `callback_url`** (JSON: `product_code, amount, reference_code, correlation_id, status, signature, signed_field_names`, signed with the access key) and sends the user to `redirect_url`. Pass the **raw request body** to `intentCallbackValid` (Python `intent_callback_valid`): JSON parsing turns `100.0` into `100`, and I haven't yet captured a real callback to confirm which form eSewa signs. With the raw body the adapters accept either `amount=100.0` (as sent) or `amount=100` (JavaScript `String(v)`); a parsed object can only be checked in the `String(v)` form. The callback is a hint either way: call Intent status before fulfilling.
 4. **Status** (server, authoritative): `POST {intent}/status` with `{booking_id, product_code, correlation_id, signed_field_names:"booking_id,product_code,correlation_id", signature}` → `data.status` ∈ `BOOKED` (pending) · `SUCCESS` (paid) · `PENDING` · `FAILED` · `CANCELED` · `REVERTED` (refunded). `data.transaction_id` is **your** uuid (the adapter checks it). `data.reference_code` is eSewa's reference. The response has no amount, because the amount was signed at booking. Live sandbox returns code `IP-200` (docs say `IP-201`) and reports a user-cancelled booking as `FAILED`.
 5. **Cancel** an abandoned booking: `POST {intent}/cancel` with `{booking_id, product_code, signed_field_names:"booking_id,product_code", signature}` → `IP-210`. If it was already processed → `IP-410`.
 

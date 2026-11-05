@@ -26,13 +26,13 @@ The eSewa sandbox login has a reCAPTCHA, so completing a payment is manual (brow
 
 ```bash
 # TypeScript (Node >= 22.18 runs .ts directly)
-cd scripts/ts && npm install && npm test        # 37 offline tests: vectors, mocked HTTP, state machine
+cd scripts/ts && npm install && npm test        # 49 offline tests: vectors, mocked HTTP, state machine
 npm run typecheck                               # strict tsc
 node test/sandbox.ts                            # live: eSewa (form, status, Intent) + Fonepay dev redirect
 KHALTI_SECRET_KEY=... node test/sandbox.ts      # + Khalti initiate/lookup
 
 # Python (stdlib; connectIPS tests need `pip install cryptography`)
-cd scripts/python && python -m unittest discover -s tests -v   # 25 tests
+cd scripts/python && python -m unittest discover -s tests -v   # 33 tests
 
 # Java / Kotlin (JDK 17+; the Gradle wrapper downloads Gradle on first run)
 cd scripts/java && ./gradlew test               # offline tests
