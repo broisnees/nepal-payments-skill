@@ -1,0 +1,27 @@
+---
+// Top navigation shared by the landing page and the blog.
+import Icon from "./Icon.astro";
+import SettingsMenu from "./SettingsMenu.astro";
+import { REPO } from "../data/site";
+
+interface Props {
+  current?: "blog";
+}
+const { current } = Astro.props;
+---
+
+<header class="nav-wrap">
+  <nav class="nav container" aria-label="Primary">
+    <a class="nav-cell brand" href="/" aria-label="Nepal Payments home">
+      <img src="/favicon.svg" alt="" width="22" height="22" />
+    </a>
+    <a class="nav-cell hide-sm" href="/#providers">Providers</a>
+    <a class="nav-cell" href="/docs/">Docs</a>
+    <a class="nav-cell" href="/blog/" aria-current={current === "blog" ? "page" : undefined}>Blog</a>
+    <a class="nav-cell hide-md" href="/docs/guides/architecture/">Architecture</a>
+    <span class="nav-spacer"></span>
+    <a class="nav-cell hide-sm" href={REPO} rel="noopener"><Icon name="github" />GitHub</a>
+    <SettingsMenu variant="nav" />
+    <a class="nav-cell nav-cta" href="/docs/install/">Install</a>
+  </nav>
+</header>
