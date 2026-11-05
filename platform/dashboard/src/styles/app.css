@@ -272,6 +272,24 @@ code,
   margin-inline-start: 2px;
 }
 
+.tab-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding-inline: 5px;
+  font: 500 11px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--hover);
+  border: 1px solid var(--line);
+}
+
+.tab-count-warn {
+  background: var(--tone-cream);
+  border-color: var(--tone-cream-line);
+}
+
 .main {
   flex: 1;
   width: 100%;
@@ -301,13 +319,16 @@ code,
   flex-wrap: wrap;
 }
 
+/* minmax(0, 1fr): a child that scrolls sideways (tab strips, wide tables) must not widen the page. */
 .stack {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
 .stack-lg {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
 }
 
@@ -1894,8 +1915,19 @@ a.list-row:hover {
 
 @media (min-width: 900px) {
   .facts {
-    grid-template-columns: repeat(6, minmax(0, auto));
+    grid-template-columns: repeat(7, minmax(0, auto));
     justify-content: start;
+  }
+}
+
+.pd-actions {
+  margin-inline-start: auto;
+}
+
+@media (max-width: 639px) {
+  .pd-actions {
+    margin-inline-start: 0;
+    width: 100%;
   }
 }
 
