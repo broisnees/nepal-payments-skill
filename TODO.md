@@ -56,7 +56,7 @@ Deployed 2026-11-05 at https://paynp.discerns.app (Workers free plan, ingest cap
 - [ ] Rotate the Resend API key (it was shared in a chat) with `wrangler secret put RESEND_API_KEY`.
 - [ ] Publish `@paynp/sdk` and the `paynp` CLI to npm.
 
-### Phase 2.5: merchant operations (not started)
+### Phase 2.5: merchant operations
 
 Contract: [`platform/SPEC-v2.md`](platform/SPEC-v2.md). The shared event additions it needs are already in
 `platform/shared/src/events.ts` (`payment.annotated`, `payment.refunded`, `customer`, `gw_env`, `return_https`,
@@ -65,15 +65,20 @@ Contract: [`platform/SPEC-v2.md`](platform/SPEC-v2.md). The shared event additio
 From research into what Nepali merchants struggle with: duplicate payments, "I already paid", stuck orders,
 fragmented refunds, reconciliation across three dashboards, sandbox-to-production breakage, outages at peak hours.
 
-- [ ] Double-payment detection and a refund queue (refunds sent through the merchant's own server via signed actions; checklists for gateways without a refund API).
-- [ ] "I already paid" lookup by phone, email, amount, time or any reference, plus customer status links.
-- [ ] Paid-but-not-fulfilled alert.
-- [ ] Settlement reconciliation from uploaded eSewa, Khalti and Fonepay statements (presets need real statement samples to verify).
-- [ ] Go-live doctor: `paynp doctor` plus checks on live traffic.
-- [ ] Public gateway status page from aggregate traffic.
-- [ ] Accounting exports: Tally-style and Hamrokhata CSVs, VAT credit notes, fiscal-year summary.
+- [x] Double-payment detection and a refund queue (refunds sent through the merchant's own server via signed actions; checklists for gateways without a refund API).
+- [x] "I already paid" lookup by phone, email, amount, time or any reference, plus customer status links.
+- [x] Paid-but-not-fulfilled alert.
+- [x] Settlement reconciliation from uploaded eSewa, Khalti and Fonepay statements (presets need real statement samples to verify).
+- [x] Go-live doctor: `paynp doctor` plus checks on live traffic.
+- [x] Public gateway status page from aggregate traffic.
+- [x] Accounting exports: Tally-style and Hamrokhata CSVs, VAT credit notes, fiscal-year summary.
 
-Build plan: four builders in parallel, each owning its files so they don't collide.
+Deployed 2026-11-05. Still open: real merchant statement samples to verify the eSewa, Khalti and Fonepay presets and the Tally/Hamrokhata layouts; XLSX statements; a marketing-site footer link to `/status`.
+
+- [ ] Verify statement presets and export layouts against real merchant files.
+- [ ] Link `/status` from the marketing site.
+
+Build plan used: four builders in parallel, each owning its files so they don't collide.
 
 | Builder | Scope (SPEC-v2 sections) | Owns |
 |---|---|---|
