@@ -1,0 +1,20 @@
+{
+  "name": "paynp-platform",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "worker",
+    "dashboard",
+    "sdk-ts",
+    "cli",
+    "demo-shop"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace worker",
+    "db:migrate": "npm run db:migrate --workspace worker",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}
