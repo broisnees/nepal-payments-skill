@@ -1,0 +1,295 @@
+---
+title: "IME Pay Payment Gateway Integration: Step by Step in Any Framework"
+description: "Build IME Pay web checkout in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: GetToken, checkout redirect, unsigned callback and Recheck."
+label: IME Pay
+provider: imepay
+published: 2026-11-05
+order: 70
+stack: true
+stackTitle: "IME Pay Payment Gateway Integration in {stack}: Step by Step"
+stackDescription: "Integrate IME Pay web checkout in {stack}: GetToken, checkout redirect, unsigned callback, Recheck and reconciliation, with code you can run."
+faq:
+  - q: "Does IME Pay still work after the Khalti merger?"
+    a: "IME Pay merged with Khalti in July 2025 as Khalti by IME, and its developer docs moved to github.com/khalti/imepay-dev-docs. New builds should integrate Khalti, which reaches the former IME Pay users. Existing IME Pay merchants can keep the web checkout after confirming with the Khalti by IME merchant team that it is still open to them."
+  - q: "What are the IME Pay sandbox credentials?"
+    a: "IME Pay publishes no public test merchant. The merchant code, API username, API password and Module name for the test server https://stg.imepay.com.np:7979 come from the IME or Khalti by IME merchant team."
+  - q: "Why does IME Pay GetToken time out?"
+    a: "IME Pay serves its API on port 7979. Many hosts and cloud firewalls block that outbound port, and IME may also need to whitelist your server IP. Open outbound 7979 and ask IME support to whitelist the IP."
+  - q: "Is the IME Pay callback signed?"
+    a: "No. IME Pay uses no HMAC anywhere and the form POST to your RespUrl is unsigned, so anyone can forge it. Call POST /api/Web/Recheck with the stored TokenId and fulfil only when ResponseCode is 0 and RefId and TranAmount match your attempt."
+  - q: "What do IME Pay response codes 1 and 3 mean?"
+    a: "Only ResponseCode 0 has a consistent meaning: paid. Community libraries disagree on 1 (failed in one, pending in another) and read 3 as cancelled. Treat every non-zero code as pending and keep checking with Recheck."
+  - q: "How do I integrate IME Pay in Flutter or React Native?"
+    a: "Open the IME Pay web checkout in a WebView. The official Android, iOS and Flutter (imepay_merchant_sdk) SDKs take the API username and password inside the app, which leaks them to anyone who unpacks it."
+---
+
+import CodeGroup from "../../components/blog/CodeGroup.astro";
+import Note from "../../components/blog/Note.astro";
+import { app, gatewayNames, part, whole } from "../../data/blog-code";
+import { imepay, vectors } from "../../data/blog-code/imepay";
+
+export const code = app(gatewayNames("imepay", "IME Pay", "Imepay"));
+
+By the end of this guide you'll have a checkout that takes IME Pay payments and marks an order paid only after IME Pay's Recheck API confirms the money moved. Pick your framework above and the whole guide switches to it.
+
+<Note type="warn" title="IME Pay merged with Khalti">
+  IME Pay merged with Khalti in July 2025 ("Khalti by IME"), and its developer docs now live at <a href="https://github.com/khalti/imepay-dev-docs">github.com/khalti/imepay-dev-docs</a>. For a new build, integrate <a href="/docs/providers/khalti/">Khalti</a> instead: it reaches the former IME Pay user base. Use this guide for an existing IME Pay merchant account, after confirming with the Khalti by IME merchant team that web checkout is still open to you.
+</Note>
+
+IME Pay never published a web API spec. Everything here comes from IME Pay's **official** WooCommerce and WHMCS plugins, and where only community code covers something, I say so. There is also no public test merchant, so I couldn't pay on IME Pay's test server. In November 2026 I ran every block on this page against a local mock that replays the requests and responses those plugins use: the module in all six languages, and the full flow (start, forged callback, real callback, replay) in Express, Hono, Fastify, Django, Flask, FastAPI, Laravel, plain PHP, Go, Spring Boot and Ktor.
+
+## How an IME Pay payment works
+
+IME Pay's web checkout takes three server calls and one redirect:
+
+<ol class="steps">
+  <li>Your server creates a <strong>payment attempt</strong> in your database, then calls <code>GetToken</code> with the amount and the attempt id. IME Pay answers with a <code>TokenId</code>, which you store.</li>
+  <li>Your server redirects the buyer to IME Pay's checkout page with the token packed into a base64 <code>data</code> parameter. The buyer logs in and pays.</li>
+  <li>IME Pay form-POSTs <code>ResponseCode</code>, <code>RefId</code>, <code>TransactionId</code>, <code>TranAmount</code> and <code>Msisdn</code> to your return URL. That POST is <strong>not signed</strong>, and it doesn't include the <code>TokenId</code>.</li>
+  <li>Your server calls <strong>Recheck</strong> with the stored token. That answer, not the callback, decides whether the order is paid.</li>
+</ol>
+
+Three rules fall out of this:
+
+- **Keep the API password on the server.** It authenticates every call, so it never reaches the browser or a mobile app.
+- **The callback proves nothing.** IME Pay uses no HMAC anywhere, so anyone can POST `ResponseCode=0` to your return URL. Only Recheck proves payment.
+- **Use your own numbers.** Compare Recheck's `RefId` and `TranAmount` with the attempt you stored, never with the callback.
+
+## What you need
+
+IME Pay has no public test merchant, so you need four credentials from the IME or Khalti by IME merchant team before anything works: a merchant code, an API username, an API password and a `Module` name. The same four exist for the test server and for live.
+
+| | Test | Live |
+|---|---|---|
+| Base URL | `https://stg.imepay.com.np:7979` | `https://payment.imepay.com.np:7979` |
+| Get token (POST) | `/api/Web/GetToken` | `/api/Web/GetToken` |
+| Checkout (GET redirect) | `/WebCheckout/Checkout?data=<base64>` | `/WebCheckout/Checkout?data=<base64>` |
+| Recheck (POST) | `/api/Web/Recheck` | `/api/Web/Recheck` |
+| Credentials | from the merchant team | from the merchant team |
+
+Set them as environment variables. The module uses the test server unless `IMEPAY_ENV` says otherwise:
+
+```bash
+IMEPAY_ENV=production          # leave unset for the test server
+IMEPAY_MERCHANT_CODE=your-merchant-code
+IMEPAY_USERNAME=your-api-username
+IMEPAY_PASSWORD='your-api-password'
+IMEPAY_MODULE=your-module-name
+```
+
+<Note type="warn" title="Open outbound port 7979">
+  IME Pay's API listens on port 7979, which many hosts and cloud firewalls block outbound. IME support may also need to whitelist your server IP. If GetToken hangs until it times out, it's almost always one of these two.
+</Note>
+
+## Set up the project
+
+Create the project and install the framework. The commands below match the stack you picked.
+
+<CodeGroup by="fw" blocks={code.setup} />
+
+## Step 1: Store payment attempts
+
+Every click on "Pay" creates a **payment attempt**: one row with its own id, the amount, and a status that starts at `initiated`. The order can have several attempts (the buyer cancels and tries again), and each attempt's id is what IME Pay sees as `RefId`, so it is never reused.
+
+In production this is a table:
+
+```sql
+CREATE TABLE payment_attempts (
+  id            VARCHAR(20) PRIMARY KEY,   -- sent to IME Pay as RefId
+  order_id      VARCHAR(64) NOT NULL,
+  amount_paisa  BIGINT      NOT NULL,      -- what we charge, in paisa (Rs 100 = 10000)
+  status        VARCHAR(16) NOT NULL,      -- initiated, pending, paid, failed, canceled, expired
+  provider_ref  VARCHAR(64),               -- IME Pay's TokenId from GetToken
+  created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+`provider_ref` matters more for IME Pay than for most gateways. Recheck needs the `TokenId`, and IME Pay's callback leaves it out, so the row you saved at checkout is the only place it lives.
+
+To keep this guide runnable with zero setup, the store below keeps attempts in memory (or in a JSON file for PHP, which forgets everything between requests). Swap its functions for queries when you move to a database. The function that matters is `transition`: it changes the status only if the current status is one you expect, in one atomic step. That single rule is what stops an order from being fulfilled twice when IME Pay's callback and the buyer's refresh land together.
+
+<CodeGroup by="lang" blocks={code.store} />
+
+Next, the types every gateway module speaks, plus `settle`. `settle` takes IME Pay's answer and applies it: `paid` moves the attempt to paid and fulfils the order exactly once, `pending` waits, and `not_found` is left for the reconcile job in step 4.
+
+<CodeGroup by="lang" blocks={code.types} />
+
+## Step 2: Write the IME Pay module
+
+This file is the only IME Pay code in the project. It exports two functions: `startPayment`, which gets a token and builds the checkout URL, and `confirmPayment`, which asks Recheck what happened. It's the same file for every framework in your language.
+
+### Configuration
+
+The module reads the four credentials and refuses to start without them. Unlike eSewa, there are no public test values to fall back on. Two more details:
+
+- `IMEPAY_BASE_URL` is optional. It overrides the base URL, which is how I pointed the module at my local mock while testing.
+- Amounts arrive in paisa and leave as rupee text with exactly two decimals (`"100.00"`), formatted **once**. The same string goes to GetToken and into the checkout payload.
+
+<CodeGroup by="lang" blocks={part(imepay, "config")} />
+
+### Calling the API
+
+Both API calls are JSON POSTs with the same three headers:
+
+```http
+Authorization: Basic base64(username:password)
+Module: base64(ModuleName)
+Content-Type: application/json
+```
+
+The `Module` header is the module name base64 encoded, not the plain string. Sending it plain is the most common reason GetToken rejects correct credentials. There's no signature to compute: IME Pay's only authentication is this Basic auth pair.
+
+The module compares `ResponseCode` as text, so `0` and `"0"` both match.
+
+<CodeGroup by="lang" blocks={part(imepay, "http")} />
+
+### Starting a payment
+
+`startPayment` calls GetToken, then builds the checkout URL. GetToken takes three fields:
+
+| Field | Value |
+|---|---|
+| `MerchantCode` | Your merchant code |
+| `Amount` | Rupees with two decimals, `"100.00"` |
+| `RefId` | The attempt id, unique per attempt |
+
+A `ResponseCode` of 0 with a `TokenId` means the payment is booked. Anything else means no token, so the module throws and the pay route answers with an error. The checkout payload is seven values joined with `|` and base64 encoded:
+
+| Position | Value |
+|---|---|
+| `TokenId` | From GetToken |
+| `MerchantCode` | Your merchant code |
+| `RefId` | The attempt id |
+| `TranAmount` | The same `"100.00"` string you sent to GetToken |
+| `Method` | `POST`, so IME Pay posts the result back |
+| `RespUrl` | Your return route, `/pay/return/<attemptId>` |
+| `CancelUrl` | The same route. Recheck decides either way. |
+
+This is the format IME Pay's official WooCommerce plugin uses. Its WHMCS plugin instead form-POSTs `TokenId`, `MerchantCode`, `RefId`, `TranAmount`, `RespUrl` and `CancelUrl` as separate fields to the same `/WebCheckout/Checkout` URL. The base64 can contain `+`, `/` and `=`, so the module URL-encodes it before it goes after `?data=`. IME Pay has no description field, so the order description isn't sent.
+
+<CodeGroup by="lang" blocks={part(imepay, "start")} />
+
+IME Pay publishes no test vectors, so these are mine. Every language's `checkoutData` reproduces them, and so does OpenSSL:
+
+<table>
+  <thead><tr><th>Payload</th><th>data (base64)</th></tr></thead>
+  <tbody>
+    {vectors.map((v) => (
+      <tr><td><code>{v.payload}</code></td><td><code>{v.data}</code></td></tr>
+    ))}
+  </tbody>
+</table>
+
+From a terminal:
+
+```bash
+printf '%s' 'TKN123|DEMOMERCHANT|A1|100.00|POST|https://shop.example.com/r/A1|https://shop.example.com/r/A1' \
+  | openssl base64 -A
+# VEtOMTIzfERFTU9NRVJDSEFOVHxBMXwxMDAuMDB8UE9TVHxodHRwczovL3Nob3AuZXhhbXBsZS5jb20vci9BMXxodHRwczovL3Nob3AuZXhhbXBsZS5jb20vci9BMQ==
+```
+
+After URL encoding, the trailing `==` becomes `%3D%3D`.
+
+### Confirming a payment
+
+`confirmPayment` runs in two places: on the return route, with the fields IME Pay posted, and in the reconcile job, with nothing. It works the same way in both:
+
+1. If the callback carries a `RefId`, it must be this attempt's id. A different one is a forgery or a mix-up, so the module throws `PaymentError` and the route answers 400. Nothing else in the callback is read, because none of it is signed.
+2. Without a stored `TokenId`, GetToken never succeeded and the buyer never reached IME Pay, so the answer is `not_found`.
+3. Call Recheck with `MerchantCode`, `RefId` and the stored `TokenId`, then check its `RefId` and `TranAmount` against the attempt **you stored**.
+4. Map the answer to our status.
+
+| Recheck answer | Our status |
+|---|---|
+| `ResponseCode` 0, matching `RefId` and `TranAmount` | `paid` |
+| `ResponseCode` 0 with no `TranAmount` | `PaymentError`, check that one by hand |
+| Any other `ResponseCode` (1, 3, ...) | `pending` |
+| `RefId` or `TranAmount` differs from the attempt | `PaymentError` |
+| No stored `TokenId` | `not_found` |
+
+Only `ResponseCode` 0 is documented consistently. Community code reads `1` as "failed" in one library and "pending" in another, and reads `3` as "cancelled". Marking an attempt failed on `1` and then watching IME Pay settle it means you've taken money for an order you cancelled, so every non-zero code stays `pending`.
+
+`POST /api/Web/Confirm` with `{MerchantCode, RefId, TokenId, TransactionId, Msisdn}` shows up in community code only. I haven't verified it and the official plugins don't call it, so the module doesn't either.
+
+<Note type="warn" title="Don't copy validate_ipn() from the WooCommerce plugin">
+  IME Pay's official WooCommerce plugin calls Recheck in <code>validate_ipn()</code> and then ignores the result, so a forged callback completes the order. The module above fulfils only on a Recheck answer it has checked.
+</Note>
+
+<CodeGroup by="lang" blocks={part(imepay, "confirm")} />
+
+<details class="full-file">
+  <summary>The whole IME Pay module in one block</summary>
+  <CodeGroup by="lang" blocks={whole(imepay, ["config", "http", "start", "confirm"])} />
+</details>
+
+## Step 3: Add the routes
+
+Four routes connect it all. None of them mention IME Pay: they call `startPayment` and `confirmPayment` on whichever gateway module you import, so moving to Khalti later means importing a different module, not writing new routes.
+
+- `GET /` shows a demo order and a Pay button.
+- `POST /pay/{orderId}` creates an attempt, calls `startPayment`, stores the `TokenId`, and answers `303` to IME Pay's checkout page.
+- `GET` and `POST /pay/return/{attemptId}` collect everything IME Pay sent, call `confirmPayment` with the **stored** amount and token, apply the answer with `settle`, and redirect to the order. IME Pay comes back with a cross-site form POST that carries no CSRF token, so frameworks with CSRF protection exempt this one route. That is safe here because the route trusts nothing in the request body.
+- `GET /orders/{orderId}` shows the order's payment status.
+
+The attempt id sits in the return URL's **path**. IME Pay's callback has no `TokenId`, so the route needs the attempt id to load it, and a path segment can't get mixed up with the fields IME Pay posts.
+
+<CodeGroup by="fw" blocks={code.routes} />
+
+## Step 4: Catch payments the callback missed
+
+Buyers close the tab after paying, lose signal, or never get sent back. IME Pay has no webhook, so nothing tells your server. The reconcile job fixes that: every minute it finds attempts still open after two minutes and runs `confirmPayment` on them with no callback data, which means a Recheck with the stored token. Paid ones get settled, and attempts with no token are marked `expired` after an hour. Anything still open after three days drops out of the loop: the job logs it as needing manual review, because a payment that old needs a person, not another status call.
+
+<CodeGroup by="lang" blocks={code.reconcile} />
+
+There's one IME Pay quirk to know. No Recheck answer means "never paid" for certain, so the module never returns `not_found` for an attempt that has a token: anything but 0 stays `pending`, and only the three-day review cutoff above takes it out of the loop. I checked this with the TypeScript job against the mock: a two-hour-old attempt with a token stayed `pending`, one without a token was marked `expired`, and a paid one was settled. When the job flags an IME Pay attempt for review, alert someone and check it in the IME merchant portal instead of marking it failed.
+
+## Step 5: Pay on the IME Pay test server
+
+Once the merchant team has sent the test credentials, set the four variables, start the server with the run command from the setup step, then:
+
+<ol class="steps">
+  <li>Open the app and click <strong>Pay with IME Pay</strong>. The server calls GetToken and sends you to <code>stg.imepay.com.np:7979/WebCheckout/Checkout</code>. Ask the merchant team for a wallet you can pay with on the test server.</li>
+  <li>Pay. IME Pay posts the result to <code>/pay/return/&lt;attemptId&gt;</code>, your server calls Recheck, and you land on the order page.</li>
+  <li>The order page shows <strong>paid</strong>, and the server log prints the fulfilment line once. Post the callback again or refresh the return URL: it never prints again.</li>
+</ol>
+
+To see why the callback can't be trusted, forge one. Start a payment, don't pay, and post a success to your own return URL (port 3000 here, use your framework's):
+
+```bash
+curl -i -X POST http://localhost:3000/pay/return/<attemptId> \
+  -d ResponseCode=0 -d RefId=<attemptId> -d TransactionId=FAKE -d TranAmount=100.00
+```
+
+The route answers `303`, Recheck says the payment isn't done, and the order stays `pending`. Change `RefId` to another value and the route answers `400`. Those are the checks I ran against the mock in every framework listed at the top.
+
+## Common IME Pay errors
+
+IME Pay documents no error code list for its web API, so this table lists the failure modes that follow from the plugin code and the flow itself, not official codes.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| GetToken times out or the connection is refused | Outbound port 7979 blocked, or your server IP isn't whitelisted. | Open outbound 7979 and ask IME support to whitelist your IP. |
+| GetToken rejects correct credentials | The `Module` header was sent as the plain name. | Send `Module: base64(ModuleName)` and `Authorization: Basic base64(user:pass)`. |
+| GetToken `ResponseCode` isn't 0 and there's no `TokenId` | IME Pay refused the request. | Log `ResponseDescription`, check `MerchantCode`, and send `Amount` as a two-decimal string. |
+| Laravel 419 or Django 403 on the return URL | CSRF protection blocks IME Pay's cross-site POST. | Exempt `/pay/return/*` from CSRF, as the routes above do. |
+| Can't tell which attempt a callback belongs to | IME Pay's callback has no `TokenId`. | Put the attempt id in the return URL path and load the stored token. |
+| Orders marked paid that were never paid | Trusting the callback, or a copy of `validate_ipn()` that ignores Recheck. | Fulfil only on Recheck `ResponseCode` 0 with a matching `RefId` and amount. |
+| A payment settles after you marked it failed | Treating `ResponseCode` 1 or 3 as final. | Keep non-zero codes pending and let Recheck decide. |
+| `Set IMEPAY_MERCHANT_CODE, IMEPAY_USERNAME, IMEPAY_PASSWORD and IMEPAY_MODULE` on startup | A credential is missing. | Set all four. There are no public test values. |
+
+## Going live
+
+1. Confirm with the Khalti by IME merchant team that web checkout is still offered to your account after the merger.
+2. Get live credentials and your production server IP whitelisted for port 7979.
+3. Set `IMEPAY_ENV=production` and the four credentials on the server. The module switches to `https://payment.imepay.com.np:7979`. Leave `IMEPAY_BASE_URL` unset.
+4. Replace the store with your database. Keep `transition` atomic: an `UPDATE ... WHERE id = ? AND status IN (...)` that reports how many rows changed.
+5. Run the reconcile job from a scheduler (cron, a queue worker, or the framework's scheduler) instead of the web process, with the review cutoff from step 4.
+6. Make one real low-value payment end to end before you open checkout to buyers.
+
+The [IME Pay reference](/docs/providers/imepay/reference/) has the full field list.
+
+## IME Pay in React, Vue or a mobile app
+
+**React, Vue, Svelte or any SPA:** the browser never calls IME Pay. It POSTs the order id to your server's `/pay/{orderId}` route and follows the redirect back, or fetches the checkout URL as JSON and navigates to it. Calling GetToken from a component ships your API username and password to every visitor.
+
+**Flutter, React Native, Android, iOS:** IME Pay has official SDKs (Android `com.swifttechnology.imepaysdk:payment-service:4.0.1`, iOS `github.com/imepay/IMEPay`, Flutter `imepay_merchant_sdk`), but they take the API username and password inside the app, and the merchant has to host "Recording" and "Delivery" APIs that IME specifies. I open the web checkout in a WebView instead: the app asks my server for the checkout URL, loads it, watches for the return URL, then asks my server for the result. The credentials never leave the server, and everything above stays unchanged. The [mobile guide](/docs/guides/mobile/#4-webview-pattern) covers the WebView pattern for React Native and Flutter.
