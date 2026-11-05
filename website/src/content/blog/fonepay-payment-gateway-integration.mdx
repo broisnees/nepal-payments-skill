@@ -1,0 +1,326 @@
+---
+title: "Fonepay Payment Gateway Integration: Step by Step in Any Framework"
+description: "Build Fonepay web payments in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: HMAC-SHA512 DV, verified return, txnVerification, dev gateway."
+label: Fonepay
+provider: fonepay
+published: 2026-11-05
+order: 30
+stack: true
+stackTitle: "Fonepay Payment Gateway Integration in {stack}: Step by Step"
+stackDescription: "Integrate Fonepay in {stack}: signed DV redirect, verified return URL, txnVerification, reconciliation and dev gateway testing, with code you can run."
+faq:
+  - q: "What are the Fonepay sandbox credentials?"
+    a: "Fonepay's docs publish a dev merchant: PID NBQM and secret key a7e3512f5032480a83137793cb2021dc. The dev gateway at dev-clientapi.fonepay.com accepted it in November 2026, so the signed redirect works without onboarding. txnVerification needs a merchant-panel username and password, and Fonepay publishes none for the dev gateway."
+  - q: "How is the Fonepay DV generated?"
+    a: "DV is HMAC-SHA512 with your secret key, over the field values joined by commas (no field names), as hex. The request DV covers PID,MD,PRN,AMT,CRN,DT,R1,R2,RU with raw values, before URL encoding. The return DV covers PRN,PID,PS,RC,UID,BC,INI,P_AMT,R_AMT exactly as received. Compare hex case-insensitively."
+  - q: "Why does Fonepay return 409 Data Validation Failed?"
+    a: "The DV doesn't match the parameters you sent. Usual causes: an AMT string that differs between the DV and the URL (100 against 100.00), signing URL-encoded values, fields in the wrong order, or the dev key on live. The same 409 status also carries Duplicate PRN (the PRN was already sent) and Invalid Date (DT isn't MM/DD/YYYY)."
+  - q: "Can I mark an order paid when Fonepay redirects with PS=true?"
+    a: "No. Check the return DV first, since a missing or wrong DV means anyone could have typed the URL. Then call txnVerification with the PRN and the amount you stored. Only paymentStatus success means the money moved."
+  - q: "Why does Fonepay txnVerification return 401 cannot access this resource?"
+    a: "Either the panel username and password are wrong, or the auth header doesn't sign the exact bytes you sent. Build the JSON body string once, sign it, and send that same string. Python's json.dumps and most HTTP clients re-serialize with different spacing, which changes the signature."
+  - q: "How do I integrate Fonepay Dynamic QR?"
+    a: "Your server POSTs the amount, PRN, remarks, a dataValidation HMAC and your panel login to thirdPartyDynamicQrDownload. Render the returned qrMessage as a QR code, listen on thirdpartyQrWebSocketUrl for paymentSuccess, then confirm with thirdPartyDynamicQrGetStatus before you fulfil."
+  - q: "How do I integrate Fonepay in Flutter, React Native or React?"
+    a: "Keep the secret key on your server. The app or SPA asks your server for the signed Fonepay URL, opens it, and your server verifies the result with txnVerification. Unofficial Flutter packages that compute DV on the device ship your secret key inside the app."
+---
+
+import CodeGroup from "../../components/blog/CodeGroup.astro";
+import Note from "../../components/blog/Note.astro";
+import { app, gatewayNames, part, whole } from "../../data/blog-code";
+import { fonepay, vectors } from "../../data/blog-code/fonepay";
+
+export const code = app(gatewayNames("fonepay", "Fonepay", "Fonepay"));
+
+By the end of this guide you'll have a checkout that takes Fonepay web payments and marks an order paid only after Fonepay confirms the money moved. Pick your framework above and the whole guide switches to it. The code runs as-is against Fonepay's public dev gateway, which takes you as far as Fonepay's payment page with no onboarding at all.
+
+I tested every block on this page in November 2026, in all twelve frameworks. The real dev gateway accepted the redirect each one built (HTTP 303) and rejected the same redirect with a tampered DV (HTTP 409). Fonepay publishes no dev panel login, and the dev txnVerification host isn't in public DNS, so I ran txnVerification against a local mock built from the request and response in Fonepay's spec. The mock checks the request byte for byte, including the spec's own `auth` vector.
+
+## How a Fonepay payment works
+
+Fonepay's web payment is a **signed redirect**. Your server never calls Fonepay to start a payment. It builds a URL, signs it, and sends the buyer's browser there:
+
+<ol class="steps">
+  <li>Your server creates a <strong>payment attempt</strong> in your database, builds nine query parameters, and signs them into one more, <code>DV</code> (HMAC-SHA512, hex).</li>
+  <li>The browser follows a redirect to Fonepay's <code>merchantRequest</code>. A good DV gets a 303 to Fonepay's payment page, where the buyer pays from a bank app or scans the QR.</li>
+  <li>Fonepay sends the buyer back to your return URL with the result (<code>PRN</code>, <code>PS</code>, <code>RC</code>, <code>UID</code> and more) and a <code>DV</code> over those values.</li>
+  <li>Your server checks that DV, then asks Fonepay's <strong>txnVerification</strong> API what happened. That answer, not the redirect, decides whether the order is paid.</li>
+</ol>
+
+Three rules fall out of this, and most broken Fonepay integrations break one of them:
+
+- **Sign on the server.** The secret key never reaches the browser or a mobile app.
+- **A redirect is not a payment.** Anyone can type `?PS=true` into a browser. Only txnVerification proves payment.
+- **Use your own numbers.** Verify with the amount you stored, never one from the return URL.
+
+## What you need
+
+To start, nothing. Fonepay's docs publish a dev merchant, and the code below defaults to it:
+
+| | Dev | Production |
+|---|---|---|
+| PID (merchant code) | `NBQM` | from your acquiring bank or Fonepay |
+| Secret key | `a7e3512f5032480a83137793cb2021dc` | merchant profile page in the panel |
+| Panel username and password | none published | from onboarding |
+| Payment URL | `dev-clientapi.fonepay.com/api/merchantRequest` | `clientapi.fonepay.com/api/merchantRequest` |
+| txnVerification | `dev-merchantapi.fonepay.com/...` (not in public DNS) | `merchantapi.fonepay.com/api/merchant/merchantDetailsForThirdParty/txnVerification` |
+
+The dev merchant gets you a signed redirect and Fonepay's payment page. Confirming a payment needs txnVerification, which needs your own panel login, and on dev also a reachable host that Fonepay issues or whitelists during onboarding. Paying end to end on dev needs a Fonepay-enabled test bank app from your acquiring bank.
+
+For production, set five environment variables:
+
+```bash
+FONEPAY_ENV=production
+FONEPAY_MERCHANT_CODE=your-pid
+FONEPAY_SECRET_KEY='your-secret-key'
+FONEPAY_USERNAME='panel-username'
+FONEPAY_PASSWORD='panel-password'
+# Only if Fonepay gives you a different verification host (the dev default isn't in public DNS):
+# FONEPAY_TXN_VERIFICATION_URL=https://...
+```
+
+<Note type="warn" title="Some starters use hosts that return 404">
+  <code>dev.fonepay.com/api/merchantRequest</code> and <code>fonepay.com/api/merchantRequest</code> both answered 404 when I tried them. The payment URL lives on the <code>clientapi</code> hosts above.
+</Note>
+
+## Set up the project
+
+Create the project and install the framework. The commands below match the stack you picked.
+
+<CodeGroup by="fw" blocks={code.setup} />
+
+## Step 1: Store payment attempts
+
+Every click on "Pay" creates a **payment attempt**: one row with its own id, the amount, and a status that starts at `initiated`. The order can have several attempts (the buyer cancels and tries again), and each attempt's id is what Fonepay sees as `PRN`, so it is never reused. Fonepay allows 3 to 25 characters there, and the 20-character attempt ids below fit.
+
+In production this is a table:
+
+```sql
+CREATE TABLE payment_attempts (
+  id            VARCHAR(20) PRIMARY KEY,   -- sent to Fonepay as PRN
+  order_id      VARCHAR(64) NOT NULL,
+  amount_paisa  BIGINT      NOT NULL,      -- what we charge, in paisa (Rs 100 = 10000)
+  status        VARCHAR(16) NOT NULL,      -- initiated, pending, paid, failed, canceled, expired
+  provider_ref  VARCHAR(64),               -- Fonepay's fonepayTraceId once verified
+  created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+To keep this guide runnable with zero setup, the store below keeps attempts in memory (or in a JSON file for PHP, which forgets everything between requests). Swap its functions for queries when you move to a database. The function that matters is `transition`: it changes the status only if the current status is one you expect, in one atomic step. That single rule is what stops an order from being fulfilled twice when the buyer refreshes the return page.
+
+<CodeGroup by="lang" blocks={code.store} />
+
+Next, the types every gateway module speaks, plus `settle`. `settle` takes Fonepay's answer and applies it: `paid` moves the attempt to paid and fulfils the order exactly once, `pending` waits, and `failed` or `canceled` closes the attempt.
+
+<CodeGroup by="lang" blocks={code.types} />
+
+## Step 2: Write the Fonepay module
+
+This file is the only Fonepay-specific code in the project. It exports two functions: `startPayment`, which builds the signed URL, and `confirmPayment`, which decides what happened. It's the same file for every framework in your language.
+
+### Configuration
+
+The module reads the environment variables above and falls back to the dev merchant. The panel login is optional on dev, because there is no public one, and required in production, because without it nothing can confirm a payment. Two details here save hours of debugging later:
+
+- Amounts arrive in paisa and leave as rupee text, formatted **once** by a single function. Fonepay signs the exact text, so `100` and `100.00` are different DVs.
+- `DT` is today's date as `MM/DD/YYYY` **in Nepal**, as the spec asks. Nepal is UTC+05:45 all year with no daylight saving, so the module adds that offset instead of loading a time zone database. Near midnight UTC, Nepal is already on the next day. Any other format gets `409 Invalid Date`. The dev gateway also accepted yesterday's date in my tests, so it doesn't check the day itself strictly; I still send Nepal's date, since that's what the spec defines.
+
+<CodeGroup by="lang" blocks={part(fonepay, "config")} />
+
+### Signing
+
+Fonepay calls its signature **DV**: HMAC-SHA512 with your secret key over the field **values** joined by commas, no names, as hex. Fonepay's Java sample prints uppercase hex and PHP's `hash_hmac` prints lowercase. The dev gateway accepted both in my tests, so the module sends uppercase and compares case-insensitively.
+
+| What | Signed text, in this order |
+|---|---|
+| Request DV | `PID,MD,PRN,AMT,CRN,DT,R1,R2,RU`, raw values before URL encoding |
+| Return DV | `PRN,PID,PS,RC,UID,BC,INI,P_AMT,R_AMT`, the strings exactly as received |
+| txnVerification `auth` header | `username,password,POST,application/json,/merchant/merchantDetailsForThirdParty/txnVerification,<exact JSON body>` |
+
+For a Rs 100 payment the request DV signs:
+
+```text
+NBQM,P,3f9a1c0d5e7b2a4c6d8e,100,NPR,11/05/2026,Order demo,N/A,http://localhost:3000/pay/return/3f9a1c0d5e7b2a4c6d8e
+```
+
+<CodeGroup by="lang" blocks={part(fonepay, "sign")} />
+
+Check your signing code against these vectors before you touch the dev gateway. The first two come from Fonepay's docs. The request DV example printed in Fonepay's spec doesn't reproduce with any variant of its fields, so the third vector is mine: OpenSSL and Python agree on it, and the dev gateway answered 303 to that exact request. Every language on this page reproduces all three.
+
+<table>
+  <thead><tr><th>Use</th><th>Signed text</th><th>DV (hex)</th></tr></thead>
+  <tbody>
+    {vectors.map((v) => (
+      <tr><td>{v.use}</td><td><code>{v.message}</code></td><td><code>{v.signature}</code></td></tr>
+    ))}
+  </tbody>
+</table>
+
+All three use the dev secret key `a7e3512f5032480a83137793cb2021dc`. The username and password in the `auth` row are the spec's example values, not a working login. From a terminal:
+
+```bash
+printf '%s' 'd1580724437729,NBQM,true,successful,36463,NICENPKA,9841845631,20.0,30' \
+  | openssl dgst -sha512 -hmac 'a7e3512f5032480a83137793cb2021dc' | awk '{print toupper($NF)}'
+# 667860224021DF1891F7DE873A37B1DEDA720CCDC43F63BC88F86ED20F579E0DE66526D37C71B1D14A8D466E4B740D17D4FF274CD2819FD6ED2AA3D9A89D7C52
+```
+
+### Starting a payment
+
+`startPayment` returns the signed URL, and the route answers `303` to it. Fonepay wants these parameters:
+
+| Param | Value |
+|---|---|
+| `PID` | Your merchant code, `NBQM` on dev |
+| `MD` | `P` |
+| `PRN` | The attempt id, 3 to 25 characters, unique. Sending one twice gets `409 Duplicate PRN`. |
+| `AMT` | Rupees as text: `100`, `100.50`. The same string goes into the DV. |
+| `CRN` | `NPR` |
+| `DT` | `MM/DD/YYYY` in Nepal time |
+| `R1` | Description, up to 160 characters |
+| `R2` | Remarks, up to 50 characters, `N/A` when unused |
+| `RU` | Your return route, up to 150 characters, no query string. Fonepay appends its own. |
+| `DV` | From the signing step |
+
+`RU` points to `/pay/return/<attemptId>`, so the return route knows the attempt from its path. Sign the raw values first, then URL-encode them for the redirect. The module refuses a return URL over 150 characters instead of letting Fonepay reject it later.
+
+<CodeGroup by="lang" blocks={part(fonepay, "start")} />
+
+### Confirming a payment
+
+When the buyer comes back, Fonepay adds these parameters to your return URL:
+
+```http
+GET /pay/return/d1580724437729?PRN=d1580724437729&PID=NBQM&PS=true&RC=successful&UID=36463&BC=NICENPKA&INI=9841845631&P_AMT=20.0&R_AMT=30&DV=6678...7C52
+```
+
+| Param | Meaning |
+|---|---|
+| `PS` | `true` or `false` |
+| `RC` | `successful`, `failed` or `cancel` |
+| `UID` | Fonepay's trace id |
+| `BC` | The paying bank's SWIFT code, or `N/A` |
+| `INI` | Initiator |
+| `P_AMT` | Amount paid. It can differ from the request because of charges or discounts. |
+| `R_AMT` | Amount **requested by the merchant**. Some community docs call it a refund amount. It isn't. |
+
+`confirmPayment` runs in two places: on the return route, with those parameters, and in the reconcile job, with nothing. It works the same way in both:
+
+1. If there are return parameters, rebuild the return DV from the values **exactly as received** and compare in constant time. Don't parse `P_AMT` first: `20.0` hashed as `20` fails. A missing DV counts as a bad one, or anyone could open `?PRN=<id>&PS=false` and fail a real payment. Then check that `PRN` is this attempt and `PID` is your merchant code. Anything off throws `PaymentError`, and the route answers 400.
+2. Ask txnVerification, sending the amount **you stored**. It's a JSON POST with HTTP Basic auth (your panel login) and an `auth` header that signs the **exact body bytes**. The module builds the body string once, in the spacing the spec uses (`": "` after keys, nothing after commas), signs it, and sends that same string. Handing an object to an HTTP client re-serializes it with its own spacing, and Fonepay answers 401.
+3. Check that `requestedAmount` equals the stored amount, then map `paymentStatus` to ours.
+
+| `paymentStatus` | Means | Our status |
+|---|---|---|
+| `success` | Paid | `paid` |
+| `pending` | Not final yet | `pending` |
+| `failed` | Failed | `failed` |
+| anything else | Not documented | `pending`, so the reconcile job asks again |
+| HTTP 401 or no `paymentStatus` | Not an answer | error: the route answers 502 and the attempt stays open |
+
+The response also carries `fonepayTraceId`, which the module returns as the provider reference, plus `merchantCode`, `prn`, `totalTransactionAmount`, `transactionDate` and `initiator`.
+
+Without a panel login (dev only, since production refuses to start without one), the module can't ask anyone. A DV-signed `PS=false` is still Fonepay's word, so it becomes `failed`, or `canceled` when `RC=cancel`. A signed `PS=true` stays `pending`, because nothing confirmed it, and so does the reconcile job's empty check.
+
+<CodeGroup by="lang" blocks={part(fonepay, "confirm")} />
+
+<details class="full-file">
+  <summary>The whole Fonepay module in one block</summary>
+  <CodeGroup by="lang" blocks={whole(fonepay, ["config", "sign", "start", "confirm"])} />
+</details>
+
+Fonepay also has an older GET verification, `merchantRequest/verificationMerchant`, signed over `PID,AMT,PRN,BID,UID`. It needs `UID` and `BC` from the return URL, so it can't help a buyer who never came back, and I left it out of the module. On the dev gateway it answered a correctly signed lookup of an unknown payment with `409 {"message":"No data found for verification"}`, and a bad DV with `409 Data Validation Failed`.
+
+## Step 3: Add the routes
+
+Four routes connect it all. None of them mention Fonepay: they call `startPayment` and `confirmPayment` on whichever gateway module you import, so adding Khalti later means importing a second module, not writing new routes.
+
+- `GET /` shows a demo order and a Pay button.
+- `POST /pay/{orderId}` creates an attempt, calls `startPayment`, and answers `303` to the signed Fonepay URL.
+- `GET` and `POST /pay/return/{attemptId}` collect everything Fonepay sent, call `confirmPayment` with the **stored** amount, apply the answer with `settle`, and redirect to the order. Fonepay returns with a GET. The route accepts POST too because other gateways post back, and frameworks with CSRF protection exempt this one route for the same reason.
+- `GET /orders/{orderId}` shows the order's payment status.
+
+<CodeGroup by="fw" blocks={code.routes} />
+
+## Step 4: Catch payments the redirect missed
+
+Buyers close the tab after paying, lose signal, or never get redirected, and Fonepay's web spec documents no server-to-server notification. The reconcile job covers that: every minute it finds attempts still open after two minutes and runs `confirmPayment` on them with no return data. txnVerification needs only the PRN and the amount, so it works here, and paid attempts get settled. Anything still open after three days drops out of the loop: the job logs it as needing manual review, because a payment that old needs a person, not another status call.
+
+Two limits are worth knowing. txnVerification documents only `success`, `pending` and `failed`, not "never heard of it", so the job's one-hour `expired` rule (which waits for `not_found`) never fires for Fonepay. An abandoned attempt stays open until Fonepay reports it `failed`. Watch what your merchant account's txnVerification returns for an abandoned PRN and map it if it differs. And without a panel login there is nothing to ask, so on dev the job leaves every attempt pending.
+
+<CodeGroup by="lang" blocks={code.reconcile} />
+
+## Step 5: Pay on the dev gateway
+
+Start the server with the run command from the setup step, then:
+
+<ol class="steps">
+  <li>Open the app and click <strong>Pay with Fonepay</strong>. The browser goes to <code>dev-clientapi.fonepay.com</code>, which answers 303 to Fonepay's dev payment page. That redirect is the DV check passing.</li>
+  <li>Open <code>/pay/return/&lt;attemptId&gt;</code> yourself. With no panel login the order stays <strong>pending</strong>: nothing confirmed a payment, so nothing is fulfilled.</li>
+  <li>Add <code>?PRN=&lt;attemptId&gt;&amp;PID=NBQM&amp;PS=true&amp;DV=forged</code> to that URL. The route answers 400.</li>
+  <li>With a panel login, the verification host from Fonepay and a Fonepay-enabled test bank app, pay on the payment page. Fonepay redirects back, txnVerification says <code>success</code>, the order page shows <strong>paid</strong>, and the server log prints the fulfilment line once. Refresh the return URL as often as you like: it never prints again.</li>
+</ol>
+
+To test the DV from a terminal, copy the `Location` your server answered with and request it:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' "<the Fonepay URL from POST /pay/demo>"
+# 303 = DV accepted, 409 = rebuild the signed string
+```
+
+Each PRN works once. Request the same URL twice and the second answer is `409 {"message":"Duplicate PRN"}`, so click Pay again for a fresh one.
+
+## Common Fonepay errors
+
+| Error | Cause | Fix |
+|---|---|---|
+| `409 {"message":"Data Validation Failed"}` on `merchantRequest` | The request DV doesn't match the parameters. | Sign raw values in `PID,MD,PRN,AMT,CRN,DT,R1,R2,RU` order, with the same `AMT` string in the DV and the URL. |
+| `409 {"message":"Duplicate PRN"}` | That PRN was already sent once. Fonepay checks this before the DV. | Create a new attempt per click. |
+| `409 {"message":"Invalid Date"}` | `DT` isn't `MM/DD/YYYY`, for example `2026-11-05`. | Format `DT` as `MM/DD/YYYY` in Nepal time (UTC+05:45). |
+| 404 on the payment URL | `dev.fonepay.com` or `fonepay.com` from an old starter. | Use `dev-clientapi.fonepay.com` or `clientapi.fonepay.com`. |
+| Return DV never matches | `P_AMT` or another value reformatted before hashing, or a case-sensitive compare. | Hash the strings as received and compare uppercase to uppercase. |
+| `401 {"errorCode":401,"message":"cannot access this resource"}` on txnVerification | Wrong panel login, or the `auth` header doesn't sign the bytes actually sent. | Build the body string once, sign it, and send that exact string. |
+| DNS failure on `dev-merchantapi.fonepay.com` | That host isn't in public DNS. | Ask Fonepay for a reachable host and set `FONEPAY_TXN_VERIFICATION_URL`. |
+| `502 Bad Gateway` (an nginx page) from `dev-clientapi.fonepay.com` | The dev gateway is down. It happened during my November 2026 tests. | Nothing to fix. Try again later. |
+| `Fonepay: amount mismatch` from the module | txnVerification's `requestedAmount` differs from the stored amount. | Look at the attempt: the PRN was created for a different amount. |
+
+## Going live
+
+1. Get your live PID, secret key and merchant-panel login through your acquiring bank or Fonepay onboarding. Test and live keys differ.
+2. Set `FONEPAY_ENV=production`, `FONEPAY_MERCHANT_CODE`, `FONEPAY_SECRET_KEY`, `FONEPAY_USERNAME` and `FONEPAY_PASSWORD` on the server. The module switches to the live hosts and refuses to start without all four values. Confirm the live txnVerification host with Fonepay, and set `FONEPAY_TXN_VERIFICATION_URL` if yours differs.
+3. Replace the store with your database. Keep `transition` atomic: an `UPDATE ... WHERE id = ? AND status IN (...)` that reports how many rows changed.
+4. Run the reconcile job from a scheduler (cron, a queue worker, or the framework's scheduler) instead of the web process.
+5. Make one real low-value payment end to end. Fonepay has no public refund API, so refund it from the merchant panel or through your bank. `thirdPartyPostTaxRefund` is a tax refund, not a payment refund.
+
+## Fonepay Dynamic QR for counters and kiosks
+
+Dynamic QR fits POS counters, kiosks and desktop checkouts: your screen shows a QR, and the buyer scans it with any Fonepay-enabled bank app. It needs the same panel login as txnVerification, and it lives on the same `merchantDetailsForThirdParty` base URL. The flow is the same in every language, so here it is once:
+
+<ol class="steps">
+  <li>Create an attempt as above, then POST JSON to <code>thirdPartyDynamicQrDownload</code>.</li>
+  <li>Fonepay answers <code>{'{"qrMessage": "...", "status": "CREATED", "statusCode": 201, "thirdpartyQrWebSocketUrl": "..."}'}</code>. Render <code>qrMessage</code>, an EMV (NepalQR) string, with any QR library.</li>
+  <li>Open the WebSocket URL. Each message has a <code>transactionStatus</code> field that is a JSON <strong>string</strong>: parse it again. First comes <code>{'{"QRVerified":true}'}</code> when the buyer scans, then <code>{'{"paymentSuccess":true, ...}'}</code> with <code>traceId</code> and <code>amount</code>.</li>
+  <li>On <code>paymentSuccess</code>, or every 5 seconds in case the socket drops, ask your server to call <code>thirdPartyDynamicQrGetStatus</code>. Fulfil only when its <code>paymentStatus</code> is <code>success</code>. The socket message alone proves nothing.</li>
+</ol>
+
+```text
+POST .../merchantDetailsForThirdParty/thirdPartyDynamicQrDownload
+{ amount, remarks1, remarks2, prn, merchantCode, dataValidation, username, password }
+  dataValidation = lowercase hex HMAC-SHA512(secret, "amount,prn,merchantCode,remarks1,remarks2")
+
+POST .../merchantDetailsForThirdParty/thirdPartyDynamicQrGetStatus
+{ prn, merchantCode, dataValidation, username, password }
+  dataValidation = lowercase hex HMAC-SHA512(secret, "prn,merchantCode")
+  paymentStatus: success -> paid, pending -> pending, failed -> failed
+```
+
+Reuse the module's `hmacHex` for `dataValidation`, and send `amount` in rupees (`"14"`), as Fonepay's examples do. One community SDK sends paisa. Unlike txnVerification, these bodies aren't signed byte for byte, so any JSON encoder works. A bad `dataValidation` returns `406 "Data Validation Failed"`. Fonepay has been seen returning a socket URL with a `localhost` host; rewrite it to `wss://ws.fonepay.com` (`wss://dev-ws.fonepay.com` on dev). Check your code against the spec's QR vector: `14,5d76d323-d1f6,NBQM,test1,test2` with the dev key gives `5ae718032328ae5615fa4694dfbf3ecd13432bd49031e7285a3f8bc122ecbb8e833e83c7a11f895d30f3e8fd1906317aece113675166ae0d804ecf32a8bbdbaf`.
+
+I could not call the QR endpoints, since they sit on the same private dev host as txnVerification. The fields above follow the v1.1 Dynamic QR spec as transcribed by the community and matched by two independent codebases. The [Fonepay reference](/docs/providers/fonepay/reference/#5-dynamic-qr--websocket) has the full field lists.
+
+## Fonepay in React, Vue or a mobile app
+
+**React, Vue, Svelte or any SPA:** the frontend never signs anything. It POSTs the order id to your server's `/pay/{orderId}` route and lets the browser follow the 303, or fetches the signed URL as JSON and sets `window.location` to it. A component that computes `DV` puts your secret key in the JavaScript bundle, and then anyone can sign any amount.
+
+**Flutter, React Native, Android, iOS:** same rule. Your server builds the signed URL, the app opens it in the browser or a WebView, and your server runs `confirmPayment` when Fonepay returns. Some unofficial Flutter packages compute `DV` on the device, which ships your secret key inside the app. For in-person payments, Dynamic QR driven by your server works from any client.
+
+Fonepay also launched "Checkout by Fonepay" in July 2026, and a "third-party v2" API with RSA signing and Intent QR exists. Fonepay hasn't published specs for either, so if you're starting fresh, ask Fonepay whether to use them.
