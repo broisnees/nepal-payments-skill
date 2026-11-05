@@ -10,3 +10,4 @@ __pycache__/
 *.pem
 .DS_Store
 .claude/
+!skills/nepal-payments/scripts/php/tests/fixtures/*.pfx
