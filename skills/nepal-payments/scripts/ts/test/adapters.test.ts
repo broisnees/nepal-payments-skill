@@ -6,6 +6,8 @@ import { test, describe, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import {
+  basicAuth,
+  createPayments,
   decideTransition,
   connectips,
   connectIpsTokenString,
@@ -24,6 +26,7 @@ import {
   nps,
   npsSign,
   paisaToRupees,
+  PaymentError,
   renderAutoSubmitForm,
   rupeesToPaisa,
   toBase64,
@@ -454,3 +457,119 @@ describe("imepay", () => {
   });
 });
 
+
+// ---------------------------------------------------------------- regressions (TODO.md correctness list)
+describe("regressions", () => {
+  const e = esewa({ env: "sandbox", ...ESEWA_SANDBOX });
+  const b64 = (s: string) => toBase64(new TextEncoder().encode(s));
+  const isPaymentError = (code: string, httpStatus?: number) => (err: unknown) =>
+    err instanceof PaymentError && err.code === code && err.httpStatus === httpStatus;
+
+  test("paisaToRupees keeps the sign below one rupee", () => {
+    assert.equal(paisaToRupees(-5), "-0.05");
+    assert.equal(paisaToRupees(-99), "-0.99");
+    assert.equal(paisaToRupees(-100), "-1");
+    assert.equal(paisaToRupees(-12345), "-123.45");
+  });
+
+  test("rupeesToPaisa rejects exponent and explicit plus forms", () => {
+    for (const bad of ["1e3", "+5", "NaN", ""]) assert.throws(() => rupeesToPaisa(bad), /not a rupee amount/);
+  });
+
+  test("basicAuth encodes UTF-8 credentials", () => {
+    assert.equal(basicAuth("ü", "पासवर्ड"), "Basic " + Buffer.from("ü:पासवर्ड").toString("base64"));
+  });
+
+  test("newOrderId uses only the 36-symbol alphabet", () => {
+    for (let i = 0; i < 200; i++) assert.match(newOrderId(), /^P[0-9A-Z]{18,19}$/);
+  });
+
+  test("provider lookup ignores Object.prototype keys", () => {
+    const payments = createPayments({ esewa: { env: "sandbox", ...ESEWA_SANDBOX } });
+    for (const id of ["constructor", "__proto__", "toString"]) assert.throws(() => payments.adapter(id), /not configured/);
+    assert.equal(payments.adapter("esewa").id, "esewa");
+  });
+
+  test("status tables ignore Object.prototype keys", async () => {
+    for (const s of ["constructor", "__proto__", "toString"]) {
+      mockFetch(() => ({ body: { status: s, total_amount: 10, ref_id: null } }));
+      assert.equal((await e.verify({ orderId: "X", amountPaisa: 1000 })).status, "unknown");
+    }
+  });
+
+  test("eSewa: malformed success data is a 400, not a raw SyntaxError", async () => {
+    for (const data of ["!!!!", b64("not json"), b64("{")]) {
+      await assert.rejects(e.parseSuccess(data), isPaymentError("malformed_callback", 400));
+      await assert.rejects(e.verify({ orderId: "X", amountPaisa: 1000, callback: { data } }), isPaymentError("malformed_callback", 400));
+    }
+  });
+
+  test("eSewa: error body read from error_message or errorMessage", async () => {
+    mockFetch(() => ({ status: 503, body: { code: 0, errorMessage: "Service is currently unavailable" } }));
+    await assert.rejects(e.verify({ orderId: "X", amountPaisa: 1000 }), (err: unknown) =>
+      isPaymentError("esewa_0", 503)(err) && /Service is currently unavailable/.test((err as Error).message));
+    mockFetch(() => ({ status: 400, body: { code: "IP-400", error_message: "Invalid Signature" } }));
+    await assert.rejects(
+      e.intentBook({ orderId: "X", amountPaisa: 10000, callbackUrl: "https://c", redirectUrl: "https://r" }),
+      (err: unknown) => isPaymentError("esewa_IP-400", 400)(err) && /Invalid Signature/.test((err as Error).message),
+    );
+    mockFetch(() => ({ status: 502, body: "<html>bad gateway</html>" }));
+    await assert.rejects(e.verify({ orderId: "X", amountPaisa: 1000 }), isPaymentError("http_502", 502));
+  });
+
+  test("eSewa Intent callback: raw body keeps number text; parsed body uses String(v)", async () => {
+    const key = ESEWA_SANDBOX.intent.accessKey;
+    const order = ["product_code", "amount", "reference_code", "status"];
+    const names = order.join(",");
+    const base = { product_code: "INTENT", reference_code: "R1", status: "SUCCESS" };
+    // Signed over "100.0", exactly as the JSON text carries it.
+    const sigExact = await esewaSign(key, { ...base, amount: "100.0" }, order);
+    const raw = `{"product_code":"INTENT","amount":100.0,"reference_code":"R1","status":"SUCCESS","signed_field_names":"${names}","signature":"${sigExact}"}`;
+    assert.equal(await e.intentCallbackValid(raw), true);
+    assert.equal(await e.intentCallbackValid(JSON.parse(raw)), false); // parsed: 100.0 is just 100
+    // Signed over "100", the String(v) form; the raw body is accepted too.
+    const sigJs = await esewaSign(key, { ...base, amount: "100" }, order);
+    const raw2 = raw.replace(sigExact, sigJs);
+    assert.equal(await e.intentCallbackValid(raw2), true);
+    assert.equal(await e.intentCallbackValid(JSON.parse(raw2)), true);
+    // null signs as "", tamper and junk fail.
+    const sigNull = await esewaSign(key, { ...base, amount: "" }, order);
+    assert.equal(await e.intentCallbackValid({ ...base, amount: null, signed_field_names: names, signature: sigNull }), true);
+    assert.equal(await e.intentCallbackValid(raw.replace("100.0", "1.0")), false);
+    assert.equal(await e.intentCallbackValid("not json"), false);
+    assert.equal(await e.intentCallbackValid("[1]"), false);
+  });
+
+  test("NPS: code 0 with null data is unknown, not a TypeError", async () => {
+    const n = nps({ env: "sandbox", merchantId: "9", merchantName: "M", apiUsername: "u", apiPassword: "p", secretKey: "s" });
+    mockFetch(() => ({ body: { code: "0", message: "", errors: [], data: null } }));
+    const v = await n.verify({ orderId: "T1", amountPaisa: 10000 });
+    assert.equal(v.status, "unknown");
+    assert.equal(v.amountPaisa, null);
+  });
+
+  test("connectIPS: txnAmt null is null, empty referenceId/remarks fall back", async () => {
+    const kp = await crypto.subtle.generateKey(
+      { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+      true,
+      ["sign"],
+    );
+    const der = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
+    const pem = `-----BEGIN PRIVATE KEY-----\n${toBase64(der)}\n-----END PRIVATE KEY-----`;
+    const c = connectips({ env: "sandbox", merchantId: 550, appId: "A", appName: "T", appPassword: "pw", privateKeyPem: pem });
+    mockFetch(() => ({ body: { status: "ERROR", statusDesc: "TRANSACTION NOT FOUND", txnAmt: null } }));
+    assert.equal((await c.verify({ orderId: "T1", amountPaisa: 500 })).amountPaisa, null);
+    const r = await c.initiate({ orderId: "T1", amountPaisa: 500, description: "Shoes", returnUrl: "", referenceId: "", remarks: "" });
+    if (r.kind !== "form") return assert.fail();
+    assert.equal(r.fields.REFERENCEID, "T1");
+    assert.equal(r.fields.REMARKS, "Shoes");
+  });
+
+  test("CyberSource: empty req_reference_number falls back to req_transaction_uuid", async () => {
+    const cs = cybersource({ env: "sandbox", profileId: "p", accessKey: "a", secretKey: "s" });
+    const p: Record<string, string> = { decision: "ACCEPT", reason_code: "100", req_reference_number: "", req_transaction_uuid: "T1", req_amount: "10.00", req_currency: "NPR", transaction_id: "X1" };
+    p.signed_field_names = [...Object.keys(p), "signed_field_names"].join(",");
+    p.signature = await cybersourceSign("s", p);
+    assert.equal((await cs.verify({ orderId: "T1", amountPaisa: 1000, callback: p })).status, "paid");
+  });
+});
