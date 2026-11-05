@@ -1,0 +1,301 @@
+---
+title: "CyberSource Payment Gateway Integration in Nepal: Visa and Mastercard in Any Framework"
+description: "Accept Visa and Mastercard in Nepal with CyberSource Secure Acceptance in Express, Laravel, Django, Go, Spring or Ktor: signed form, verified POST, test cards."
+label: CyberSource (cards)
+provider: cybersource
+published: 2026-11-05
+order: 50
+stack: true
+stackTitle: "CyberSource Payment Gateway Integration in {stack}: Step by Step"
+stackDescription: "Take Visa and Mastercard in Nepal with CyberSource Secure Acceptance in {stack}: signed form, verified response POST, reconciliation and test cards."
+faq:
+  - q: "Which Nepali banks give out CyberSource credentials?"
+    a: "NIC Asia is confirmed to issue CyberSource Secure Acceptance credentials (profile ID, access key and secret key) for NPR, with USD optional. Nabil, Global IME, Himalayan and Standard Chartered Nepal may use other processors, and Himalayan Bank uses 2C2P PACO. Ask your bank which product you are getting before you write code."
+  - q: "Is CyberSource Secure Acceptance being discontinued?"
+    a: "Yes. CyberSource is sunsetting Secure Acceptance in favour of Unified Checkout, with a migration target of 2026-09-30 and dates communicated per merchant. It still works today. For a new build, ask your bank for Unified Checkout and REST credentials with JWT auth."
+  - q: "Does CyberSource Secure Acceptance have a payment status API?"
+    a: "No simple one. The signed response POST to your receipt page and to your Merchant POST URL is the proof of payment. For attempts that never got a POST, look the payment up in the Business Center or use REST Transaction Search, which needs separate REST credentials and the official cybersource-rest-client SDK."
+  - q: "Why does CyberSource reject my Secure Acceptance signature?"
+    a: "The usual causes are signing with a base64-decoded secret (that is the REST rule, Secure Acceptance uses the raw key string), signing fields in a different order than signed_field_names, URL-encoding values before signing, or a signed_date_time that is not UTC with a trailing Z."
+  - q: "What are the CyberSource test card numbers?"
+    a: "In the test environment use Visa 4111111111111111 or Mastercard 5555555555554444 with any future expiry and any name. For 3-D Secure 2.x, Visa 4000000000002701 is a frictionless success and 4000000000002503 is a challenge success."
+  - q: "Are there public CyberSource sandbox credentials for Nepal?"
+    a: "No. Unlike eSewa or Khalti, CyberSource publishes no shared test merchant. Your acquiring bank creates a test profile in the CyberSource test Business Center and gives you its profile ID, access key and secret key."
+  - q: "Can I accept cards in Nepal without a CyberSource contract?"
+    a: "Yes. NPS OnePG routes payers to bank card checkouts such as HBL Card Checkout, so one NPS integration covers cards without a direct CyberSource merchant account."
+---
+
+import CodeGroup from "../../components/blog/CodeGroup.astro";
+import Note from "../../components/blog/Note.astro";
+import { app, gatewayNames, part, whole } from "../../data/blog-code";
+import { cybersource, vectors } from "../../data/blog-code/cybersource";
+
+export const code = app(gatewayNames("cybersource", "CyberSource", "Cybersource"));
+
+By the end of this guide you'll have a checkout that takes Visa and Mastercard through CyberSource, the card platform Nepali banks such as NIC Asia hand to their merchants, and marks an order paid only after a signed answer from CyberSource says the card was charged. Pick your framework above and the whole guide switches to it.
+
+What I tested, in November 2026: every language's signing code reproduces the test vector below and passes 15 forged, tampered and valid response fixtures. Express, Django, Laravel, Go, Spring Boot and Ktor ran the full flow (start, return, forged signature, short amount, paid once) against a local mock that posts the signed response CyberSource documents. What I could not test is a real payment: CyberSource publishes no shared test merchant, and with dummy credentials its test pay page answers `403 Forbidden`. You need a test profile from your bank for step 5.
+
+<Note type="warn" title="Secure Acceptance is being sunset">
+  CyberSource is retiring Secure Acceptance in favour of Unified Checkout. The migration target was 2026-09-30, dates go out per merchant, and it still works today. Use this guide if your bank already issued Secure Acceptance keys, and agree a migration date with them. For a brand new build, ask for <a href="#new-builds-unified-checkout">Unified Checkout</a> instead.
+</Note>
+
+## How a CyberSource card payment works
+
+Secure Acceptance Hosted Checkout works like eSewa's form flow, with a card page in place of a wallet login. Your server never calls CyberSource to create the payment:
+
+<ol class="steps">
+  <li>Your server creates a <strong>payment attempt</strong>, builds the fields (amount, currency, the buyer's billing address, where to send them back) and signs every one of them with HMAC-SHA256.</li>
+  <li>The browser auto-submits the signed form to CyberSource's hosted pay page. The buyer types the card number there, never on your site, and completes 3-D Secure if your profile has it enabled.</li>
+  <li>CyberSource POSTs the signed result, form-encoded, back through the browser to your <strong>receipt page</strong>, and server to server to your <strong>Merchant POST URL</strong>.</li>
+  <li>Your server checks the signature, the attempt id, the currency and the amount, then reads <code>decision</code>. That signed POST is the proof: Secure Acceptance has no simple status API to ask afterwards.</li>
+</ol>
+
+Three rules fall out of this:
+
+- **Sign on the server.** The secret key never reaches the browser or a mobile app. Anyone holding it can sign any amount.
+- **Only a signed POST counts.** Recompute the signature, read only the fields it covers, and treat a mismatch as an attack.
+- **Use your own numbers.** Compare the charged amount with the amount you stored. A partial approval comes back as `ACCEPT` with less money.
+
+## What you need
+
+- **A merchant account through a Nepali acquiring bank.** NIC Asia is confirmed to issue Secure Acceptance credentials for NPR, with USD optional. Nabil, Global IME, Himalayan and Standard Chartered Nepal may use other processors, and Himalayan Bank uses 2C2P PACO. Confirm the product with your bank before writing code.
+- **Three credentials per environment.** In the Business Center, open Payment Configuration, Secure Acceptance Settings, your profile, then Security, Create Key (signature version 1, HMAC-SHA256). That gives a 32 character `access_key` and a `secret_key`. The `profile_id` is on the profile. Copy the keys at once: the panel closes after 30 seconds. Keys expire after 2 years, and test and live keys differ.
+- **An HTTPS address for your app.** The module tells CyberSource to send the buyer back to `/pay/return/<attemptId>` with the per-request receipt URL, and that URL must be HTTPS. Locally, run an HTTPS tunnel (cloudflared, ngrok) and set `BASE_URL` to it.
+
+| | Test | Production |
+|---|---|---|
+| Hosted pay page (POST) | `testsecureacceptance.cybersource.com/pay` | `secureacceptance.cybersource.com/pay` |
+| Business Center | `businesscentertest.cybersource.com` | `businesscenter.cybersource.com` |
+| Credentials | test profile from your bank | live profile from your bank |
+
+Set these on the server. `CYBERSOURCE_ENV` defaults to the test environment and `CYBERSOURCE_CURRENCY` to `NPR`:
+
+```bash
+CYBERSOURCE_ENV=production        # leave unset for the test environment
+CYBERSOURCE_PROFILE_ID=your-profile-id
+CYBERSOURCE_ACCESS_KEY=your-32-char-access-key
+CYBERSOURCE_SECRET_KEY='your-secret-key'
+CYBERSOURCE_CURRENCY=NPR
+BASE_URL=https://your-tunnel-or-domain
+```
+
+There are no defaults for the three credentials, so the module refuses to start without them in either environment.
+
+## Set up the project
+
+Create the project and install the framework. The commands below match the stack you picked.
+
+<CodeGroup by="fw" blocks={code.setup} />
+
+## Step 1: Store payment attempts
+
+Every click on "Pay" creates a **payment attempt**: one row with its own id, the amount, and a status that starts at `initiated`. The order can have several attempts (the card is declined and the buyer tries another), and each attempt's id is what CyberSource sees as both `transaction_uuid` and `reference_number`, so it is never reused. Reusing a `transaction_uuid` within 15 minutes fails with reason code 104.
+
+In production this is a table:
+
+```sql
+CREATE TABLE payment_attempts (
+  id            VARCHAR(20) PRIMARY KEY,   -- sent to CyberSource as transaction_uuid and reference_number
+  order_id      VARCHAR(64) NOT NULL,
+  amount_paisa  BIGINT      NOT NULL,      -- what we charge, in paisa (Rs 100 = 10000)
+  status        VARCHAR(16) NOT NULL,      -- initiated, pending, paid, failed, canceled, expired
+  provider_ref  VARCHAR(64),               -- CyberSource's transaction_id (up to 26 chars) from the response
+  created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+To keep this guide runnable with zero setup, the store below keeps attempts in memory (or in a JSON file for PHP, which forgets everything between requests). Swap its functions for queries when you move to a database. The function that matters is `transition`: it changes the status only if the current status is one you expect, in one atomic step. CyberSource sends the same result twice (receipt page and Merchant POST), and buyers refresh pages, so this single rule is what stops an order from being fulfilled twice.
+
+<CodeGroup by="lang" blocks={code.store} />
+
+Next, the types every gateway module speaks, plus `settle`. `settle` takes the module's answer and applies it: `paid` moves the attempt to paid and fulfils the order exactly once, `failed` and `canceled` close it, and `pending` waits.
+
+<CodeGroup by="lang" blocks={code.types} />
+
+## Step 2: Write the CyberSource module
+
+This file is the only CyberSource-specific code in the project. It exports two functions: `startPayment`, which builds the signed form, and `confirmPayment`, which checks the signed result. It's the same file for every framework in your language, and it makes no HTTP calls at all: Secure Acceptance is a form out and a signed POST back.
+
+### Configuration
+
+The module reads its credentials from the environment and switches the pay page URL on `CYBERSOURCE_ENV`. Three details matter here:
+
+- The secret key is used as the **raw text**. CyberSource's REST API base64-decodes its secret before use, Secure Acceptance does not, and mixing the two up is the most common signature failure.
+- Amounts arrive in paisa and leave as rupees with **two decimals**: `10000` becomes `"100.00"`. The text you sign is the text you post, so it is formatted once.
+- A sale needs billing details (`bill_to_forename`, `bill_to_surname`, `bill_to_email`, `bill_to_address_line1`, `bill_to_address_city`, `bill_to_address_country`). The demo order has no buyer, so the module uses placeholders. In a real shop, load them from the order. The country is `NP`; state and postal code apply only to the US and Canada.
+
+<CodeGroup by="lang" blocks={part(cybersource, "config")} />
+
+### Signing
+
+Secure Acceptance signs a comma-separated `name=value` list in the order named by `signed_field_names`, HMAC-SHA256 with the secret key, encoded as standard base64. Two things look wrong but are right: `signed_field_names` lists itself, and its own value (which contains commas) goes into the message as is. `unsigned_field_names` is sent empty and signed too. Don't URL-encode anything before signing.
+
+<CodeGroup by="lang" blocks={part(cybersource, "sign")} />
+
+Check your signing code against this vector before you touch the test environment. The key and ids are dummies. It reproduces with OpenSSL and with every module on this page. The message is:
+
+```text
+access_key=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6,profile_id=PROFILE-0001,transaction_uuid=7f9c2b1e-5d1a-4c3b-9e8f-1a2b3c4d5e6f,signed_field_names=access_key,profile_id,transaction_uuid,signed_field_names,unsigned_field_names,signed_date_time,locale,transaction_type,reference_number,amount,currency,unsigned_field_names=,signed_date_time=2026-11-04T10:15:30Z,locale=en-us,transaction_type=sale,reference_number=ORDER-1001,amount=1500.00,currency=NPR
+```
+
+<table>
+  <thead><tr><th>Secret key</th><th>Signature</th></tr></thead>
+  <tbody>
+    {vectors.map((v) => (
+      <tr><td><code>{v.key}</code></td><td><code>{v.signature}</code></td></tr>
+    ))}
+  </tbody>
+</table>
+
+From a terminal:
+
+```bash
+printf '%s' 'access_key=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6,profile_id=PROFILE-0001,transaction_uuid=7f9c2b1e-5d1a-4c3b-9e8f-1a2b3c4d5e6f,signed_field_names=access_key,profile_id,transaction_uuid,signed_field_names,unsigned_field_names,signed_date_time,locale,transaction_type,reference_number,amount,currency,unsigned_field_names=,signed_date_time=2026-11-04T10:15:30Z,locale=en-us,transaction_type=sale,reference_number=ORDER-1001,amount=1500.00,currency=NPR' \
+  | openssl dgst -sha256 -hmac 'test_secret_key_do_not_use' -binary | base64
+# QRwjaW8ysHR/UGyQ0LqSIHiGTvnNebKSwwsFRmn4Weg=
+```
+
+### Starting a payment
+
+`startPayment` returns the form. Every field is signed, and the order you add them in becomes `signed_field_names`:
+
+| Field | Value |
+|---|---|
+| `access_key`, `profile_id` | From your Secure Acceptance profile |
+| `transaction_uuid` | The attempt id. Unique per attempt, 50 characters max. |
+| `reference_number` | The attempt id again. It comes back as `req_reference_number`, which is how the module matches the response. |
+| `signed_field_names` | Every field name above and below, itself included |
+| `unsigned_field_names` | Empty |
+| `signed_date_time` | UTC as `2026-11-04T10:15:30Z`. Keep the server clock in sync with NTP. |
+| `locale` | `en-us` |
+| `transaction_type` | `sale`: authorize and capture in one step. `authorization` holds the money for a later capture. |
+| `amount` | Two decimals: `"100.00"` |
+| `currency` | `NPR`, enabled per card type in the profile. Availability depends on the acquirer. |
+| `bill_to_*` | The buyer's billing details, country `NP` |
+| `override_custom_receipt_page`, `override_custom_cancel_page` | Your return route, `/pay/return/<attemptId>`. HTTPS, and signed. |
+
+The two override fields are what make the shared routes work. Without them CyberSource posts to the one receipt URL saved in the profile, which can't carry the attempt id in its path.
+
+<CodeGroup by="lang" blocks={part(cybersource, "start")} />
+
+### Confirming a payment
+
+`confirmPayment` runs in two places: on the return route, with the fields CyberSource posted, and in the reconcile job, with nothing.
+
+1. With no `signature`, `signed_field_names` or `decision` in the params, there is nothing to check and no status API to ask, so the answer is `pending`. A response field without a signature throws `PaymentError`.
+2. Recompute the signature from the **response's own** `signed_field_names` with the same secret and compare in constant time. CyberSource's guide says to treat a mismatch as malicious. The module throws `PaymentError` and the route answers 400.
+3. Keep **only** the fields the signature covers. Then check that `req_reference_number` is this attempt and `req_currency` is your currency.
+4. Compare `auth_amount` (or `req_amount` when there is no `auth_amount`) with the amount **you stored**. Reason 110 is a partial approval: `ACCEPT` with an `auth_amount` below what you asked for. It fails this check instead of fulfilling a short payment.
+5. Map `decision` to our status:
+
+| `decision` | Means | Our status |
+|---|---|---|
+| `ACCEPT` on a `sale` | Charged | `paid` |
+| `ACCEPT` on an `authorization` | Held, not captured yet | `pending` |
+| `REVIEW` | Decision Manager or an AVS or CVN check flagged it for manual review in the Business Center | `pending` |
+| `DECLINE`, `ERROR` | Declined or rejected | `failed` |
+| `DECLINE`, `ERROR` with reason 150, 151 or 152 | System failure or timeout, the card may still be charged | `pending` |
+| `CANCEL` | The buyer canceled on the hosted page | `canceled` |
+
+`transaction_id` comes back as the provider reference. It is the id the Business Center shows for the payment.
+
+<CodeGroup by="lang" blocks={part(cybersource, "confirm")} />
+
+<details class="full-file">
+  <summary>The whole CyberSource module in one block</summary>
+  <CodeGroup by="lang" blocks={whole(cybersource, ["config", "sign", "start", "confirm"])} />
+</details>
+
+## Step 3: Add the routes
+
+Four routes connect it all. None of them mention CyberSource: they call `startPayment` and `confirmPayment` on whichever gateway module you import, so the same routes serve eSewa, Khalti and cards.
+
+- `GET /` shows a demo order and a Pay button.
+- `POST /pay/{orderId}` creates an attempt, calls `startPayment`, and sends back a page that auto-posts the signed form to CyberSource.
+- `GET` and `POST /pay/return/{attemptId}` merge the query string and the form body, call `confirmPayment` with the **stored** amount, apply the answer with `settle`, and redirect to the order. CyberSource's receipt POST arrives here as a cross-site form POST without your CSRF token, so Laravel and Django exempt this one route. The signature check is what protects it.
+- `GET /orders/{orderId}` shows the order's payment status.
+
+<CodeGroup by="fw" blocks={code.routes} />
+
+The receipt POST rides on the buyer's browser. If they close the tab on the 3-D Secure page, it never arrives. That is what the **Merchant POST URL** is for: CyberSource sends the same signed fields server to server. Set it under Profile, Notifications (HTTPS, TLS 1.2 or newer). It is one fixed URL per profile, so it can't point at `/pay/return/<attemptId>`. Add one more route next to the return route, for example `POST /pay/notify`, that takes the attempt id from the posted `req_reference_number`, loads that attempt, and runs the same `confirmPayment` and `settle` calls. Answer 200 within 10 seconds, because slow replies delay future notifications. `transition` makes the duplicate harmless.
+
+## Step 4: Catch payments the redirect missed
+
+With eSewa or Khalti, the reconcile job asks a status API about attempts still open after two minutes. Secure Acceptance has no such API. The same reconcile job runs here, calls `confirmPayment` with no callback data, and gets `pending` back every time, so it never marks a card payment paid or expired on its own. Copy it anyway: it costs nothing, and it is the place to plug in a real lookup later. Anything still open after three days drops out of the loop: the job logs it as needing manual review, because a payment that old needs a person, not another status call.
+
+<CodeGroup by="lang" blocks={code.reconcile} />
+
+For attempts that stay open, in order of preference:
+
+1. **The Merchant POST URL** from step 3. Configured, it closes almost every gap, because it doesn't depend on the buyer's browser.
+2. **The Business Center.** Look the payment up there (the attempt id is the `reference_number` you sent) and settle the attempt by hand. Do the same for `REVIEW` results and reasons 150 to 152.
+3. **REST Transaction Search.** CyberSource's REST API can look payments up, but it needs a second set of credentials (merchant ID, REST key ID and shared secret, with the secret base64-decoded) and an HTTP Signature or JWT header on every request. HTTP Signature auth has to move to JWT by March 2027, and CyberSource's docs and SDK disagree on a JWT claim name. I left it out of the module for that reason. If you need it, use the official SDK (`cybersource-rest-client` for Node, `cybersource-rest-client-python`, `cybersource/rest-client-php`, `com.cybersource:cybersource-rest-client-java`) from the reconcile job.
+
+Attempts that never got any POST stay `pending` in this code. Expire them after your own cutoff once the Business Center shows nothing for them.
+
+## Step 5: Pay in the test environment
+
+This needs a test profile from your bank. Start the server with the run command from the setup step, then:
+
+<ol class="steps">
+  <li>Expose the app over HTTPS with a tunnel, set <code>BASE_URL</code> to the tunnel address, and set the three <code>CYBERSOURCE_*</code> credentials from your test profile.</li>
+  <li>Open the app through the tunnel and click <strong>Pay with CyberSource</strong>. You land on CyberSource's test pay page.</li>
+  <li>Pay with Visa <code>4111111111111111</code> or Mastercard <code>5555555555554444</code>, any future expiry and any name.</li>
+  <li>CyberSource POSTs the signed result to <code>/pay/return/&lt;attemptId&gt;</code>. The order page shows <strong>paid</strong> and the server log prints the fulfilment line once. Post the same result again and it never prints twice.</li>
+</ol>
+
+To test the other paths, cancel on the hosted page (the response carries `decision=CANCEL`, so the attempt becomes `canceled`), or replay a copy of the result with one field changed, for example with `curl` (the route answers 400).
+
+| Card | Number |
+|---|---|
+| Visa | `4111111111111111` |
+| Mastercard | `5555555555554444`, `2222420000001113` |
+| Amex | `378282246310005` |
+| JCB | `3566111111111113` |
+| 3DS 2.x Visa, frictionless success | `4000000000002701` |
+| 3DS 2.x Visa, challenge success | `4000000000002503` |
+| 3DS 2.x Mastercard, challenge success | `5200000000002151` |
+
+## Common CyberSource errors and reason codes
+
+| Code or symptom | Cause | Fix |
+|---|---|---|
+| Signature rejected on `/pay` | Secret base64-decoded, fields signed out of order, values URL-encoded, or `signed_field_names` missing itself or `unsigned_field_names`. | Sign the raw key in `signed_field_names` order and test against the vector above. |
+| Request rejected for the timestamp | `signed_date_time` not UTC with `Z`, or server clock drift. | Format as `2026-11-04T10:15:30Z` and sync the clock with NTP. |
+| `403 Forbidden` from the test pay page | The access key and profile ID aren't a test profile. Dummy keys get exactly this. | Use the keys of the test profile your bank set up, not the live ones. |
+| `101` / `102` | Missing or invalid fields. | Read `required_fields` and `invalid_fields` in the response. Usually a `bill_to_*` field. |
+| `104` | `transaction_uuid` reused within 15 minutes. | Create a new attempt per click. |
+| `110` | Partial approval: `auth_amount` below the requested amount. | The module refuses it with 400. Settle the held amount in the Business Center. |
+| `150` / `151` / `152` | System failure or timeout. | The attempt stays pending. Check the Business Center before retrying. |
+| `200` / `230` | Approved but failed AVS or CVN, so `REVIEW`. | Review in the Business Center. |
+| `202` / `203` / `204` / `205` | Expired card, general decline, insufficient funds, lost or stolen card. | Ask for another card. |
+| `207` / `208` / `210` / `211` | Issuer unavailable, card not allowed for card-not-present, limit reached, invalid CVN. | Retry later or use another card. |
+| `231` / `232` / `233` / `236` / `240` | Invalid account, card type not accepted, processor decline, processor failure, card type mismatch. | For 232, enable the card type (and NPR for it) in the profile. |
+| `475` / `476` / `478` | 3DS needed, 3DS failed, SCA required. | Have CyberSource Customer Support enable 3DS on the merchant ID, then tick it per card type in the profile. |
+| `481` / `520` | Profile risk settings or Decision Manager. | Check the rules in the Business Center. |
+| HTTP 419 (Laravel) or 403 (Django) on the return route | CSRF middleware blocked CyberSource's cross-site POST. | Keep the CSRF exemption from step 3 on that route. |
+| Older UnionPay card refused | Secure Acceptance rejects cards without CVN or expiry. | Ask for another card. |
+
+The full table is in the [CyberSource reference](/docs/providers/cybersource/reference/#4-reason-codes).
+
+## Going live
+
+1. Create live keys on the live profile in `businesscenter.cybersource.com`. They expire after 2 years, so put the renewal in a calendar.
+2. Set `CYBERSOURCE_ENV=production` and the live `CYBERSOURCE_PROFILE_ID`, `CYBERSOURCE_ACCESS_KEY` and `CYBERSOURCE_SECRET_KEY` on the server. The module switches the pay page URL and refuses to start without credentials.
+3. Load the real billing details from the order in place of the placeholders in the module.
+4. Configure the Merchant POST URL and its route, enable 3-D Secure (Visa Secure, Mastercard Identity Check, UnionPay 2.0) and enable NPR for each card type.
+5. Replace the store with your database. Keep `transition` atomic: an `UPDATE ... WHERE id = ? AND status IN (...)` that reports how many rows changed.
+6. Make one real low-value payment end to end and find it in the Business Center.
+
+## New builds: Unified Checkout
+
+Unified Checkout is CyberSource's replacement for Secure Acceptance: a hosted card and wallet UI that keeps you at PCI SAQ A. It is a different integration. Your server creates a capture context with `POST /uc/v1/sessions`, the browser mounts the checkout from the script named in that JWT, and your server charges a transient token with `POST /pts/v2/payments`, then confirms with `GET /tss/v2/transactions/{id}` before fulfilling. All of it uses REST credentials and JWT auth through the official SDK. The [CyberSource reference](/docs/providers/cybersource/reference/#5-rest-api--unified-checkout-new-builds) has the endpoints and SDK versions. The routes and store above carry over unchanged.
+
+## CyberSource in React, Next.js or a mobile app
+
+**React, Vue, Next.js or any SPA:** the browser never signs. It POSTs the order id to `/pay/{orderId}` and follows the auto-post page, or fetches the signed fields as JSON and submits a form it builds itself. A `createHmac` call inside a component ships the secret key to every visitor.
+
+**Flutter, React Native, Android, iOS:** my sources show no Secure Acceptance mobile SDK. Open the checkout in a WebView and keep everything above on the server. For Unified Checkout, CyberSource's KB article KA-11531 says it works in a WebView too. The Flex mobile SDKs (`flex-api-ios-sdk`, `com.cybersource:flex-api-android-client`) haven't been updated since 2022.
+
+Not tied to CyberSource? [NPS OnePG](/docs/providers/nps/) routes payers to bank card checkouts such as HBL Card Checkout without a direct CyberSource contract.
