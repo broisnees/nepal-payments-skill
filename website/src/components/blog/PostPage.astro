@@ -1,0 +1,25 @@
+---
+// Renders one post for one framework. Both blog routes use it.
+import { render } from "astro:content";
+import Article from "../../layouts/Article.astro";
+import type { Post } from "../../data/blog";
+import { DEFAULT_FW } from "../../data/stacks";
+
+interface Props {
+  post: Post;
+  posts: Post[];
+  stack?: string;
+}
+
+const { post, posts, stack = DEFAULT_FW } = Astro.props;
+Astro.locals.stack = stack; // read by every CodeGroup in the post
+const { Content, headings } = await render(post);
+// Prose only: code blocks are read, not counted.
+const words = (post.body ?? "").replace(/```[\s\S]*?```/g, "").split(/\s+/).length;
+const minutes = Math.max(3, Math.round(words / 220) + 4);
+const related = posts.filter((p) => p.id !== post.id).slice(0, 4);
+---
+
+<Article post={post} headings={headings} minutes={minutes} related={related} stack={stack}>
+  <Content />
+</Article>

@@ -1,0 +1,19 @@
+---
+// The same post for every other framework: /blog/<post>/laravel/, /blog/<post>/django/, ...
+import PostPage from "../../../components/blog/PostPage.astro";
+import { getPosts, type Post } from "../../../data/blog";
+import { DEFAULT_FW, frameworks } from "../../../data/stacks";
+
+export async function getStaticPaths() {
+  const posts = await getPosts();
+  return posts
+    .filter((p) => p.data.stack)
+    .flatMap((post) =>
+      frameworks.filter((f) => f.id !== DEFAULT_FW).map((f) => ({ params: { slug: post.id, stack: f.id }, props: { post, posts } })),
+    );
+}
+
+const { post, posts } = Astro.props as { post: Post; posts: Post[] };
+---
+
+<PostPage post={post} posts={posts} stack={Astro.params.stack} />
