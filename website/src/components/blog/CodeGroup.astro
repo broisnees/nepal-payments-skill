@@ -1,0 +1,27 @@
+---
+// Code for the framework this page is about. `by` picks whether blocks are keyed per language (the gateway
+// module, shared by every framework in that language) or per framework (routes, setup).
+import { Code } from "astro-expressive-code/components";
+import { DEFAULT_FW, fwLang, type Block } from "../../data/stacks";
+
+interface Props {
+  by: "lang" | "fw";
+  /** Keyed by language or framework id. A value may be one block or several files. */
+  blocks: Record<string, Block | Block[] | undefined>;
+}
+
+const { by, blocks } = Astro.props;
+const fw = Astro.locals.stack ?? DEFAULT_FW;
+const value = blocks[by === "lang" ? fwLang(fw) : fw];
+const items = value === undefined ? [] : Array.isArray(value) ? value : [value];
+---
+
+{
+  items.length > 0 && (
+    <div class="code-group">
+      {items.map((b) => (
+        <Code code={b.code.replace(/^\n+|\s+$/g, "")} lang={b.lang} title={b.file && b.file.toLowerCase() !== "terminal" ? b.file : undefined} frame={b.lang === "bash" ? "terminal" : "auto"} />
+      ))}
+    </div>
+  )
+}
