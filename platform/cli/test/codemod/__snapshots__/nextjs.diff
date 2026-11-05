@@ -1,0 +1,96 @@
+--- /dev/null
++++ b/paynp.ts
+@@ -0,0 +1,7 @@
++// Reports every eSewa payment step to paynp: start, return, status checks, errors.
++// Written by `paynp init`. The routes import `gateway` from here instead of "./esewa".
++import { createPaynp } from "@paynp/sdk";
++import * as esewa from "./esewa";
++
++export const paynp = createPaynp({ key: process.env.PAYNP_KEY });
++export const gateway = paynp.wrapGateway("esewa", esewa);
+
+--- a/app/pay/[orderId]/route.ts
++++ b/app/pay/[orderId]/route.ts
+@@ -1,5 +1,6 @@
+ // POST /pay/:orderId
+-import * as gateway from "@/esewa";
++import { after } from "next/server";
++import { gateway, paynp } from "@/paynp";
+ import { autoPostPage } from "@/payments";
+ import { createAttempt, getOrder, setProviderRef } from "@/store";
+ 
+@@ -6,6 +7,7 @@
+ const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
+ 
+ export async function POST(_req: Request, { params }: { params: Promise<{ orderId: string }> }) {
++  after(() => paynp.flush());
+   const order = getOrder((await params).orderId);
+   if (!order) return new Response("Order not found", { status: 404 });
+   const attempt = createAttempt(order.id, order.amountPaisa);
+
+--- a/app/pay/return/[attemptId]/route.ts
++++ b/app/pay/return/[attemptId]/route.ts
+@@ -1,10 +1,12 @@
+ // GET and POST /pay/return/:attemptId
+ // Gateways come back with GET (query string) or POST (form body). Handle both.
+-import * as gateway from "@/esewa";
++import { after } from "next/server";
++import { gateway, paynp } from "@/paynp";
+ import { PaymentError, settle } from "@/payments";
+ import { getAttempt } from "@/store";
+ 
+ export async function GET(req: Request, { params }: { params: Promise<{ attemptId: string }> }) {
++  after(() => paynp.flush());
+   const attempt = getAttempt((await params).attemptId);
+   if (!attempt) return new Response("Payment not found", { status: 404 });
+   const query = Object.fromEntries(new URL(req.url).searchParams);
+
+--- a/instrumentation.ts
++++ b/instrumentation.ts
+@@ -2,7 +2,7 @@
+ // here, in the Node.js runtime only (the in-memory store lives in this process).
+ export async function register() {
+   if (process.env.NEXT_RUNTIME === "nodejs") {
+-    const gateway = await import("./esewa");
++    const { gateway } = await import("./paynp");
+     const { startReconcileLoop } = await import("./reconcile");
+     startReconcileLoop(gateway);
+   }
+
+--- a/payments.ts
++++ b/payments.ts
+@@ -1,6 +1,7 @@
+ // Types every gateway module speaks, plus settle(), which applies a gateway
+ // answer to an attempt. Same file for every gateway and every framework.
+ import { fulfil, setProviderRef, transition, type Attempt } from "./store";
++import { paynp } from "./paynp";
+ 
+ export type PaymentStatus = "paid" | "pending" | "failed" | "canceled" | "refunded" | "not_found";
+ 
+@@ -45,14 +46,20 @@
+ export function settle(attempt: Attempt, outcome: Outcome): void {
+   const s = outcome.status;
+   if (s === "paid" || s === "failed" || s === "canceled") {
+-    if (transition(attempt.id, [...OPEN], s) && s === "paid") {
+-      // Keep the gateway's transaction id (refunds, support). A ref saved at start
+-      // (Khalti pidx, IME TokenId, NPS ProcessId) stays: confirm looks the payment up with it.
+-      if (outcome.providerRef && !attempt.providerRef) setProviderRef(attempt.id, outcome.providerRef);
+-      fulfil(attempt.orderId);
++    if (transition(attempt.id, [...OPEN], s)) {
++      paynp.statusChanged({ attemptId: attempt.id, gateway: "esewa", to: s, orderId: attempt.orderId, amountPaisa: attempt.amountPaisa });
++      if (s === "paid") {
++        // Keep the gateway's transaction id (refunds, support). A ref saved at start
++        // (Khalti pidx, IME TokenId, NPS ProcessId) stays: confirm looks the payment up with it.
++        if (outcome.providerRef && !attempt.providerRef) setProviderRef(attempt.id, outcome.providerRef);
++        fulfil(attempt.orderId);
++        paynp.fulfilled({ attemptId: attempt.id, gateway: "esewa", orderId: attempt.orderId, amountPaisa: attempt.amountPaisa });
++      }
+     }
+   } else if (s === "pending") {
+-    transition(attempt.id, ["initiated"], "pending");
++    if (transition(attempt.id, ["initiated"], "pending")) {
++      paynp.statusChanged({ attemptId: attempt.id, gateway: "esewa", to: "pending", orderId: attempt.orderId, amountPaisa: attempt.amountPaisa });
++    }
+   }
+   // not_found: leave it open. The reconcile job expires it after an hour.
+ }

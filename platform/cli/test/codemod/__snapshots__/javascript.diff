@@ -1,0 +1,20 @@
+--- /dev/null
++++ b/paynp.mjs
+@@ -0,0 +1,7 @@
++// Reports every eSewa payment step to paynp: start, return, status checks, errors.
++// Written by `paynp init`. The routes import `gateway` from here instead of './esewa.mjs'.
++import { createPaynp } from '@paynp/sdk'
++import * as esewa from './esewa.mjs'
++
++export const paynp = createPaynp({ key: process.env.PAYNP_KEY })
++export const gateway = paynp.wrapGateway('esewa', esewa)
+
+--- a/server.mjs
++++ b/server.mjs
+@@ -1,5 +1,5 @@
+ import express from 'express'
+-import * as esewa from './esewa.mjs'
++import { gateway as esewa } from './paynp.mjs'
+ 
+ const app = express()
+ app.post('/pay', async (_req, res) => res.json(await esewa.startPayment({ attemptId: 'a', amountPaisa: 100 })))

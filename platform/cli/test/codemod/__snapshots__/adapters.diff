@@ -1,0 +1,40 @@
+--- /dev/null
++++ b/src/server/paynp.ts
+@@ -0,0 +1,25 @@
++// Reports every payment step of the nepal-payments adapters to paynp: initiate, verify, errors.
++// Written by `paynp init`. Same exports as "./payments/index.ts", with every adapter wrapped.
++import { createPaynp } from "@paynp/sdk";
++import * as lib from "./payments/index.ts";
++
++export * from "./payments/index.ts";
++
++export const paynp = createPaynp({ key: process.env.PAYNP_KEY });
++
++export const esewa = (...args: Parameters<typeof lib.esewa>) => paynp.wrapAdapter(lib.esewa(...args));
++export const khalti = (...args: Parameters<typeof lib.khalti>) => paynp.wrapAdapter(lib.khalti(...args));
++export const fonepay = (...args: Parameters<typeof lib.fonepay>) => paynp.wrapAdapter(lib.fonepay(...args));
++export const connectips = (...args: Parameters<typeof lib.connectips>) => paynp.wrapAdapter(lib.connectips(...args));
++export const cybersource = (...args: Parameters<typeof lib.cybersource>) => paynp.wrapAdapter(lib.cybersource(...args));
++export const nps = (...args: Parameters<typeof lib.nps>) => paynp.wrapAdapter(lib.nps(...args));
++export const imepay = (...args: Parameters<typeof lib.imepay>) => paynp.wrapAdapter(lib.imepay(...args));
++
++export function createPayments(cfg: lib.PaymentsConfig): ReturnType<typeof lib.createPayments> {
++  const payments = lib.createPayments(cfg);
++  return {
++    ...payments,
++    get: (id) => paynp.wrapAdapter(payments.get(id)),
++    adapter: (id) => paynp.wrapAdapter(payments.adapter(id)),
++  };
++}
+
+--- a/src/server/checkout.ts
++++ b/src/server/checkout.ts
+@@ -1,6 +1,6 @@
+ import express from "express";
+-import { createPayments, ESEWA_SANDBOX, newOrderId, paymentsConfigFromEnv, type ProviderId } from "./payments/index.ts";
+-import { esewa } from "./payments/index.ts";
++import { createPayments, ESEWA_SANDBOX, newOrderId, paymentsConfigFromEnv, type ProviderId } from "./paynp.ts";
++import { esewa } from "./paynp.ts";
+ 
+ const cfg = paymentsConfigFromEnv();
+ cfg.esewa ??= { env: "sandbox", ...ESEWA_SANDBOX };

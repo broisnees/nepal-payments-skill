@@ -1,0 +1,70 @@
+--- /dev/null
++++ b/paynp.ts
+@@ -0,0 +1,8 @@
++// Reports every eSewa payment step to paynp: start, return, status checks, errors.
++// Written by `paynp init`. The routes import `gateway` from here instead of "./esewa".
++import { createPaynp } from "@paynp/sdk";
++import { env } from "cloudflare:workers";
++import * as esewa from "./esewa";
++
++export const paynp = createPaynp({ key: (env as { PAYNP_KEY?: string }).PAYNP_KEY, endpoint: (env as { PAYNP_ENDPOINT?: string }).PAYNP_ENDPOINT });
++export const gateway = paynp.wrapGateway("esewa", esewa);
+
+--- a/payments.ts
++++ b/payments.ts
+@@ -1,6 +1,7 @@
+ // Types every gateway module speaks, plus settle(), which applies a gateway
+ // answer to an attempt. Same file for every gateway and every framework.
+ import { fulfil, setProviderRef, transition, type Attempt } from "./store";
++import { paynp } from "./paynp";
+ 
+ export type PaymentStatus = "paid" | "pending" | "failed" | "canceled" | "refunded" | "not_found";
+ 
+@@ -45,14 +46,20 @@
+ export function settle(attempt: Attempt, outcome: Outcome): void {
+   const s = outcome.status;
+   if (s === "paid" || s === "failed" || s === "canceled") {
+-    if (transition(attempt.id, [...OPEN], s) && s === "paid") {
+-      // Keep the gateway's transaction id (refunds, support). A ref saved at start
+-      // (Khalti pidx, IME TokenId, NPS ProcessId) stays: confirm looks the payment up with it.
+-      if (outcome.providerRef && !attempt.providerRef) setProviderRef(attempt.id, outcome.providerRef);
+-      fulfil(attempt.orderId);
++    if (transition(attempt.id, [...OPEN], s)) {
++      paynp.statusChanged({ attemptId: attempt.id, gateway: "esewa", to: s, orderId: attempt.orderId, amountPaisa: attempt.amountPaisa });
++      if (s === "paid") {
++        // Keep the gateway's transaction id (refunds, support). A ref saved at start
++        // (Khalti pidx, IME TokenId, NPS ProcessId) stays: confirm looks the payment up with it.
++        if (outcome.providerRef && !attempt.providerRef) setProviderRef(attempt.id, outcome.providerRef);
++        fulfil(attempt.orderId);
++        paynp.fulfilled({ attemptId: attempt.id, gateway: "esewa", orderId: attempt.orderId, amountPaisa: attempt.amountPaisa });
++      }
+     }
+   } else if (s === "pending") {
+-    transition(attempt.id, ["initiated"], "pending");
++    if (transition(attempt.id, ["initiated"], "pending")) {
++      paynp.statusChanged({ attemptId: attempt.id, gateway: "esewa", to: "pending", orderId: attempt.orderId, amountPaisa: attempt.amountPaisa });
++    }
+   }
+   // not_found: leave it open. The reconcile job expires it after an hour.
+ }
+
+--- a/server.ts
++++ b/server.ts
+@@ -1,5 +1,5 @@
+ import { Hono } from "hono";
+-import * as gateway from "./esewa";
++import { gateway, paynp } from "./paynp";
+ import { PaymentError, autoPostPage, settle } from "./payments";
+ import { startReconcileLoop } from "./reconcile";
+ import { createAttempt, getAttempt, getOrder, latestAttempt, setProviderRef } from "./store";
+@@ -7,6 +7,10 @@
+ const PORT = Number(process.env.PORT ?? 3000);
+ const BASE_URL = process.env.BASE_URL ?? `http://localhost:${PORT}`;
+ const app = new Hono();
++app.use(async (c, next) => {
++  await next();
++  c.executionCtx.waitUntil(paynp.flush());
++});
+ 
+ app.get("/", (c) =>
+   c.html(`<!doctype html><title>Shop</title>
