@@ -204,7 +204,7 @@ public final class CyberSource implements PaymentAdapter {
             throw new PaymentException("CyberSource: invalid response signature — treat as malicious", ProviderId.CYBERSOURCE, "invalid_signature", 400, null);
         }
         Map<String, String> p = signedOnly(callback);
-        String ref = p.get("req_reference_number") != null ? p.get("req_reference_number") : p.get("req_transaction_uuid");
+        String ref = Js.truthy(p.get("req_reference_number")) ? p.get("req_reference_number") : p.get("req_transaction_uuid");
         if (!input.orderId().equals(ref)) {
             throw new PaymentException("CyberSource: response is for a different order", ProviderId.CYBERSOURCE, "callback_mismatch", 400, p);
         }

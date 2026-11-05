@@ -130,8 +130,9 @@ public final class ConnectIps implements PaymentAdapter {
         if (!TXNID.matcher(input.orderId()).matches()) {
             throw new PaymentException("connectIPS TXNID must be 1–20 chars [A-Za-z0-9-]", ProviderId.CONNECTIPS, "invalid_order_id");
         }
-        String remarks = clip(extras.remarks() != null ? extras.remarks() : input.description(), 50);
-        String particulars = clip(extras.particulars() != null ? extras.particulars() : input.description(), 100);
+        // Empty extras fall back too (TS ||).
+        String remarks = clip(Js.truthy(extras.remarks()) ? extras.remarks() : input.description(), 50);
+        String particulars = clip(Js.truthy(extras.particulars()) ? extras.particulars() : input.description(), 100);
         Map<String, String> f = new LinkedHashMap<>();
         f.put("MERCHANTID", cfg.merchantId());
         f.put("APPID", cfg.appId());
@@ -140,7 +141,7 @@ public final class ConnectIps implements PaymentAdapter {
         f.put("TXNDATE", date());
         f.put("TXNCRNCY", "NPR");
         f.put("TXNAMT", Long.toString(input.amountPaisa())); // PAISA
-        f.put("REFERENCEID", clip(extras.referenceId() != null ? extras.referenceId() : input.orderId(), 20));
+        f.put("REFERENCEID", clip(Js.truthy(extras.referenceId()) ? extras.referenceId() : input.orderId(), 20));
         f.put("REMARKS", remarks.isEmpty() ? "Payment" : remarks);
         f.put("PARTICULARS", particulars.isEmpty() ? "Payment" : particulars);
         f.put("TOKEN", Crypto.rsaSha256SignBase64(cfg.privateKey(), tokenString(f)));
@@ -160,7 +161,7 @@ public final class ConnectIps implements PaymentAdapter {
         else if (desc.contains("INCOMPLETE")) status = PaymentStatus.PENDING; // user hasn't finished OTP yet
         else status = PaymentStatus.UNKNOWN;
         Long amount = null;
-        if (r.containsKey("txnAmt")) { // TS: Math.round(Number(txnAmt)), kept only if finite
+        if (r.get("txnAmt") != null) { // TS: Math.round(Number(txnAmt)), kept only if finite; Number(null) would be 0
             double d = Js.toNumber(r.get("txnAmt"));
             if (Double.isFinite(d)) amount = Math.round(d);
         }

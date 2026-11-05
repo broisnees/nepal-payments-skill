@@ -197,10 +197,10 @@ public final class Esewa implements PaymentAdapter {
         String text;
         Object parsed;
         try {
-            text = Codec.decodeUtf8(Codec.fromBase64(data));
+            text = Codec.decodeUtf8Strict(Codec.fromBase64(data));
             parsed = Json.parse(text);
-        } catch (IllegalArgumentException e) {
-            throw new PaymentException("eSewa: malformed success payload", ProviderId.ESEWA, "malformed_callback", 400, data);
+        } catch (IllegalArgumentException e) { // bad base64, invalid UTF-8 and JsonException alike
+            throw new PaymentException("eSewa: success data is not base64 JSON", ProviderId.ESEWA, "malformed_callback", 400, data);
         }
         if (!(parsed instanceof Map<?, ?> raw) || !(raw.get("signed_field_names") instanceof String names)) {
             throw new PaymentException("eSewa: malformed success payload", ProviderId.ESEWA, "malformed_callback", 400, parsed);
@@ -272,14 +272,7 @@ public final class Esewa implements PaymentAdapter {
         Http.Response res = http.request(ProviderId.ESEWA, statusUrl + "?" + Codec.formEncode(qs),
                 Http.Options.get().withTimeout(cfg.timeout()).withRetries(2));
         if (res.status() != 200 || !(res.data() instanceof Map<?, ?> m) || !m.containsKey("status")) {
-            Object em = Js.get(res.data(), "error_message");
-            boolean hasCode = res.data() instanceof Map<?, ?> d && d.containsKey("code");
-            throw new PaymentException(
-                    "eSewa status check failed: " + (em != null ? Js.string(em) : Js.slice(res.text(), 200)),
-                    ProviderId.ESEWA,
-                    hasCode ? "esewa_" + Js.string(Js.get(res.data(), "code")) : "http_" + res.status(),
-                    res.status(),
-                    res.data());
+            throw new PaymentException("eSewa status check failed: " + errorText(res), ProviderId.ESEWA, errorCode(res), res.status(), res.data());
         }
         return asMap(m);
     }
@@ -393,18 +386,17 @@ public final class Esewa implements PaymentAdapter {
 
     /**
      * Verify the signature on eSewa's Intent callback POST body (parsed JSON). Values are signed as JS String(v), so a
-     * JSON number 100.0 signs as "100". Still call intentVerify() before fulfilling.
+     * JSON number 100.0 signs as "100". Prefer {@link #intentCallbackValid(String)} with the raw body. Still call
+     * intentVerify() before fulfilling.
      */
     public boolean intentCallbackValid(Map<String, ?> body) {
-        Intent intent = requireIntent();
-        if (!(body.get("signed_field_names") instanceof String names) || !(body.get("signature") instanceof String sig)) return false;
-        List<String> order = Js.split(names, ',').stream().map(Js::trim).toList();
-        Map<String, String> fields = new LinkedHashMap<>();
-        for (String f : order) fields.put(f, Js.stringOrEmpty(body.get(f)));
-        return Crypto.safeEqual(sign(intent.accessKey(), fields, order), sig);
+        return intentCallbackValid(body, null);
     }
 
-    /** Same, from the raw JSON request body; false if it isn't a JSON object. */
+    /**
+     * Same, from the RAW JSON request body; false if it isn't a JSON object. Numbers are then also checked exactly as
+     * eSewa sent them ("100.0"), not only in the String(v) form ("100").
+     */
     public boolean intentCallbackValid(String jsonBody) {
         Object parsed;
         try {
@@ -417,7 +409,20 @@ public final class Esewa implements PaymentAdapter {
             requireIntent();
             return false;
         }
-        return intentCallbackValid(asMap(m));
+        return intentCallbackValid(asMap(m), jsonBody);
+    }
+
+    private boolean intentCallbackValid(Map<String, ?> body, String text) {
+        Intent intent = requireIntent();
+        if (!(body.get("signed_field_names") instanceof String names) || !(body.get("signature") instanceof String sig)) return false;
+        List<String> order = Js.split(names, ',').stream().map(Js::trim).toList();
+        Map<String, String> asString = new LinkedHashMap<>();
+        for (String f : order) asString.put(f, Js.stringOrEmpty(body.get(f)));
+        if (Crypto.safeEqual(sign(intent.accessKey(), asString, order), sig)) return true;
+        if (text == null) return false;
+        Map<String, String> exact = new LinkedHashMap<>();
+        for (String f : order) exact.put(f, rawValue(text, asMap(body), f));
+        return !exact.equals(asString) && Crypto.safeEqual(sign(intent.accessKey(), exact, order), sig);
     }
 
     private Intent requireIntent() {
@@ -434,14 +439,17 @@ public final class Esewa implements PaymentAdapter {
         return s != null ? s : PaymentStatus.UNKNOWN;
     }
 
+    /** Docs say {@code error_message}; the live Intent sandbox sends {@code errorMessage}. */
     private static String errorText(Http.Response res) {
         Object em = Js.get(res.data(), "error_message");
+        if (em == null) em = Js.get(res.data(), "errorMessage");
         return em != null ? Js.string(em) : Js.slice(res.text(), 200);
     }
 
+    /** {@code esewa_<code>} when the body carries a code, else {@code http_<status>}. */
     private static String errorCode(Http.Response res) {
         Object code = Js.get(res.data(), "code");
-        return code != null ? Js.string(code) : "http_" + res.status();
+        return code != null ? "esewa_" + Js.string(code) : "http_" + res.status();
     }
 
     @SuppressWarnings("unchecked")

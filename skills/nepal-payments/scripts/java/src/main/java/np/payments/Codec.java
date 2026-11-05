@@ -22,6 +22,20 @@ public final class Codec {
         return s.startsWith("﻿") ? s.substring(1) : s;
     }
 
+    /**
+     * UTF-8 decode that rejects malformed input (TextDecoder with fatal: true); a leading BOM is dropped.
+     *
+     * @throws IllegalArgumentException on invalid UTF-8
+     */
+    static String decodeUtf8Strict(byte[] bytes) {
+        try {
+            String s = StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+            return s.startsWith("﻿") ? s.substring(1) : s;
+        } catch (java.nio.charset.CharacterCodingException e) {
+            throw new IllegalArgumentException("invalid UTF-8", e);
+        }
+    }
+
     /** Standard base64 with padding. */
     public static String toBase64(byte[] bytes) {
         return Base64.getEncoder().encodeToString(bytes);
@@ -54,16 +68,9 @@ public final class Codec {
         return new String(out);
     }
 
-    /**
-     * Basic auth header value. Like the TS port (btoa), user:pass is encoded as Latin-1; characters above U+00FF are
-     * rejected.
-     */
+    /** Basic auth header value; user:pass is encoded as UTF-8. */
     public static String basicAuth(String user, String pass) {
-        String s = user + ":" + pass;
-        for (int i = 0; i < s.length(); i++) {
-            if (s.charAt(i) > 0xFF) throw new IllegalArgumentException("basic auth credentials must be Latin-1");
-        }
-        return "Basic " + toBase64(s.getBytes(StandardCharsets.ISO_8859_1));
+        return "Basic " + toBase64(utf8(user + ":" + pass));
     }
 
     /** application/x-www-form-urlencoded, like URLSearchParams.toString(). */

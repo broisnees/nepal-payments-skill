@@ -187,10 +187,8 @@ public final class Nps implements PaymentAdapter {
             }
             throw fail("CheckTransactionStatus", r);
         }
-        Object data = r.get("data");
-        if (data == null) {
-            throw new PaymentException("NPS CheckTransactionStatus: response has no data", ProviderId.NPS, "malformed_response", 200, r);
-        }
+        // code "0" with a null/non-object data is malformed; report it as unknown rather than throw.
+        Object data = r.get("data") instanceof Map<?, ?> m ? m : Map.of();
         Object txn = Js.get(data, "MerchantTxnId");
         if (Js.truthy(txn) && !input.orderId().equals(txn)) {
             throw new PaymentException("NPS: status is for a different transaction", ProviderId.NPS, "callback_mismatch", 400, data);
