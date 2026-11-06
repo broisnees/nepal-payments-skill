@@ -191,7 +191,7 @@ public final class ConnectIps implements PaymentAdapter {
     }
 
     /** TS Number(merchantId) in a JSON body: 550 for "550"; null (JSON.stringify(NaN)) if not numeric. */
-    private static Object jsNumber(String s) {
+    static Object jsNumber(String s) {
         double d = Js.toNumber(s);
         if (!Double.isFinite(d)) return null;
         if (d == Math.rint(d) && Math.abs(d) <= Money.MAX_SAFE_INTEGER) return (long) d;

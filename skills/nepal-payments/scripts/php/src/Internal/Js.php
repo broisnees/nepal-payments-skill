@@ -97,6 +97,26 @@ final class Js
         return ($k === 1 ? $digits : $digits[0] . '.' . substr($digits, 1)) . 'e' . $sign . abs($e);
     }
 
+    /** JS `Number.prototype.toFixed(digits)`: exact binary value, a tie rounds up (sprintf would round it to even). */
+    public static function toFixed(float $x, int $digits): string
+    {
+        if (!is_finite($x) || abs($x) >= 1e21) {
+            return self::numberToString($x);
+        }
+        [$int, $frac] = explode('.', sprintf('%.40f', abs($x)));
+        $sign = $x < 0 ? '-' : '';
+        if (($frac[$digits] ?? '0') !== '5' || rtrim(substr($frac, $digits + 1), '0') !== '') {
+            return $sign . sprintf('%.' . $digits . 'f', abs($x));
+        }
+        $d = $int . substr($frac, 0, $digits);
+        for ($i = strlen($d) - 1; $i >= 0 && $d[$i] === '9'; $i--) {
+            $d[$i] = '0';
+        }
+        $d = $i < 0 ? '1' . $d : substr_replace($d, (string) ((int) $d[$i] + 1), $i, 1);
+
+        return $sign . ($digits === 0 ? $d : substr($d, 0, -$digits) . '.' . substr($d, -$digits));
+    }
+
     /** JS `Number(v)` for JSON-decoded values (strings: trimmed, "" -> 0, hex/octal/binary literals, Infinity). */
     public static function toNumber(mixed $v): float
     {

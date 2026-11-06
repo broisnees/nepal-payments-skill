@@ -82,7 +82,7 @@ export function detectStack(cwd: string): Stack {
   return stack("unknown", "");
 }
 
-const GATEWAYS = ["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay"];
+const GATEWAYS = ["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay", "nepalpay", "hamropay", "getpay"];
 
 /** The gateway module the app already has (esewa.ts, khalti.py, ...), if any. Defaults to esewa. */
 export function detectGateway(cwd: string): string {

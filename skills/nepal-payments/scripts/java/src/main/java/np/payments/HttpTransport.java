@@ -11,7 +11,8 @@ import java.util.Objects;
  * same.
  *
  * <p>Implementations must: send {@code body} as UTF-8 exactly as given (signatures may cover it byte for byte), send
- * every header in {@code headers}, follow redirects except https-to-http, finish (including reading the body) within
+ * every header in {@code headers} (a client that cannot send {@code Connection: close} must at least not reuse that
+ * request's connection), follow redirects except https-to-http, finish (including reading the body) within
  * {@code timeout}, return non-2xx responses normally, decode the response body as UTF-8, and throw IOException for
  * network failures and timeouts.
  */

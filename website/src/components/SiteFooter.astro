@@ -1,7 +1,14 @@
 ---
-// Footer shared by the landing page and the blog.
+// Footer shared by the landing page, the blog and the docs. The platform's public pages use the same columns:
+// Products, Developers, and a Company column once there is a company to describe.
 import Icon from "./Icon.astro";
-import { REPO, providers } from "../data/site";
+import { REPO, SITE_NAME, PLATFORM_URL, providers } from "../data/site";
+
+interface Props {
+  /** "docs": columns and the bottom line only, sized for the Starlight content column. */
+  variant?: "full" | "docs";
+}
+const { variant = "full" } = Astro.props;
 
 const site = new URL("/", Astro.site).href;
 const aiQuery = encodeURIComponent(`Explain ${site} and how to integrate eSewa and Khalti with it.`);
@@ -10,25 +17,66 @@ const askAi = [
   { name: "Claude", href: `https://claude.ai/new?q=${aiQuery}` },
   { name: "Perplexity", href: `https://www.perplexity.ai/search?q=${aiQuery}` },
 ];
+
+const columns = [
+  {
+    title: "Products",
+    links: [
+      { label: "Skill", href: "/" },
+      { label: "Platform", href: PLATFORM_URL },
+      { label: "Platform docs", href: `${PLATFORM_URL}/docs` },
+    ],
+  },
+  {
+    title: "Developers",
+    links: [
+      { label: "Docs", href: "/docs/" },
+      { label: "Blog", href: "/blog/" },
+      { label: "GitHub", href: REPO },
+      { label: "Gateway status", href: `${PLATFORM_URL}/status` },
+      { label: "llms.txt", href: "/llms.txt" },
+    ],
+  },
+  {
+    title: "Guides",
+    links: [...providers.map((p) => ({ label: p.name, href: `/blog/${p.blog}/` })), { label: "Compare gateways", href: "/blog/payment-gateways-in-nepal/" }],
+  },
+  {
+    title: "Skill",
+    links: [
+      { label: "Install", href: "/docs/install/" },
+      { label: "Adapter API", href: "/docs/api/" },
+      { label: "Architecture", href: "/docs/guides/architecture/" },
+      { label: "Mobile apps", href: "/docs/guides/mobile/" },
+      { label: "Issues", href: `${REPO}/issues` },
+      { label: "MIT License", href: `${REPO}/blob/main/LICENSE` },
+    ],
+  },
+];
+const external = (href: string) => /^https?:/.test(href);
 ---
 
-<footer class="footer container">
+<footer class:list={["footer", { container: variant === "full", "footer-docs": variant === "docs" }]}>
   <div class="footer-top">
-    <div>
-      <h2 class="footer-title">Ask an AI about Nepal Payments</h2>
-      <div class="chips">
-        {askAi.map((a) => <a class="chip" href={a.href} rel="noopener">{a.name}<Icon name="external" size={13} /></a>)}
+    {variant === "full" && (
+      <div>
+        <h2 class="footer-title">Ask an AI about {SITE_NAME}</h2>
+        <div class="chips">
+          {askAi.map((a) => <a class="chip" href={a.href} rel="noopener">{a.name}<Icon name="external" size={13} /></a>)}
+        </div>
       </div>
-    </div>
+    )}
     <nav class="footer-cols" aria-label="Footer">
-      <div><p>Product</p><a href="/docs/">Docs</a><a href="/blog/">Blog</a><a href="/docs/install/">Install</a><a href="/docs/api/">Adapter API</a><a href="/docs/languages/">Languages</a></div>
-      <div><p>Integration guides</p>{providers.map((p) => <a href={`/blog/${p.blog}/`}>{p.name}</a>)}<a href="/blog/payment-gateways-in-nepal/">Compare gateways</a></div>
-      <div><p>Guides</p><a href="/docs/guides/architecture/">Architecture</a><a href="/docs/guides/web/">Web frameworks</a><a href="/docs/guides/mobile/">Mobile apps</a><a href="/docs/guides/testing/">Testing</a></div>
-      <div><p>Project</p><a href={REPO} rel="noopener">GitHub</a><a href={`${REPO}/issues`} rel="noopener">Issues</a><a href={`${REPO}/blob/main/LICENSE`} rel="noopener">MIT License</a><a href="/llms.txt">llms.txt</a></div>
+      {columns.map((c) => (
+        <div>
+          <p>{c.title}</p>
+          {c.links.map((l) => <a href={l.href} rel={external(l.href) ? "noopener" : undefined}>{l.label}</a>)}
+        </div>
+      ))}
     </nav>
   </div>
   <div class="footer-bottom">
-    <span class="brand-sm"><img src="/favicon.svg" alt="" width="16" height="16" />Nepal Payments</span>
+    <span class="brand-sm"><img src="/favicon.svg" alt="" width="16" height="16" />{SITE_NAME}</span>
     <span>Not affiliated with or endorsed by any payment provider. Provider names belong to their owners.</span>
   </div>
 </footer>

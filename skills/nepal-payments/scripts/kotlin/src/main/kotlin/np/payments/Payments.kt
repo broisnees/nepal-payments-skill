@@ -17,6 +17,9 @@ data class PaymentsConfig(
     val cybersource: CyberSourceConfig? = null,
     val nps: NpsConfig? = null,
     val imepay: ImePayConfig? = null,
+    val nepalpay: NepalPayConfig? = null,
+    val hamropay: HamroPayConfig? = null,
+    val getpay: GetPayConfig? = null,
 )
 
 class Payments private constructor(private val built: Map<ProviderId, PaymentAdapter>) {
@@ -31,6 +34,9 @@ class Payments private constructor(private val built: Map<ProviderId, PaymentAda
     val cybersource: CyberSource get() = typed(ProviderId.CYBERSOURCE)
     val nps: Nps get() = typed(ProviderId.NPS)
     val imepay: ImePay get() = typed(ProviderId.IMEPAY)
+    val nepalpay: NepalPay get() = typed(ProviderId.NEPALPAY)
+    val hamropay: HamroPay get() = typed(ProviderId.HAMROPAY)
+    val getpay: GetPay get() = typed(ProviderId.GETPAY)
 
     fun adapter(id: ProviderId): PaymentAdapter =
         built[id] ?: throw IllegalStateException("payment provider \"${id.wire}\" is not configured")
@@ -52,6 +58,9 @@ class Payments private constructor(private val built: Map<ProviderId, PaymentAda
             config.cybersource?.let { built[ProviderId.CYBERSOURCE] = CyberSource(it) }
             config.nps?.let { built[ProviderId.NPS] = Nps(it, transport) }
             config.imepay?.let { built[ProviderId.IMEPAY] = ImePay(it, transport) }
+            config.nepalpay?.let { built[ProviderId.NEPALPAY] = NepalPay(it, transport) }
+            config.hamropay?.let { built[ProviderId.HAMROPAY] = HamroPay(it, transport) }
+            config.getpay?.let { built[ProviderId.GETPAY] = GetPay(it, transport) }
             return Payments(built)
         }
     }
@@ -59,8 +68,8 @@ class Payments private constructor(private val built: Map<ProviderId, PaymentAda
 
 /**
  * Build config from environment variables (same names as the TS/Python ports; references/env.md).
- * A provider is enabled when its required vars are non-empty. CONNECTIPS_PRIVATE_KEY_PEM ("\n" escapes allowed)
- * is parsed here, so a bad key fails at boot.
+ * A provider is enabled when its required vars are non-empty. CONNECTIPS_PRIVATE_KEY_PEM, NEPALPAY_PRIVATE_KEY_PEM
+ * and NEPALPAY_NCHL_PUBLIC_KEY_PEM ("\n" escapes allowed) are parsed here, so a bad key fails at boot.
  */
 fun paymentsConfigFromEnv(env: Map<String, String?> = System.getenv()): PaymentsConfig {
     fun v(name: String): String? = env[name].orNullIfEmpty()
@@ -133,7 +142,65 @@ fun paymentsConfigFromEnv(env: Map<String, String?> = System.getenv()): Payments
         )
     } else null
 
-    return PaymentsConfig(esewa, khalti, fonepay, connectips, cybersource, nps, imepay)
+    val nepalpay = if (v("NEPALPAY_ACQUIRER_ID") != null && v("NEPALPAY_MERCHANT_ID") != null && v("NEPALPAY_USERNAME") != null &&
+        v("NEPALPAY_PRIVATE_KEY_PEM") != null
+    ) {
+        val clientId = v("NEPALPAY_CLIENT_ID")
+        val wsUrl = v("NEPALPAY_WS_URL")
+        NepalPayConfig(
+            env = mode("NEPALPAY_ENV"),
+            acquirerId = v("NEPALPAY_ACQUIRER_ID")!!,
+            merchantId = v("NEPALPAY_MERCHANT_ID")!!,
+            merchantName = env["NEPALPAY_MERCHANT_NAME"] ?: "",
+            merchantCategoryCode = env["NEPALPAY_MCC"] ?: "",
+            merchantCity = env["NEPALPAY_MERCHANT_CITY"] ?: "Kathmandu",
+            merchantPostalCode = env["NEPALPAY_MERCHANT_POSTAL_CODE"] ?: "44600",
+            storeLabel = env["NEPALPAY_STORE_LABEL"] ?: "Store1",
+            terminalLabel = env["NEPALPAY_TERMINAL_LABEL"],
+            username = v("NEPALPAY_USERNAME")!!,
+            password = env["NEPALPAY_PASSWORD"] ?: "",
+            privateKey = loadPkcs8PrivateKey(v("NEPALPAY_PRIVATE_KEY_PEM")!!.replace("\\n", "\n")),
+            auth = if (clientId != null) NepalPayAuth.OAUTH else NepalPayAuth.BASIC,
+            clientId = clientId,
+            clientSecret = if (clientId != null) env["NEPALPAY_CLIENT_SECRET"] ?: "" else null,
+            nchlPublicKey = v("NEPALPAY_NCHL_PUBLIC_KEY_PEM")?.let { loadSpkiPublicKey(it.replace("\\n", "\n")) },
+            wsUrl = wsUrl,
+            wsUsername = if (wsUrl != null) env["NEPALPAY_WS_USERNAME"] else null,
+            wsApiToken = if (wsUrl != null) env["NEPALPAY_WS_API_TOKEN"] else null,
+        )
+    } else null
+
+    val hamropay = if (v("HAMROPAY_MERCHANT_ID") != null && v("HAMROPAY_CLIENT_ID") != null && v("HAMROPAY_CLIENT_API_KEY") != null &&
+        v("HAMROPAY_CLIENT_SECRET") != null
+    ) {
+        HamroPayConfig(
+            env = mode("HAMROPAY_ENV"),
+            merchantId = v("HAMROPAY_MERCHANT_ID")!!,
+            clientId = v("HAMROPAY_CLIENT_ID")!!,
+            clientApiKey = v("HAMROPAY_CLIENT_API_KEY")!!,
+            clientSecret = v("HAMROPAY_CLIENT_SECRET")!!,
+            webhookSecret = env["HAMROPAY_WEBHOOK_SECRET"],
+            apiBaseUrl = env["HAMROPAY_API_BASE_URL"],
+            gatewayUrl = env["HAMROPAY_GATEWAY_URL"],
+        )
+    } else null
+
+    val getpay = if (v("GETPAY_PAP_INFO") != null && v("GETPAY_OPR_KEY") != null && v("GETPAY_WEBSITE_DOMAIN") != null) {
+        GetPayConfig(
+            env = mode("GETPAY_ENV"),
+            papInfo = v("GETPAY_PAP_INFO")!!,
+            oprKey = v("GETPAY_OPR_KEY")!!,
+            insKey = env["GETPAY_INS_KEY"],
+            websiteDomain = v("GETPAY_WEBSITE_DOMAIN")!!,
+            businessName = env["GETPAY_BUSINESS_NAME"] ?: "",
+            imageUrl = env["GETPAY_IMAGE_URL"] ?: "",
+            currency = env["GETPAY_CURRENCY"] ?: "NPR",
+            bundleUrl = env["GETPAY_BUNDLE_URL"],
+            baseUrl = env["GETPAY_BASE_URL"],
+        )
+    } else null
+
+    return PaymentsConfig(esewa, khalti, fonepay, connectips, cybersource, nps, imepay, nepalpay, hamropay, getpay)
 }
 
 private val RANDOM = SecureRandom()

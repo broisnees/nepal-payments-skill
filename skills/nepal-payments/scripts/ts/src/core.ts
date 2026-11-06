@@ -12,7 +12,10 @@ export type ProviderId =
   | "connectips"
   | "cybersource"
   | "nps"
-  | "imepay";
+  | "imepay"
+  | "nepalpay"
+  | "hamropay"
+  | "getpay";
 
 /** Normalized payment state. Map every provider status onto exactly one of these. */
 export type PaymentStatus =
@@ -54,7 +57,17 @@ export type InitiateResult =
       /** Default application/x-www-form-urlencoded. NPS requires multipart/form-data. */
       enctype?: "multipart/form-data";
       providerRef?: string;
-    };
+    }
+  /**
+   * Show a QR the payer scans from their own app (NEPALPAY QR). Render `qrString` with any QR library, or
+   * `<img src="data:image/png;base64,${qrImage}">` when the provider sent an image. Persist `providerRef`.
+   */
+  | { kind: "qr"; qrString: string; qrImage?: string; providerRef: string; raw?: unknown }
+  /**
+   * Load `scriptUrl` in the browser and start the provider's own checkout with `options` (GetPay). The adapter
+   * ships the page helpers (getpay.checkoutPage / paymentPage / returnPage).
+   */
+  | { kind: "sdk"; scriptUrl: string; options: Record<string, unknown>; providerRef?: string };
 
 export interface Customer {
   name?: string;
@@ -258,6 +271,61 @@ export async function rsaSha256SignBase64(pkcs8Pem: string, message: string): Pr
   const der = fromBase64(pkcs8Pem.replace(/-----(BEGIN|END) PRIVATE KEY-----/g, "").replace(/\s+/g, ""));
   const key = await subtle.importKey("pkcs8", der as BufferSource, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
   return toBase64(new Uint8Array(await subtle.sign("RSASSA-PKCS1-v1_5", key, utf8(message) as BufferSource)));
+}
+
+/**
+ * SPKI DER from "-----BEGIN PUBLIC KEY-----". From a certificate (.cer/.crt):
+ *   openssl x509 -in NPI.cer [-inform der] -pubkey -noout > npi.pub.pem
+ */
+function spkiDer(spkiPem: string): Uint8Array {
+  if (!spkiPem.includes("BEGIN PUBLIC KEY")) {
+    throw new Error("expected a PUBLIC KEY PEM; extract it from the certificate with: openssl x509 -in NPI.cer -pubkey -noout");
+  }
+  return fromBase64(spkiPem.replace(/-----(BEGIN|END) PUBLIC KEY-----/g, "").replace(/\s+/g, ""));
+}
+
+/** Verify an RSA PKCS#1 v1.5 + SHA-256 signature (base64). False on any malformed input. */
+export async function rsaSha256VerifyBase64(spkiPem: string, message: string, signatureB64: string): Promise<boolean> {
+  try {
+    const key = await subtle.importKey("spki", spkiDer(spkiPem) as BufferSource, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+    return await subtle.verify("RSASSA-PKCS1-v1_5", key, fromBase64(signatureB64) as BufferSource, utf8(message) as BufferSource);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * RSA PKCS#1 v1.5 encryption ("RSA/ECB/PKCS1Padding"), base64 output. WebCrypto only offers OAEP, so this pads and
+ * runs the modular exponentiation with BigInt. The key is imported through WebCrypto only to read n and e.
+ */
+export async function rsaPkcs1EncryptBase64(spkiPem: string, plaintext: string): Promise<string> {
+  const key = await subtle.importKey("spki", spkiDer(spkiPem) as BufferSource, { name: "RSA-OAEP", hash: "SHA-256" }, true, ["encrypt"]);
+  const jwk = await subtle.exportKey("jwk", key);
+  const b64u = (s: string) => fromBase64(s.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(s.length / 4) * 4, "="));
+  const toBig = (b: Uint8Array) => BigInt("0x" + (toHex(b) || "0"));
+  const nBytes = b64u(jwk.n!);
+  const n = toBig(nBytes);
+  const e = toBig(b64u(jwk.e!));
+  const k = nBytes[0] === 0 ? nBytes.length - 1 : nBytes.length;
+  const m = utf8(plaintext);
+  if (m.length > k - 11) throw new Error(`plaintext too long for a ${k * 8}-bit RSA key (max ${k - 11} bytes)`);
+  // EM = 0x00 || 0x02 || PS (nonzero random, >= 8 bytes) || 0x00 || M
+  const em = new Uint8Array(k);
+  em[1] = 2;
+  const ps = em.subarray(2, k - m.length - 1);
+  for (let i = 0; i < ps.length; ) {
+    const r = globalThis.crypto.getRandomValues(new Uint8Array(ps.length));
+    for (const b of r) if (b !== 0 && i < ps.length) ps[i++] = b;
+  }
+  em.set(m, k - m.length);
+  let c = 1n;
+  let base = toBig(em) % n;
+  for (let x = e; x > 0n; x >>= 1n) {
+    if (x & 1n) c = (c * base) % n;
+    base = (base * base) % n;
+  }
+  const hex = c.toString(16).padStart(k * 2, "0");
+  return toBase64(Uint8Array.from(hex.match(/../g)!, (h) => parseInt(h, 16)));
 }
 
 /** Constant-time string comparison (avoid leaking signature prefixes via timing). */

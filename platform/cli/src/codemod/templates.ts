@@ -10,6 +10,9 @@ export const GATEWAY_NAMES: Record<string, string> = {
   cybersource: "CyberSource",
   nps: "NPS",
   imepay: "IME Pay",
+  nepalpay: "NEPALPAY QR",
+  hamropay: "Hamro Pay",
+  getpay: "GetPay (cards)",
 };
 
 export interface Style {

@@ -14,9 +14,12 @@ const providerNav = [
   ["CyberSource", "cybersource"],
   ["NPS OnePG", "nps"],
   ["IME Pay", "imepay"],
+  ["NEPALPAY QR", "nepalpay"],
+  ["Hamro Pay", "hamropay"],
+  ["GetPay", "getpay"],
 ];
 const description =
-  "Agent skill and tested adapters for Nepali payment gateways: eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS and IME Pay, in TypeScript, Python, Java, Kotlin, PHP and Go.";
+  "Agent skill and tested adapters for Nepali payment gateways: eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay, NEPALPAY QR, Hamro Pay and GetPay, in TypeScript, Python, Java, Kotlin, PHP and Go.";
 
 export default defineConfig({
   site,
@@ -38,11 +41,14 @@ export default defineConfig({
         "@fontsource-variable/jetbrains-mono",
         "./src/styles/docs.css",
         "./src/styles/logos.css",
+        "./src/styles/family.css",
       ],
       components: {
         Head: "./src/components/DocsHead.astro",
         ThemeProvider: "./src/components/ThemeProvider.astro",
         ThemeSelect: "./src/components/SettingsMenu.astro",
+        SocialIcons: "./src/components/DocsSocialIcons.astro",
+        Footer: "./src/components/DocsFooter.astro",
       },
       head: [
         { tag: "meta", attrs: { name: "theme-color", content: "#ffffff" } },

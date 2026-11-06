@@ -35,9 +35,14 @@ final class CurlTransport implements HttpTransport
             throw new TransportException('curl_init failed');
         }
         $web = CURLPROTO_HTTP | CURLPROTO_HTTPS;
+        $body = '';
         $opts = [
             CURLOPT_URL => $request->url,
-            CURLOPT_RETURNTRANSFER => true,
+            // Collect the body ourselves so the bytes survive a transfer that fails after they arrived.
+            CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk) use (&$body): int {
+                $body .= $chunk;
+                return strlen($chunk);
+            },
             CURLOPT_HEADER => false,
             CURLOPT_HTTPHEADER => $lines,
             CURLOPT_FOLLOWLOCATION => $this->maxRedirects > 0,
@@ -66,11 +71,20 @@ final class CurlTransport implements HttpTransport
             throw new TransportException('curl_setopt_array failed: ' . curl_error($ch));
         }
 
-        $body = curl_exec($ch);
-        if (!is_string($body)) {
+        $ok = curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        // Hamro Pay (grpc-gateway behind Envoy) aborts the stream after its error answers (curl errno 18). Keep a
+        // body cut off mid-stream only when what arrived is complete JSON.
+        if ($ok !== true && !($status > 0 && $body !== '' && self::isJson($body))) {
             throw new TransportException(sprintf('curl error %d: %s', curl_errno($ch), curl_error($ch)));
         }
 
-        return new HttpResponse((int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), $body);
+        return new HttpResponse($status, $body);
+    }
+
+    private static function isJson(string $s): bool
+    {
+        json_decode($s);
+        return json_last_error() === JSON_ERROR_NONE;
     }
 }

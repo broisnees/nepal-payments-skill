@@ -1,0 +1,324 @@
+---
+title: "NEPALPAY QR Payment Integration: Dynamic QR Step by Step in Any Framework"
+description: "Build NEPALPAY QR dynamic QR payments in Express, Next.js, Laravel, Django, Go, Spring or Ktor: RSA token, generateQR, polling and the transaction report."
+label: NEPALPAY QR
+provider: nepalpay
+published: 2026-11-06
+order: 80
+stack: true
+stackTitle: "NEPALPAY QR Payment Integration in {stack}: Step by Step"
+stackDescription: "Integrate NEPALPAY QR dynamic QR in {stack}: RSA-signed token, generateQR, a QR page that polls, the transaction report and reconciliation."
+faq:
+  - q: "What is NEPALPAY QR?"
+    a: "NEPALPAY QR is the national merchant QR scheme run by NCHL (Nepal Clearing House), the operator of connectIPS. A merchant shows an EMVCo QR, and any NEPALPAY QR enabled mobile banking app or wallet can pay it. NCHL lists more than 20 banks, and the scheme interoperates with the other domestic QR networks."
+  - q: "Are there NEPALPAY QR sandbox credentials?"
+    a: "No public ones. Enrol through your acquiring bank, or email businesssupport@nchl.com.np for dynamic QR integration. NCHL then issues the UAT acquirer id, merchant id, merchant category code, an NPI username and password, and a signing certificate (NPI.pfx). The UAT host is https://devopennpi.connectips.com."
+  - q: "How do I know a NEPALPAY QR payment succeeded?"
+    a: "Call POST /nQR/v1/merchanttxnreport with the validationTraceId that generateQR returned. The payment is done when a PMT row has debitStatus 000 and creditStatus 000, 999 or DEFER, and its amount matches the amount you stored. Poll it every few seconds while the QR is on screen, and run a reconcile job for payers who close the page."
+  - q: "Why does generateQR return E003 INVALID TOKEN?"
+    a: "The signed string doesn't match the request. Join acquirerId, merchantId, merchantCategoryCode, transactionCurrency (524), transactionAmount, billNumber and the NPI username with bare commas, sign it with RSA-SHA256 using the key from the NPI .pfx, and send the same two-decimal amount string you signed."
+  - q: "Is NEPALPAY QR the same as Fonepay QR?"
+    a: "No. Both are bank QR networks, but Fonepay is run by Fonepay Payment Service and NEPALPAY QR by NCHL, with separate onboarding, APIs and signing. NEPALPAY QR interoperates with the other domestic QR networks, so which apps can scan which QR depends on those agreements, not on your code."
+  - q: "Can I use NEPALPAY QR in a mobile app?"
+    a: "Yes, with the same server. The app asks your server for the QR, shows the image, and polls your status route, while the payer scans the QR with their banking app. The .pfx and the NPI password stay on the server."
+---
+
+import { Code } from "astro-expressive-code/components";
+import CodeGroup from "../../components/blog/CodeGroup.astro";
+import Note from "../../components/blog/Note.astro";
+import { app, gatewayNames, part, whole } from "../../data/blog-code";
+import { testKey } from "../../data/blog-code/connectips";
+import { nepalpay, qrRoutes, vectors } from "../../data/blog-code/nepalpay";
+
+export const code = app(gatewayNames("nepalpay", "NEPALPAY QR", "Nepalpay"));
+
+By the end of this guide you'll have a checkout that shows a NEPALPAY QR code, waits while the buyer scans it with their banking app, and marks the order paid only after NCHL's transaction report shows the money moved. Pick your framework above and the whole guide switches to it.
+
+NEPALPAY QR has no public sandbox, so I couldn't pay a single QR in UAT for this guide, and I won't pretend I did. Here is what I tested in November 2026: the signing code in all six languages produces the same signatures as `openssl dgst -sha256 -sign` for a throwaway key; every module ran against a local mock of `generateQR` and the transaction report that checks the Basic auth and verifies the RSA token; the full flow (QR page, polling, a failed scan, a debit without credit, a wrong amount, a paid row, a single fulfilment) ran against that mock in Express, Hono, Fastify, Flask, plain PHP, Go and Ktor; and the Next.js, Django, FastAPI, Laravel and Spring Boot code compiles or typechecks but did not run. The endpoints, fields and status values come from NCHL's public NEPALPAY QR docs at doc.connectips.com, one working C# client and live probes of the UAT and live hosts.
+
+## How a NEPALPAY QR payment works
+
+NEPALPAY QR is NCHL's national merchant QR. Unlike every other gateway on this site, the buyer never leaves your page and never comes back through a URL: they pay from their own banking app, on their own phone.
+
+<ol class="steps">
+  <li>Your server creates a <strong>payment attempt</strong>, signs a token with the RSA key from the NPI <code>.pfx</code> NCHL gave you, and calls <code>generateQR</code> with the amount and the attempt id.</li>
+  <li>NCHL answers with the QR as text (<code>qrString</code>), as a PNG (<code>qrImage</code>), and a <code>validationTraceId</code> that you store.</li>
+  <li>Your page shows the QR. The buyer scans it with any NEPALPAY QR enabled bank or wallet app and approves the payment there.</li>
+  <li>While the QR is on screen, the page asks your server every few seconds. Your server calls the <strong>transaction report</strong> with the stored <code>validationTraceId</code>. That answer decides whether the order is paid.</li>
+</ol>
+
+Three rules fall out of this:
+
+- **Sign on the server.** The `.pfx`, the key inside it and the NPI password never reach the browser, a POS app or a mobile app.
+- **Nobody tells you it worked.** There is no redirect and, unless you register one with NCHL, no callback. Your server has to ask.
+- **Use your own numbers.** Compare the report's amount and bill number with the attempt you stored.
+
+## What you need
+
+A NEPALPAY QR merchant account. Enrol through your acquiring bank with NCHL's [merchant enrollment form](https://nchl.com.np/nepalpay-qr-merchant-enrollment-form/), or email businesssupport@nchl.com.np for dynamic QR integration. NCHL issues:
+
+- an **acquirer id** (8 digits, your bank, for example `00002501`) and a **merchant id** (for example `2501ELFDRY2`)
+- your **merchant category code** (MCC), and the merchant name, city and postal code it enrolled
+- an **NPI user**: a username and password. The username is also the `userId` inside every token.
+- a signing certificate, **`NPI.pfx`** in UAT, with its password
+
+| | UAT | Live |
+|---|---|---|
+| Base URL | `https://devopennpi.connectips.com` | `https://opennpi.connectips.com` |
+| Generate QR (POST) | `/qr/generateQR` | `/qr/generateQR` |
+| Transaction report (POST) | `/nQR/v1/merchanttxnreport` | `/nQR/v1/merchanttxnreport` |
+| Credentials | from NCHL through your bank | from NCHL through your bank |
+
+Both hosts answer `E401 UNAUTHORIZED` today when the credentials are missing or wrong, which is a quick way to check you can reach them.
+
+NCHL documents two ways to authenticate: HTTP Basic auth with the NPI user, and an OAuth 2 password grant. The module here sends Basic auth on every call, which the merchant QR docs describe. If your onboarding email gives you an OAuth client id and secret, the [NEPALPAY QR reference](/docs/providers/nepalpay/reference/#2-auth) shows the token call, and the adapters in my project handle both.
+
+### Convert the .pfx once
+
+TypeScript and Go need the private key as PKCS#8 PEM, and the other languages are happy with it too. Add `-legacy` on OpenSSL 3 if the `.pfx` uses RC2 or 3DES:
+
+```bash
+openssl pkcs12 -in NPI.pfx -nocerts -nodes | openssl pkcs8 -topk8 -nocrypt -out nepalpay.key.pem
+```
+
+Set everything as environment variables. The module uses UAT unless `NEPALPAY_ENV` says otherwise:
+
+```bash
+NEPALPAY_ENV=production                  # leave unset for UAT
+NEPALPAY_ACQUIRER_ID=00002501
+NEPALPAY_MERCHANT_ID=2501ELFDRY2
+NEPALPAY_MERCHANT_NAME='Everest Store'   # exactly as enrolled, 25 characters max
+NEPALPAY_MCC=5411
+NEPALPAY_MERCHANT_CITY=Kathmandu         # default Kathmandu
+NEPALPAY_MERCHANT_POSTAL_CODE=44600      # default 44600
+NEPALPAY_STORE_LABEL=Store1              # default Store1
+NEPALPAY_TERMINAL_LABEL=0                # default 0
+NEPALPAY_USERNAME=your-npi-user
+NEPALPAY_PASSWORD='your-npi-password'
+NEPALPAY_PRIVATE_KEY_PEM="$(cat nepalpay.key.pem)"
+```
+
+## Set up the project
+
+Create the project and install the framework. The commands below match the stack you picked. The setup sets `BASE_URL` like every other guide; this one never uses it, because there is no return URL to build.
+
+<CodeGroup by="fw" blocks={code.setup} />
+
+<CodeGroup by="lang" blocks={{ python: { file: "terminal", lang: "bash", code: "# Python's standard library has no RSA signing, so the NEPALPAY QR module needs one package\npip install cryptography" } }} />
+
+## Step 1: Store payment attempts
+
+Every click on "Pay" creates a **payment attempt**: one row with its own id, the amount, and a status that starts at `initiated`. Each attempt's id goes to NCHL as `billNumber`, so it is never reused.
+
+In production this is a table:
+
+```sql
+CREATE TABLE payment_attempts (
+  id            VARCHAR(25) PRIMARY KEY,   -- sent to NCHL as billNumber (25 chars max)
+  order_id      VARCHAR(64) NOT NULL,
+  amount_paisa  BIGINT      NOT NULL,      -- what we charge, in paisa (Rs 100 = 10000)
+  status        VARCHAR(16) NOT NULL,      -- initiated, pending, paid, failed, canceled, expired
+  provider_ref  VARCHAR(64),               -- NCHL's validationTraceId from generateQR
+  created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+`provider_ref` is the column that matters most here. The transaction report looks payments up by `validationTraceId`, and the only other way to find one is a date-wise report you'd have to search by hand.
+
+To keep this guide runnable with zero setup, the store below keeps attempts in memory (or in a JSON file for PHP, which forgets everything between requests). Swap its functions for queries when you move to a database. The function that matters is `transition`: it changes the status only if the current status is one you expect, in one atomic step. The QR page polls every four seconds and the reconcile job runs every minute, so two of them can see the same payment at once. `transition` is what lets exactly one of them fulfil the order.
+
+<CodeGroup by="lang" blocks={code.store} />
+
+Next, the types every gateway module speaks, plus `settle`. `settle` takes NCHL's answer and applies it: `paid` moves the attempt to paid and fulfils the order exactly once, `pending` waits, and `not_found` is left for the reconcile job in step 4.
+
+<CodeGroup by="lang" blocks={code.types} />
+
+## Step 2: Write the NEPALPAY QR module
+
+This file is the only NEPALPAY QR code in the project. It exports two functions: `startPayment`, which asks NCHL for a QR, and `confirmPayment`, which reads the transaction report. It's the same file for every framework in your language. In Java and PHP the first one is called `startQr`, because the shared `Gateway` interface already has a `startPayment` that returns a redirect or a form, and those languages can't overload on return type.
+
+### Configuration
+
+The module reads the credentials and refuses to start without them. There are no public test values to fall back on. Two more details:
+
+- `NEPALPAY_BASE_URL` is optional. It overrides the base URL, which is how I pointed every module at my local mock.
+- `startPayment` returns its own `QrStart` type, not the shared redirect-or-form `Start`: a QR string, an optional PNG, and the `validationTraceId` as `providerRef`.
+
+<CodeGroup by="lang" blocks={part(nepalpay, "config")} />
+
+### Signing the token
+
+Every `generateQR` call carries a `token`: an RSA-SHA256 signature over seven values, joined with commas:
+
+```text
+acquirerId,merchantId,merchantCategoryCode,transactionCurrency,transactionAmount,billNumber,userId
+00002501,2501ELFDRY2,5411,524,100.00,0f3a9c2e7b1d4a6c8e5f,npiuser
+```
+
+- `transactionCurrency` is `524`, the ISO numeric code for NPR.
+- `transactionAmount` is the exact rupee string the body sends, with two decimals: `100.00`, never `100` or `100.0`.
+- `userId` is the NPI username.
+- NCHL's page prints the separator as `", "`, a comma and a space. That's a typesetting artifact: every other NPI token string, and the working C# client, use a bare comma.
+
+The signature is base64 of RSA PKCS#1 v1.5 over SHA-256, the same as connectIPS. SHA256withRSA does the hashing itself, so **don't hash the string first**.
+
+<CodeGroup by="lang" blocks={part(nepalpay, "sign")} />
+
+NCHL publishes no test key, but RSA PKCS#1 v1.5 is deterministic: the same key and text always give the same signature. To check your code before NCHL sends a key, use the throwaway key from my connectIPS guide. All six modules on this page reproduce these two signatures, and so does `openssl`:
+
+```bash
+printf '%s' '00002501,2501ELFDRY2,5411,524,100.00,0f3a9c2e7b1d4a6c8e5f,npiuser' \
+  | openssl dgst -sha256 -sign test.key.pem | base64 -w0
+```
+
+<details class="full-file">
+  <summary>The throwaway key and its two signatures</summary>
+  <div class="code-group">
+    <Code code={testKey} lang="text" title="test.key.pem" />
+    <Code code={vectors.map((v) => `${v.message}\n${v.signature}`).join("\n\n")} lang="text" title="message, then base64 signature" />
+  </div>
+</details>
+
+If your signature differs, look for a pre-hashed message, `", "` separators, `100.0` instead of `100.00`, or a field out of order.
+
+### Asking for a QR
+
+`startPayment` posts this body to `/qr/generateQR` with Basic auth:
+
+| Field | Value |
+|---|---|
+| `pointOfInitialization` | `12`, a dynamic QR with the amount inside (`11` is a static QR) |
+| `acquirerId`, `merchantId` | from NCHL |
+| `merchantName` | as enrolled, 25 characters max, or merchant validation fails |
+| `merchantCategoryCode` | the MCC, as a number |
+| `merchantCountry`, `merchantCity`, `merchantPostalCode`, `merchantLanguage` | `NP`, your city and postal code, `en` |
+| `transactionCurrency` | `524` |
+| `transactionAmount` | rupees with two decimals, `"100.00"` |
+| `valueOfConvenienceFeeFixed` | `"0.00"` |
+| `billNumber` | the attempt id, 25 characters max |
+| `storeLabel`, `terminalLabel` | 25 characters max each |
+| `purposeOfTransaction` | the description, 25 characters max |
+| `qrImage` | `true`, so NCHL also returns a PNG |
+| `token` | the signature from the previous step |
+
+The amount is formatted once and the same string goes into the token and the body. That's the most common cause of `E003 INVALID TOKEN`: signing `100.00` and sending `100`, or the other way round.
+
+A success looks like this:
+
+```json
+{"responseCode":"000","responseStatus":"SUCCESS","responseMessage":"QR String generated successfully.",
+ "data":{"validationTraceId":"2205260000001900KIY","qrString":"000201010212...6304607F","qrImage":"iVBORw0..."}}
+```
+
+Anything else (`E003 INVALID TOKEN`, `E010 RECORD NOT FOUND:- Merchant not found!`, a `400 PARAMETER VALIDATION ERROR` with `fieldErrors`) throws `PaymentError` with NCHL's answer in the message. `startPayment` receives a return URL like every gateway module and ignores it.
+
+<CodeGroup by="lang" blocks={part(nepalpay, "start")} />
+
+### Reading the transaction report
+
+`confirmPayment` runs from the status route the QR page polls, and from the reconcile job. Both pass no params, because nothing reaches your server from the buyer's app. It posts `{validationTraceId, merchantId, acquirerId}` to `/nQR/v1/merchanttxnreport` and gets back a list of rows.
+
+**One QR can have several rows.** A buyer whose first scan fails can pay the same dynamic QR again, so the report lists the failed attempt and the successful one. That shapes the mapping:
+
+| Report answer | Our status |
+|---|---|
+| A `PMT` row with `debitStatus` `000` and `creditStatus` `000`, `999` or `DEFER`, matching amount and bill number | `paid` |
+| That row, but the amount or `merchantBillNo` differs from the attempt | `PaymentError`, check it by hand |
+| A row with `debitStatus` `000` but a credit that isn't OK | `pending`: money left the payer, keep asking |
+| Rows, none debited | `not_found`: only failed scans so far |
+| No rows, an empty body, or `E010` | `not_found` |
+| `401`, `E999` or any other code | an error, and the status route answers 502 |
+
+Two choices here differ from the adapters in my project, and they're deliberate for a page that polls:
+
+- **A failed scan is `not_found`, not `failed`.** Marking the attempt failed would close it, and the buyer's second scan on the same QR would then pay for an order you've already given up on. Left open, the attempt either turns paid or the reconcile job expires it after an hour.
+- **A debit without a credit is `pending`.** The adapters report it as `unknown` for a person to review. The shared `settle` here has no `unknown`, so `pending` keeps it open, and the reconcile job flags it for review after three days.
+
+`amount` comes back in rupees as a number (`100.0`), so the module converts it to paisa before comparing. `DEFER` means NCHL settles to your account later; for the payment itself it's final. `RFND` rows are refunds, which your acquiring bank starts, and they never make an attempt paid.
+
+<CodeGroup by="lang" blocks={part(nepalpay, "confirm")} />
+
+<details class="full-file">
+  <summary>The whole NEPALPAY QR module in one block</summary>
+  <CodeGroup by="lang" blocks={whole(nepalpay, ["config", "sign", "start", "confirm"])} />
+</details>
+
+## Step 3: Add the routes
+
+Every other guide on this site shares one set of routes: a pay route that redirects, and a return route the gateway sends the buyer back to. NEPALPAY QR has no redirect and no return, so this guide swaps them for four routes of its own:
+
+- `GET /` shows a demo order and a Pay button.
+- `POST /pay/{orderId}` creates an attempt, calls `startPayment`, stores the `validationTraceId`, and answers with a page that shows the QR. When NCHL sends no image, the page prints `qrString` for a QR library to draw.
+- `GET /pay/status/{attemptId}` is what that page polls every four seconds. While the attempt is open it calls `confirmPayment` and applies the answer with `settle`, then returns the stored status as JSON. Once the status is final, the page goes to the order.
+- `GET /orders/{orderId}` shows the order's payment status.
+
+The status route asks NCHL only while the attempt is `initiated` or `pending`, so a buyer who leaves the page open after paying doesn't keep hitting the report API. It answers 400 on a `PaymentError` and 502 when NCHL is unreachable, and the page keeps polling through both. None of these routes takes a cross-site POST, so no CSRF exemption is needed.
+
+<CodeGroup by="fw" blocks={qrRoutes} />
+
+## Step 4: Catch payments the page missed
+
+Buyers pay and then close the tab, or lock the phone that was showing the QR. Nothing tells your server. The reconcile job fixes that: every minute it finds attempts still open after two minutes and runs `confirmPayment` on them, which reads the transaction report by the stored `validationTraceId`. Paid ones get settled, and attempts still `not_found` after an hour are marked `expired`. Anything still open after three days drops out of the loop: the job logs it as needing manual review.
+
+<CodeGroup by="lang" blocks={code.reconcile} />
+
+For NEPALPAY QR, the review case is almost always a debit without a confirmed credit. The buyer's bank took the money, so check it with your acquiring bank before you mark anything failed.
+
+### Optional: NCHL's confirm-payment callback and the WebSocket
+
+NCHL has two ways to push a result, and neither replaces the report:
+
+- **Confirm-payment callback.** If you register a callback with NCHL, NEPALPAY POSTs to `{your base}/nepalpay/confirm-payment` with Basic auth and a signed body (`merchantBillNo`, `paymentRef`, `status`, `signature` and more), and expects a signed JSON reply. NCHL doesn't say which of its keys signs the notification, so a signature that fails to verify is a reason to log and alert, not proof of forgery. Either way, load the attempt by `merchantBillNo` and run `confirmPayment` before you fulfil anything.
+- **WebSocket.** NCHL can issue a STOMP channel that streams `ENTR`, `PARSED`, then `COMPLETED` or `FAILED` for one QR. The URL, a separate WS username and an API token come from NCHL, and the token is RSA-encrypted with NCHL's public key. On `COMPLETED`, call `confirmPayment`.
+
+Polling every four seconds works without either, which is why this guide stops there. The [NEPALPAY QR reference](/docs/providers/nepalpay/reference/#6-payment-confirmation-and-websocket) has both formats, and the adapters in my project have `verifyConfirmation`, `confirmationResponse` and `webSocketRequest` for them.
+
+## Step 5: Pay a QR in UAT
+
+Once NCHL has sent your UAT credentials and the `.pfx`, set the variables, start the server with the run command from the setup step, then:
+
+<ol class="steps">
+  <li>Open the app and click <strong>Pay with NEPALPAY QR</strong>. The server calls <code>generateQR</code> on <code>devopennpi.connectips.com</code> and shows the QR.</li>
+  <li>Scan it with a UAT banking app from your acquiring bank and approve the payment. Ask your bank which app and test account to use.</li>
+  <li>Within a few seconds the page moves to the order, which shows <strong>paid</strong>, and the server log prints the fulfilment line once. Reload the QR page or call the status route again: it never prints again.</li>
+</ol>
+
+To see the polling without a phone, start a payment and call the status route yourself (port 3000 here, use your framework's):
+
+```bash
+curl -s http://localhost:3000/pay/status/<attemptId>
+# {"status":"initiated"}
+```
+
+It stays `initiated` until a debit shows up in the report.
+
+## Common NEPALPAY QR errors
+
+| Error | Cause | Fix |
+|---|---|---|
+| `E401 UNAUTHORIZED` | Wrong NPI username or password, or a UAT credential on the live host. | Check `NEPALPAY_USERNAME`, `NEPALPAY_PASSWORD` and `NEPALPAY_ENV`. |
+| `E003 INVALID TOKEN` | The signed string doesn't match the request. | Bare commas, the NPI username as `userId`, `524` as currency, and the exact two-decimal amount string you send. |
+| `E010 RECORD NOT FOUND:- Merchant not found!` on generateQR | The acquirer id and merchant id don't match an enrolled merchant. | Use the ids from NCHL's onboarding email, for the right environment. |
+| `400 PARAMETER VALIDATION ERROR` | A field is missing or too long. | Read `fieldErrors`. Names, labels, purpose and `billNumber` are capped at 25 characters. |
+| Merchant validation fails | `merchantName` differs from the enrolled name. | Send the name exactly as NCHL enrolled it. |
+| `E999 ERROR` | NCHL couldn't process the request. | Retry later. The status route answers 502 and the page keeps polling. |
+| Report stays empty after the buyer paid | Wrong `validationTraceId`, or a UAT QR checked on the live host. | Store the `validationTraceId` from `generateQR` and query the same environment. |
+| `Set NEPALPAY_ACQUIRER_ID, ...` on first use | A credential is missing. | Set all seven. There are no public test values. |
+
+## Going live
+
+1. Get the live acquirer id, merchant id, NPI user and `.pfx` from NCHL through your bank, and convert the `.pfx` as above.
+2. Set `NEPALPAY_ENV=production` and the credentials on the server. The module switches to `https://opennpi.connectips.com`. Leave `NEPALPAY_BASE_URL` unset.
+3. Replace the store with your database. Keep `transition` atomic: an `UPDATE ... WHERE id = ? AND status IN (...)` that reports how many rows changed.
+4. Run the reconcile job from a scheduler (cron, a queue worker, or the framework's scheduler) instead of the web process.
+5. Make one real low-value payment end to end before you put the QR in front of buyers. Refunds go through your acquiring bank, not through this API.
+
+The [NEPALPAY QR reference](/docs/providers/nepalpay/reference/) has the full field list, the OAuth flow and the date-wise report for reconciliation sweeps.
+
+## NEPALPAY QR on a POS, in a SPA or in a mobile app
+
+**POS terminals and kiosks:** the device asks your server for the QR and polls your status route, exactly like the page above. Never put the `.pfx` on the device.
+
+**React, Vue, Svelte or any SPA:** the browser POSTs the order id to your server, gets the QR back (as the page above, or as JSON with `qrImage` and the attempt id), shows it, and polls `/pay/status/{attemptId}`. Calling `generateQR` from a component would ship your NPI password and signing key to every visitor.
+
+**Flutter, React Native, Android, iOS:** the same server routes work. The app shows the QR image and polls the status route, and it never signs anything. A QR works best on a second screen: for buyers paying on the same phone, ask your bank how its app takes a QR it can't scan. The [mobile guide](/docs/guides/mobile/) covers keeping secrets off the device.

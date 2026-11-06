@@ -1,26 +1,49 @@
 export const REPO = "https://github.com/broisnees/nepal-payments-skill";
 export const INSTALL = "npx skills add broisnees/nepal-payments-skill";
 export const SITE_NAME = "Nepal Payments";
+/** The sister product: payment observability. Its name lives in platform/shared/src/brand.ts; mirror it here. */
+export const PLATFORM_URL = "https://paynp.discerns.app";
+export const PLATFORM_NAME = "paynp";
+/** Counts read from platform/shared/src (EVENT_TYPES in events.ts, RuleType and ChannelType in api.ts). */
+export const platformFacts = [
+  { value: "11", label: "event types, from payment.started to payment.refunded" },
+  { value: "11", label: "alert rules, including amount_mismatch and double_fulfilment" },
+  { value: "4", label: "alert channels: email, Slack, Discord and signed webhooks" },
+] as const;
 export const AGENT_PROMPT =
   "Use the nepal-payments skill to add eSewa and Khalti checkout to this app: server-side signing, server-to-server verification with decideTransition, a payment_attempts table, the return route, reconciliation and tests.";
 
 export const providers = [
-  { name: "eSewa", slug: "esewa", blog: "esewa-payment-gateway-integration", flows: "ePay v2 web checkout, Intent app-to-app", kind: "Wallet" },
-  { name: "Khalti", slug: "khalti", blog: "khalti-payment-gateway-integration", flows: "KPG-2 web checkout, refunds", kind: "Wallet" },
-  { name: "Fonepay", slug: "fonepay", blog: "fonepay-payment-gateway-integration", flows: "Web redirect, Dynamic QR over WebSocket", kind: "Bank QR" },
-  { name: "connectIPS", slug: "connectips", blog: "connectips-payment-gateway-integration", flows: "Direct bank debit, RSA-signed with your .pfx", kind: "Bank" },
-  { name: "CyberSource", slug: "cybersource", blog: "cybersource-payment-gateway-nepal", flows: "Secure Acceptance cards via Nepali banks", kind: "Cards" },
-  { name: "NPS OnePG", slug: "nps", blog: "nps-onepg-payment-gateway-integration", flows: "About 29 banks, wallets and cards in one API", kind: "Aggregator" },
-  { name: "IME Pay", slug: "imepay", blog: "imepay-payment-gateway-integration", flows: "Wallet checkout for existing merchants", kind: "Wallet" },
+  { name: "eSewa", slug: "esewa", checkout: "form", blog: "esewa-payment-gateway-integration", flows: "ePay v2 web checkout, Intent app-to-app", kind: "Wallet" },
+  { name: "Khalti", slug: "khalti", checkout: "redirect", blog: "khalti-payment-gateway-integration", flows: "KPG-2 web checkout, refunds", kind: "Wallet" },
+  { name: "Fonepay", slug: "fonepay", checkout: "redirect", blog: "fonepay-payment-gateway-integration", flows: "Web redirect, Dynamic QR over WebSocket", kind: "Bank QR" },
+  { name: "connectIPS", slug: "connectips", checkout: "form", blog: "connectips-payment-gateway-integration", flows: "Direct bank debit, RSA-signed with your .pfx", kind: "Bank" },
+  { name: "CyberSource", slug: "cybersource", checkout: "form", blog: "cybersource-payment-gateway-nepal", flows: "Secure Acceptance cards via Nepali banks", kind: "Cards" },
+  { name: "NPS OnePG", slug: "nps", checkout: "form", blog: "nps-onepg-payment-gateway-integration", flows: "About 29 banks, wallets and cards in one API", kind: "Aggregator" },
+  { name: "IME Pay", slug: "imepay", checkout: "redirect", blog: "imepay-payment-gateway-integration", flows: "Wallet checkout for existing merchants", kind: "Wallet" },
+  { name: "NEPALPAY QR", slug: "nepalpay", checkout: "qr", blog: "nepalpay-qr-payment-integration", flows: "NCHL dynamic QR any bank app can scan", kind: "Bank QR" },
+  { name: "Hamro Pay", slug: "hamropay", checkout: "form", blog: "hamropay-payment-gateway-integration", flows: "Hamro Patro wallet checkout, signed webhook", kind: "Wallet" },
+  { name: "GetPay", slug: "getpay", checkout: "sdk", blog: "getpay-card-payment-integration", flows: "NCHL hosted card checkout for Nepali banks", kind: "Cards" },
+] as const;
+
+/**
+ * The four shapes initiate() returns (InitiateResult in scripts/ts/src/core.ts). `checkout` on each provider is the
+ * kind its adapter's initiate() returns.
+ */
+export const checkoutKinds = [
+  { kind: "redirect", title: "Redirect", body: "Send the browser, WebView or Custom Tab to the gateway's URL. Persist providerRef when one comes back." },
+  { kind: "form", title: "Signed form", body: "Render an auto-submitting form that POSTs the signed fields. renderAutoSubmitForm() builds it on the server." },
+  { kind: "qr", title: "Dynamic QR", body: "Render qrString as a QR the payer scans from their own bank app, then call verify() until it settles." },
+  { kind: "sdk", title: "Hosted SDK", body: "Load the gateway's script in the browser and start its checkout with the options the server returns." },
 ] as const;
 
 export const languages = [
-  { name: "TypeScript", runtime: "Node 22.18+, Bun, Deno, Workers, Next.js edge", deps: "Zero dependencies", tests: 49, path: "scripts/ts/src/", test: "npm test" },
-  { name: "Python", runtime: "Python 3.10+", deps: "Stdlib (cryptography for connectIPS)", tests: 33, path: "scripts/python/nepal_payments/", test: "python -m unittest discover -s tests" },
-  { name: "Java", runtime: "JDK 17+ (Spring Boot, Quarkus)", deps: "No dependencies", tests: 111, path: "scripts/java/src/main/java/np/payments/", test: "./gradlew test" },
-  { name: "Kotlin", runtime: "JDK 17+ (Ktor, Spring), suspend API", deps: "kotlin-stdlib only", tests: 84, path: "scripts/kotlin/src/main/kotlin/np/payments/", test: "./gradlew test" },
-  { name: "PHP", runtime: "PHP 8.1+ (Laravel, Symfony)", deps: "ext-curl and ext-openssl, no Composer deps", tests: 69, path: "scripts/php/src/", test: "vendor/bin/phpunit" },
-  { name: "Go", runtime: "Go 1.22+", deps: "Stdlib only", tests: 68, path: "scripts/go/payments/", test: "go test -race ./..." },
+  { name: "TypeScript", runtime: "Node 22.18+, Bun, Deno, Workers, Next.js edge", deps: "Zero dependencies", tests: 67, path: "scripts/ts/src/", test: "npm test" },
+  { name: "Python", runtime: "Python 3.10+", deps: "Stdlib (cryptography for connectIPS)", tests: 53, path: "scripts/python/nepal_payments/", test: "python -m unittest discover -s tests" },
+  { name: "Java", runtime: "JDK 17+ (Spring Boot, Quarkus)", deps: "No dependencies", tests: 132, path: "scripts/java/src/main/java/np/payments/", test: "./gradlew test" },
+  { name: "Kotlin", runtime: "JDK 17+ (Ktor, Spring), suspend API", deps: "kotlin-stdlib only", tests: 106, path: "scripts/kotlin/src/main/kotlin/np/payments/", test: "./gradlew test" },
+  { name: "PHP", runtime: "PHP 8.1+ (Laravel, Symfony)", deps: "ext-curl and ext-openssl, no Composer deps", tests: 90, path: "scripts/php/src/", test: "vendor/bin/phpunit" },
+  { name: "Go", runtime: "Go 1.22+", deps: "Stdlib only", tests: 87, path: "scripts/go/payments/", test: "go test -race ./..." },
 ] as const;
 
 export const totalTests = languages.reduce((n, l) => n + l.tests, 0);
@@ -34,6 +57,9 @@ export const signing = [
   { provider: "CyberSource", scheme: "HMAC-SHA256", encoding: "base64" },
   { provider: "NPS OnePG", scheme: "HMAC-SHA512", encoding: "hex" },
   { provider: "IME Pay", scheme: "Basic auth", encoding: "base64" },
+  { provider: "NEPALPAY QR", scheme: "RSA-SHA256", encoding: "base64" },
+  { provider: "Hamro Pay", scheme: "HMAC-SHA512", encoding: "base64" },
+  { provider: "GetPay", scheme: "SHA-256 (return token)", encoding: "base64" },
 ] as const;
 
 /** Cases from the decideTransition tests (stored amount Rs 10). */
@@ -171,7 +197,7 @@ export const faqs = [
   },
   {
     q: "Which provider should I start with?",
-    a: "eSewa and Khalti cover the largest wallets. Add NPS or Fonepay to reach most banks through one integration, connectIPS for direct bank debit, and CyberSource only if a bank is acquiring cards for you.",
+    a: "eSewa and Khalti cover the largest wallets. Add NPS or Fonepay to reach most banks through one integration, NEPALPAY QR for a QR any NEPALPAY QR enabled bank app can scan, connectIPS for direct bank debit, and Hamro Pay for Hamro Patro's wallet users. For cards, use CyberSource or GetPay, whichever your acquiring bank offers.",
   },
   {
     q: "Is it affiliated with eSewa, Khalti or the other providers?",
@@ -196,4 +222,7 @@ export const gatewayLogos: Record<string, { light: string; dark?: string; ratio:
   cybersource: { light: "/logos/cybersource.png", ratio: 177 / 44, chip: true, scale: 1.2 },
   nps: { light: "/logos/nps.png", dark: "/logos/nps-white.png", ratio: 1200 / 527 },
   imepay: { light: "/logos/khalti-by-ime.png", ratio: 1028 / 569, chip: true, scale: 1.45 },
+  nepalpay: { light: "/logos/nepalpay.png", ratio: 169 / 92, chip: true, scale: 1.5 },
+  hamropay: { light: "/logos/hamropay.svg", ratio: 1, scale: 1.4 },
+  getpay: { light: "/logos/getpay.png", dark: "/logos/getpay-white.png", ratio: 240 / 62 },
 };

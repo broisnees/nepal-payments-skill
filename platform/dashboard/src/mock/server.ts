@@ -66,7 +66,7 @@ export function createServer(db: Db, hub: Hub) {
     }
 
     // ---------------------------------------------------------------- auth
-    if (path === "/auth/login" && method === "POST") return noContent;
+    if ((path === "/auth/login" || path === "/auth/signup") && method === "POST") return noContent;
     if (path === "/auth/logout" && method === "POST") {
       setSignedIn(db, false);
       return noContent;

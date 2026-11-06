@@ -11,7 +11,7 @@ import { formatCount, formatDate, formatDateTime, formatFeePct, formatMoney, for
 import { invalidate, setData, useQuery } from "../lib/query.ts";
 import "../styles/ops.css";
 
-const GATEWAYS = ["esewa", "khalti", "fonepay", "connectips", "nps", "imepay"];
+const GATEWAYS = ["esewa", "khalti", "fonepay", "connectips", "nps", "imepay", "nepalpay", "hamropay", "getpay"];
 type Field = "date" | "ref" | "amount" | "fee" | "net" | "status" | "settled_at";
 const FIELDS: { key: Field; label: string; required?: boolean; hint: string }[] = [
   { key: "date", label: "Date", required: true, hint: "When the payment happened" },

@@ -231,6 +231,109 @@ if ($d->next !== null) {
         "Non-zero Recheck codes map to pending, never failed; reconciliation escalates them at its cutoff.",
       ],
     },
+    nepalpay: {
+      initiate: String.raw`$init = $payments->nepalPay()->initiate(
+    new InitiateInput(
+        orderId: $attempt->id, // billNumber: 1 to 25 chars [A-Za-z0-9-]
+        amountPaisa: $attempt->amountPaisa, // sent as rupees with two decimals ("100.00")
+        description: 'Order #42', // purposeOfTransaction, 25 chars max
+        returnUrl: '', // unused: no redirect, the payer pays from their own banking app
+    ),
+);
+// validationTraceId: verify() looks the payment up by it
+$db->saveProviderRef($attempt->id, $init->providerRef);
+// QrResult: show <img src="data:image/png;base64,{$init->qrImage}">, or render $init->qrString,
+// then poll GET /payments/{id}/status from the page every 3-5 s.`,
+      verify: String.raw`// GET /payments/{id}/status, polled by the QR page. Also what the reconciliation job runs.
+$result = $payments->nepalPay()->verify(new VerifyInput(
+    orderId: $attempt->id,
+    amountPaisa: $attempt->amountPaisa,
+    providerRef: $attempt->providerRef, // the stored validationTraceId; required
+));
+$ageMs = (time() - $attempt->createdAt->getTimestamp()) * 1000;
+$d = StateMachine::decideFor(AttemptStatus::from($attempt->status), $result, $attempt->amountPaisa, $ageMs);
+if ($d->next !== null) {
+    // UPDATE payment_attempts SET status = $d->next->value WHERE id = ? AND status = $attempt->status
+    if ($d->next === AttemptStatus::Paid) {
+        // fulfil the order here, only if that UPDATE touched one row
+    }
+}`,
+      notes: [
+        "A debited row whose credit isn't confirmed maps to `unknown`: money left the payer, so a person reviews it.",
+        "`verifyConfirmation()` and `confirmationResponse()` handle NCHL's confirm-payment callback; `webSocketRequest()` builds the STOMP request for live status.",
+      ],
+    },
+    hamropay: {
+      initiate: String.raw`$init = $payments->hamroPay()->initiate(
+    new InitiateInput(
+        orderId: $attempt->id, // merchantTxnId: 1 to 25 chars [A-Za-z0-9-]
+        amountPaisa: $attempt->amountPaisa, // Rs 10 to Rs 50,000; sent as a paisa string
+        description: 'Order #42',
+        // Hamro Pay appends ?MerchantTxnId=..., so the attempt id goes in the path
+        returnUrl: "{$baseUrl}/payments/hamropay/return/{$attempt->id}",
+    ),
+);
+// providerRef is the sessionId. verify() looks up by order id, but keep it for support.
+$db->saveProviderRef($attempt->id, $init->providerRef);
+// FormResult: echo $init->render(); auto-submits the signed form. The session lives about 10 minutes.`,
+      verify: String.raw`// ?MerchantTxnId= only names the attempt; it must match the one in the path.
+$echoed = $payments->hamroPay()->orderIdFromCallback($params);
+if ($echoed !== null && $echoed !== $attempt->id) {
+    throw new \InvalidArgumentException('callback is for a different attempt');
+}
+// Get Transaction answers in rupees; verify() converts to paisa.
+$result = $payments->hamroPay()->verify(new VerifyInput(
+    orderId: $attempt->id,
+    amountPaisa: $attempt->amountPaisa,
+));
+$ageMs = (time() - $attempt->createdAt->getTimestamp()) * 1000;
+$d = StateMachine::decideFor(AttemptStatus::from($attempt->status), $result, $attempt->amountPaisa, $ageMs);
+if ($d->next !== null) {
+    // UPDATE payment_attempts SET status = $d->next->value WHERE id = ? AND status = $attempt->status
+    if ($d->next === AttemptStatus::Paid) {
+        // fulfil the order here, only if that UPDATE touched one row
+    }
+}`,
+      notes: [
+        "`initiate($input, remarks: ..., metadata: [...])` sets the form remarks and the metadata the webhook echoes.",
+        "`verifyWebhook($body, $_SERVER['HTTP_SIGNATURE'] ?? null)` checks the optional webhook with `HAMROPAY_WEBHOOK_SECRET`. Treat it as a trigger and run `verify()` before fulfilling.",
+      ],
+    },
+    getpay: {
+      initiate: String.raw`$gp = $payments->getPay();
+// Both callback URLs must be on GETPAY_WEBSITE_DOMAIN and serve $gp->returnPage().
+$init = $gp->initiate(
+    new InitiateInput(
+        orderId: $attempt->id, // clientRequestId: 1 to 50 chars [A-Za-z0-9-]
+        amountPaisa: $attempt->amountPaisa, // sent as a rupee number (price)
+        description: 'Order #42', // shown beside the card form
+        returnUrl: "{$baseUrl}/payments/getpay/return/{$attempt->id}",
+    ),
+);
+// SdkResult. Four separate pages, as GetPay's docs require:
+//   POST /payments/{id}/start         -> echo $gp->checkoutPage($init, "{$baseUrl}/payments/getpay/card");
+//   GET  /payments/getpay/card        -> echo $gp->paymentPage();
+//   GET  /payments/getpay/return/{id} -> echo $gp->returnPage("{$baseUrl}/payments/getpay/verify/{$attempt->id}");`,
+      verify: String.raw`// GET /payments/getpay/verify/{id}?token=..., reached from returnPage(), which reads the token
+// from the query or the #hash and breaks out of GetPay's iframe.
+$result = $payments->getPay()->verify(new VerifyInput(
+    orderId: $attempt->id,
+    amountPaisa: $attempt->amountPaisa,
+    callback: $params, // $params['token']: oprSecret, then merchant-status, then clientId
+));
+$ageMs = (time() - $attempt->createdAt->getTimestamp()) * 1000;
+$d = StateMachine::decideFor(AttemptStatus::from($attempt->status), $result, $attempt->amountPaisa, $ageMs);
+if ($d->next !== null) {
+    // UPDATE payment_attempts SET status = $d->next->value WHERE id = ? AND status = $attempt->status
+    if ($d->next === AttemptStatus::Paid) {
+        // fulfil the order here, only if that UPDATE touched one row
+    }
+}`,
+      notes: [
+        "Without a token (the reconciliation job), a success from `transaction-statement` comes back `unknown`: it can't prove the transaction is yours.",
+        "`status($id)` and `statement(['transactionId' => $id])` return the raw status data, including `crrn` for disputes.",
+      ],
+    },
   },
 };
 

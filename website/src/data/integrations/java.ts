@@ -167,6 +167,70 @@ ${transition}`,
         "IME Pay merged into Khalti in July 2025; use this for existing IME Pay merchant accounts.",
       ],
     },
+    nepalpay: {
+      initiate: `// returnUrl is unused: no redirect, the payer pays from their own banking app.
+InitiateResult init = payments.nepalpay().initiate(
+        InitiateInput.of(attempt.id(), attempt.amountPaisa(), "Order #42", ""));
+
+// providerRef is the validationTraceId; verify() looks the payment up by it.
+db.saveProviderRef(attempt.id(), init.providerRef());
+
+InitiateResult.Qr qr = (InitiateResult.Qr) init;
+// Show <img src="data:image/png;base64,{qr.qrImage()}">, or render qr.qrString(),
+// then poll GET /payments/{id}/status from the page every 3-5 s.`,
+      verify: `// GET /payments/{id}/status, polled by the QR page. Also what the reconciliation job runs.
+VerifyResult result = payments.nepalpay().verify(
+        VerifyInput.of(attempt.id(), attempt.amountPaisa()).withProviderRef(attempt.providerRef()));
+${transition}`,
+      notes: [
+        "The amount goes out as rupees with two decimals; `billNumber` (the order id) is at most 25 chars.",
+        "`verifyConfirmation` and `confirmationResponse` handle NCHL's confirm-payment callback; `webSocketRequest` builds the STOMP request for live status.",
+      ],
+    },
+    hamropay: {
+      initiate: `// Hamro Pay appends ?MerchantTxnId=..., so the attempt id goes in the path.
+String returnUrl = baseUrl + "/payments/hamropay/return/" + attempt.id();
+InitiateResult init = payments.hamropay().initiate(
+        InitiateInput.of(attempt.id(), attempt.amountPaisa(), "Order #42", returnUrl)); // Rs 10 to Rs 50,000
+
+// providerRef is the sessionId. verify() looks up by order id, but keep it for support.
+db.saveProviderRef(attempt.id(), init.providerRef());
+
+InitiateResult.Form form = (InitiateResult.Form) init;
+// Serve Html.renderAutoSubmitForm(form) as text/html. The session lives about 10 minutes.`,
+      verify: `// ?MerchantTxnId= only names the attempt; it must match the one in the path.
+payments.hamropay().orderIdFromCallback(params).ifPresent(echoed -> {
+    if (!echoed.equals(attempt.id())) throw new IllegalArgumentException("callback is for a different attempt");
+});
+// Get Transaction answers in rupees; verify() converts to paisa.
+VerifyResult result = payments.hamropay().verify(VerifyInput.of(attempt.id(), attempt.amountPaisa()));
+${transition}`,
+      notes: [
+        "`initiate(input, remarks, metadata)` sets the form remarks and the metadata the webhook echoes.",
+        "`verifyWebhook(body, signatureHeader)` checks the optional webhook with `HAMROPAY_WEBHOOK_SECRET`. Treat it as a trigger and run `verify()` before fulfilling.",
+      ],
+    },
+    getpay: {
+      initiate: `// Both callback URLs must be on GETPAY_WEBSITE_DOMAIN and serve returnPage().
+String returnUrl = baseUrl + "/payments/getpay/return/" + attempt.id();
+InitiateResult init = payments.getpay().initiate(
+        InitiateInput.of(attempt.id(), attempt.amountPaisa(), "Order #42", returnUrl)); // price goes out in rupees
+
+InitiateResult.Sdk sdk = (InitiateResult.Sdk) init;
+// Four separate pages, as GetPay's docs require:
+//   POST /payments/{id}/start         -> payments.getpay().checkoutPage(sdk, baseUrl + "/payments/getpay/card")
+//   GET  /payments/getpay/card        -> payments.getpay().paymentPage()
+//   GET  /payments/getpay/return/{id} -> payments.getpay().returnPage(baseUrl + "/payments/getpay/verify/" + attempt.id())`,
+      verify: `// GET /payments/getpay/verify/{id}?token=..., reached from returnPage(), which reads the token
+// from the query or the #hash and breaks out of GetPay's iframe.
+VerifyResult result = payments.getpay().verify(
+        VerifyInput.of(attempt.id(), attempt.amountPaisa()).withCallback(params)); // params holds "token"
+${transition}`,
+      notes: [
+        "`verify()` checks the token's `oprSecret` against `oprKey`, calls `merchant-status`, and requires `clientId` to equal the attempt id.",
+        "Without a token (the reconciliation job), a success from `transaction-statement` comes back `UNKNOWN`: it can't prove the transaction is yours.",
+      ],
+    },
   },
 };
 

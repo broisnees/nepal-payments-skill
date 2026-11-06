@@ -8,9 +8,13 @@ import java.security.KeyFactory
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.PrivateKey
+import java.security.PublicKey
 import java.security.Signature
+import java.security.interfaces.RSAPublicKey
 import java.security.spec.PKCS8EncodedKeySpec
+import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
+import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
@@ -75,6 +79,54 @@ fun rsaSha256SignBase64(privateKey: PrivateKey, message: String): String {
 /** Same, with a PKCS#8 PEM key (see [loadPkcs8PrivateKey]). */
 fun rsaSha256SignBase64(pkcs8Pem: String, message: String): String =
     rsaSha256SignBase64(loadPkcs8PrivateKey(pkcs8Pem), message)
+
+/**
+ * Parse an SPKI PEM RSA public key ("-----BEGIN PUBLIC KEY-----"). From a certificate (.cer/.crt):
+ *   openssl x509 -in NPI.cer [-inform der] -pubkey -noout > npi.pub.pem
+ */
+fun loadSpkiPublicKey(spkiPem: String): PublicKey {
+    if (!spkiPem.contains("BEGIN PUBLIC KEY")) {
+        throw IllegalArgumentException(
+            "expected a PUBLIC KEY PEM; extract it from the certificate with: openssl x509 -in NPI.cer -pubkey -noout",
+        )
+    }
+    val body = spkiPem.replace(Regex("-----(BEGIN|END) PUBLIC KEY-----"), "").replace(Regex("\\s+"), "")
+    return KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(fromBase64(body)))
+}
+
+/** Verify an RSA PKCS#1 v1.5 + SHA-256 signature (base64) over the UTF-8 message. False on any malformed input. */
+fun rsaSha256VerifyBase64(publicKey: PublicKey, message: String, signatureB64: String): Boolean =
+    try {
+        val verifier = Signature.getInstance("SHA256withRSA")
+        verifier.initVerify(publicKey)
+        verifier.update(message.toByteArray(Charsets.UTF_8))
+        verifier.verify(fromBase64(signatureB64))
+    } catch (e: Exception) {
+        false
+    }
+
+/** Same, with an SPKI PEM key (see [loadSpkiPublicKey]). A malformed PEM also gives false. */
+fun rsaSha256VerifyBase64(spkiPem: String, message: String, signatureB64: String): Boolean =
+    try {
+        rsaSha256VerifyBase64(loadSpkiPublicKey(spkiPem), message, signatureB64)
+    } catch (e: Exception) {
+        false
+    }
+
+/** RSA PKCS#1 v1.5 encryption ("RSA/ECB/PKCS1Padding") of the UTF-8 plaintext, base64 output. Randomized per call. */
+fun rsaPkcs1EncryptBase64(publicKey: PublicKey, plaintext: String): String {
+    val m = plaintext.toByteArray(Charsets.UTF_8)
+    val rsa = publicKey as? RSAPublicKey ?: throw IllegalArgumentException("expected an RSA public key")
+    val k = (rsa.modulus.bitLength() + 7) / 8
+    if (m.size > k - 11) throw IllegalArgumentException("plaintext too long for a ${k * 8}-bit RSA key (max ${k - 11} bytes)")
+    val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
+    cipher.init(Cipher.ENCRYPT_MODE, publicKey)
+    return toBase64(cipher.doFinal(m))
+}
+
+/** Same, with an SPKI PEM key (see [loadSpkiPublicKey]). */
+fun rsaPkcs1EncryptBase64(spkiPem: String, plaintext: String): String =
+    rsaPkcs1EncryptBase64(loadSpkiPublicKey(spkiPem), plaintext)
 
 /**
  * Parse a PKCS#8 PEM RSA key ("-----BEGIN PRIVATE KEY-----"). Convert a .pfx once with:

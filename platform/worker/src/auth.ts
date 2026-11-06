@@ -18,18 +18,27 @@ function sessionCookie(c: Context<AppEnv>, token: string) {
   setCookie(c, SESSION_COOKIE, token, { httpOnly: true, secure: true, sameSite: "Lax", path: "/", maxAge: SESSION_TTL / 1000 });
 }
 
-/** Finds or creates the user. A new user gets a personal org (owner) and a default project. */
-export async function signIn(env: Env, email: string): Promise<{ user: UserRow; created: boolean }> {
+/** What the sign-up form collected. Used only when the verify creates the account. */
+export interface SignupProfile {
+  name: string;
+  org: string;
+}
+
+/**
+ * Finds or creates the user. A new user gets an org (owner) and a default project: named from the sign-up form when
+ * there is one, else "<local part>'s org". An existing user is returned untouched.
+ */
+export async function signIn(env: Env, email: string, profile?: SignupProfile | null): Promise<{ user: UserRow; created: boolean }> {
   const existing = await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<UserRow>();
   if (existing) return { user: existing, created: false };
   const t = now();
-  const user: UserRow = { id: newId("usr", t), email, name: null, created_at: t, digest_opt_out: 0 };
+  const user: UserRow = { id: newId("usr", t), email, name: profile?.name ?? null, created_at: t, digest_opt_out: 0 };
   const orgId = newId("org", t);
-  const local = email.split("@")[0];
+  const orgName = profile?.org ?? `${email.split("@")[0]}'s org`;
   try {
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES (?, ?, NULL, ?)").bind(user.id, email, t),
-      env.DB.prepare("INSERT INTO orgs (id, name, created_at) VALUES (?, ?, ?)").bind(orgId, `${local}'s org`, t),
+      env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES (?, ?, ?, ?)").bind(user.id, email, user.name, t),
+      env.DB.prepare("INSERT INTO orgs (id, name, created_at) VALUES (?, ?, ?)").bind(orgId, orgName, t),
       env.DB.prepare("INSERT INTO members (org_id, user_id, role, created_at) VALUES (?, ?, 'owner', ?)").bind(orgId, user.id, t),
       env.DB.prepare("INSERT INTO projects (id, org_id, name, slug, created_at) VALUES (?, ?, 'Default', 'default', ?)").bind(newId("prj", t), orgId, t),
       env.DB.prepare("INSERT INTO audit_log (id, org_id, user_id, action, target, at) VALUES (?, ?, ?, 'org.create', ?, ?)").bind(newId("aud", t), orgId, user.id, orgId, t),
@@ -135,22 +144,52 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   return next();
 };
 
+export const PROFILE_MAX = 80;
+
+/** A required sign-up text field: trimmed, 1 to 80 characters, no control characters. */
+function profileField(body: Record<string, unknown>, key: "name" | "org"): string {
+  const v = str(body, key, { required: true, max: PROFILE_MAX })!;
+  if (/[\u0000-\u001f\u007f]/.test(v)) throw badRequest(`${key} has characters that are not allowed`);
+  return v.replace(/\s+/g, " ");
+}
+
+/** Stores a one-use login token (with the sign-up profile, if any) and mails the link. */
+async function sendLoginLink(c: Context<AppEnv>, email: string, profile: SignupProfile | null): Promise<void> {
+  const token = randomToken();
+  await c.env.DB.prepare("INSERT INTO login_tokens (token_hash, email, expires_at, signup_name, signup_org) VALUES (?, ?, ?, ?, ?)")
+    .bind(await sha256Hex(token), email, now() + LOGIN_TTL, profile?.name ?? null, profile?.org ?? null)
+    .run();
+  const link = `${appOrigin(c.env, c.req.raw)}/auth/verify?token=${token}`;
+  // One email for both forms, so the mail itself says nothing about whether the account exists.
+  const send = sendMail(c.env, {
+    to: [email],
+    subject: "Sign in to paynp",
+    text: `Sign in to paynp:\n\n${link}\n\nThe link works once and expires in 15 minutes. If you did not ask for it, ignore this email.`,
+    html: htmlMail("Sign in to paynp", ["The link works once and expires in 15 minutes. If you did not ask for it, ignore this email."], { href: link, label: "Sign in" }),
+  }).catch((e: unknown) => console.error(JSON.stringify({ msg: "login email failed", error: String(e) })));
+  c.executionCtx.waitUntil(send);
+}
+
 export function registerAuth(app: Hono<AppEnv>) {
   app.post("/auth/login", async (c) => {
     checkOrigin(c);
     const body = await readJson(c.req.raw);
     const email = str(body, "email", { required: true, max: 254 })!.toLowerCase();
     if (!isEmail(email)) throw badRequest("email is not valid");
-    const token = randomToken();
-    await c.env.DB.prepare("INSERT INTO login_tokens (token_hash, email, expires_at) VALUES (?, ?, ?)").bind(await sha256Hex(token), email, now() + LOGIN_TTL).run();
-    const link = `${appOrigin(c.env, c.req.raw)}/auth/verify?token=${token}`;
-    const send = sendMail(c.env, {
-      to: [email],
-      subject: "Sign in to paynp",
-      text: `Sign in to paynp:\n\n${link}\n\nThe link works once and expires in 15 minutes. If you did not ask for it, ignore this email.`,
-      html: htmlMail("Sign in to paynp", ["The link works once and expires in 15 minutes. If you did not ask for it, ignore this email."], { href: link, label: "Sign in" }),
-    }).catch((e: unknown) => console.error(JSON.stringify({ msg: "login email failed", error: String(e) })));
-    c.executionCtx.waitUntil(send);
+    await sendLoginLink(c, email, null);
+    return c.body(null, 204);
+  });
+
+  // Sign-up: the same magic link, carrying the name and organization for a new account. The answer is the same 204
+  // whether or not the email already has an account, and an existing account just signs in.
+  app.post("/auth/signup", async (c) => {
+    checkOrigin(c);
+    const body = await readJson(c.req.raw);
+    const email = str(body, "email", { required: true, max: 254 })!.toLowerCase();
+    if (!isEmail(email)) throw badRequest("email is not valid");
+    const name = profileField(body, "name");
+    const org = profileField(body, "org");
+    await sendLoginLink(c, email, { name, org });
     return c.body(null, 204);
   });
 
@@ -158,12 +197,13 @@ export function registerAuth(app: Hono<AppEnv>) {
     const token = c.req.query("token") ?? "";
     const t = now();
     const row = token
-      ? await c.env.DB.prepare("UPDATE login_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING email")
+      ? await c.env.DB.prepare("UPDATE login_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING email, signup_name, signup_org")
           .bind(t, await sha256Hex(token), t)
-          .first<{ email: string }>()
+          .first<{ email: string; signup_name: string | null; signup_org: string | null }>()
       : null;
     if (!row) return c.redirect("/signin?error=invalid_link", 302);
-    const { user } = await signIn(c.env, row.email);
+    const profile = row.signup_name && row.signup_org ? { name: row.signup_name, org: row.signup_org } : null;
+    const { user } = await signIn(c.env, row.email, profile);
     await createSession(c, user.id);
     const next = c.req.query("next");
     return c.redirect(next && next.startsWith("/") && !next.startsWith("//") ? next : "/", 302);

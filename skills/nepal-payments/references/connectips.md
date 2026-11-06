@@ -127,4 +127,4 @@ Response: `{merchantId, appId, referenceId, txnAmt:"500", token:null, status, st
 - **Mobile WebViews must accept cookies.** connectIPS returns "session expired" after the captcha when cookies are blocked (Android: `CookieManager.setAcceptThirdPartyCookies(webView, true)`).
 - **Register redirect URLs with NCHL** before testing. Otherwise you get 403 after OTP.
 - Load the key once at startup, not per request. If a multi-entry `.pfx` exists, pick the private-key entry.
-- NepalPay QR (NCHL) is a separate acquirer/PSP-level API (OAuth + RSA payload encryption + WebSocket) with credentials from NCHL. It is out of scope for typical merchants; use Fonepay QR or NPS instead.
+- **NEPALPAY QR** is NCHL's QR scheme, separate from this gateway. It has its own merchant API (dynamic QR generation + transaction report, signed with a `.pfx` the same way) and is supported here: see `nepalpay.md`.

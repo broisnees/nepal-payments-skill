@@ -158,3 +158,5 @@ HTTP Signature (deprecated; supported until March 2027), for reference: headers 
 - **Fresh `transaction_uuid` per attempt** (reason 104).
 - **REST digest must hash the exact bytes sent.** Don't re-serialize JSON after hashing.
 - **Partial approvals (110)**: compare `auth_amount` with your amount; don't fulfil short payments.
+
+Banks that run their card gateway on NCHL instead (NMB, Global IME and others) use GetPay: see `getpay.md`.

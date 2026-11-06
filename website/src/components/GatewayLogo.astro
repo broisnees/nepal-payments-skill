@@ -6,18 +6,21 @@ interface Props {
   slug: string;
   name: string;
   height?: number;
+  /** Load right away. Use for logos near the top of the page, where lazy loading can leave an empty chip. */
+  eager?: boolean;
 }
-const { slug, name, height = 20 } = Astro.props;
+const { slug, name, height = 20, eager = false } = Astro.props;
 const logo = gatewayLogos[slug];
 const h = logo ? Math.round(height * (logo.scale ?? 1)) : height;
 const width = logo ? Math.round(h * logo.ratio) : 0;
+const loading = eager ? "eager" : "lazy";
 ---
 
 {
   logo ? (
     <span class:list={["gwlogo", { "gwlogo-chip": logo.chip }]} style={`--h:${h}px`}>
-      <img class:list={["gwlogo-img", { "gwlogo-light": logo.dark }]} src={logo.light} alt={name} width={width} height={h} loading="lazy" decoding="async" />
-      {logo.dark && <img class="gwlogo-img gwlogo-dark" src={logo.dark} alt="" aria-hidden="true" width={width} height={h} loading="lazy" decoding="async" />}
+      <img class:list={["gwlogo-img", { "gwlogo-light": logo.dark }]} src={logo.light} alt={name} width={width} height={h} loading={loading} decoding="async" />
+      {logo.dark && <img class="gwlogo-img gwlogo-dark" src={logo.dark} alt="" aria-hidden="true" width={width} height={h} loading={loading} decoding="async" />}
     </span>
   ) : (
     <span>{name}</span>

@@ -141,7 +141,7 @@ describe("states and incidents", () => {
     const stored = [{ gateway: "esewa", started_minute: nowMin - 3 * 1440, ended_minute: nowMin - 3 * 1440 + 6, kind: "errors", peak_error_rate: 0.6, peak_p95_ms: 500 }];
     const r: StatusReport = buildReport(t, recent, days, stored);
     const g = r.gateways.find((x) => x.gateway === "esewa")!;
-    expect(r.gateways.map((x) => x.gateway)).toEqual(["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay"]);
+    expect(r.gateways.map((x) => x.gateway)).toEqual(["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay", "nepalpay", "hamropay", "getpay"]);
     expect(g.last_24h).toHaveLength(24);
     expect(g.last_24h[23]).toMatchObject({ error_rate: 0, p95_ms: 500 });
     expect(g.last_24h[22]).toMatchObject({ error_rate: 0.1 });
@@ -209,7 +209,7 @@ describe("status pages", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const body = await res.json<StatusReport>();
     expect(body.min_projects).toBe(3);
-    expect(body.gateways).toHaveLength(7);
+    expect(body.gateways).toHaveLength(10);
     expect(body.gateways[0]).toHaveProperty("uptime_90d");
   });
 });

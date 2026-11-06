@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/src/server/paynp.ts
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,31 @@
 +// Reports every payment step of the nepal-payments adapters to paynp: initiate, verify, errors.
 +// Written by `paynp init`. Same exports as "./payments/index.ts", with every adapter wrapped.
 +import { createPaynp } from "@paynp/sdk";
@@ -17,6 +17,9 @@
 +export const cybersource = (...args: Parameters<typeof lib.cybersource>) => paynp.wrapAdapter(lib.cybersource(...args));
 +export const nps = (...args: Parameters<typeof lib.nps>) => paynp.wrapAdapter(lib.nps(...args));
 +export const imepay = (...args: Parameters<typeof lib.imepay>) => paynp.wrapAdapter(lib.imepay(...args));
++export const nepalpay = (...args: Parameters<typeof lib.nepalpay>) => paynp.wrapAdapter(lib.nepalpay(...args));
++export const hamropay = (...args: Parameters<typeof lib.hamropay>) => paynp.wrapAdapter(lib.hamropay(...args));
++export const getpay = (...args: Parameters<typeof lib.getpay>) => paynp.wrapAdapter(lib.getpay(...args));
 +
 +export function createPayments(cfg: lib.PaymentsConfig): ReturnType<typeof lib.createPayments> {
 +  const payments = lib.createPayments(cfg);

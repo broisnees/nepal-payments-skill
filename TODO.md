@@ -21,6 +21,21 @@ Fixed in all six ports on 2026-11-05, with a "regressions" test block in each. O
 - [ ] Live runs for connectIPS, CyberSource, NPS and IME Pay with merchant credentials (signing is verified offline only).
 - [ ] CI: GitHub Actions is blocked by an account billing lock. Once cleared, run `gh workflow run ci.yml` and fix anything the Linux runners catch (JDK 21 and PHP 8.5 on CI were only stood in for locally by JDK 26 and the composer image).
 
+## Gateways
+
+NEPALPAY QR dynamic QR shipped in all six ports on 2026-11-06 (`references/nepalpay.md`), built from NCHL's public spec at doc.connectips.com. Open:
+
+- [ ] UAT run with real NPI credentials: confirm Basic vs OAuth on `/qr/generateQR`, the bare-comma token separator, and the report's `debitStatus` codes for a failed scan.
+- [ ] Confirm which NCHL key signs confirm-payment notifications. `verifyConfirmation` checks against `nchlPublicKeyPem` (assumed `NPI.cer`), and `webSocketRequest` builds the STOMP subscription; both are unit-tested only.
+- [ ] Deploy the paynp worker with `nepalpay` in the registry. Blocked: the live worker has a `WebhookSender` Durable Object (migration `v2`) that is not in this repo.
+
+## Hamro Pay and GetPay
+
+Shipped in all six ports on 2026-11-06 (`references/hamropay.md`, `references/getpay.md`). Open:
+
+- [ ] Hamro Pay: full UAT payment with a self-serve test merchant (pay-sandbox.hamropatro.com) and the test payer 9841414141; confirm the live gateway host.
+- [ ] GetPay: end-to-end card payment on a registered UAT domain with bank credentials; confirm the token is JSON, not `id:secret`, for 3-D Secure and non-3DS cards.
+
 ## Distribution
 
 - [ ] Publish the PHP package to Packagist and tag a Go module version so they can be installed without copying.

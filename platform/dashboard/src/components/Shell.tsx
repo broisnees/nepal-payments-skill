@@ -15,7 +15,11 @@ export const useLocal = () => useContext(MeCtx)?.mode === "local";
 /** The project `paynp dev` serves. */
 export const LOCAL_PROJECT = "local";
 
-export function RequireAuth() {
+/**
+ * Gate for signed-in pages. With `fallback`, a signed-out visitor sees it in place of being sent to /signin
+ * (the landing page at "/").
+ */
+export function RequireAuth({ fallback }: { fallback?: ReactNode } = {}) {
   const loc = useLocation();
   const nav = useNavigate();
   const me = useQuery<Me>("/api/me", { staleMs: 5 * 60_000 });
@@ -25,12 +29,14 @@ export function RequireAuth() {
   useEffect(() => {
     if (loc.pathname !== "/") clearNext();
   }, [loc.pathname]);
-  useEffect(() => onUnauthorized(() => nav(`/signin?next=${encodeURIComponent(location.pathname + location.search)}`, { replace: true })), [nav]);
+  useEffect(() => (fallback ? undefined : onUnauthorized(() => nav(`/signin?next=${encodeURIComponent(location.pathname + location.search)}`, { replace: true }))), [nav, fallback]);
 
-  if (me.error instanceof ApiFailure && me.error.status === 401) return <Navigate to={`/signin?next=${encodeURIComponent(next)}`} replace />;
+  if (me.error instanceof ApiFailure && me.error.status === 401) return fallback ? <>{fallback}</> : <Navigate to={`/signin?next=${encodeURIComponent(next)}`} replace />;
   // The magic link always lands on "/"; the page the visitor wanted was saved before signing in.
   const saved = loc.pathname === "/" && me.data ? peekNext() : null;
   if (saved) return <Navigate to={saved} replace />;
+  // The landing page does not need the API, so a public "/" still renders when it cannot be reached.
+  if (me.error && !me.data && fallback) return <>{fallback}</>;
   if (me.error && !me.data) return <BootError onRetry={me.refresh} />;
   if (!me.data) return <Boot />;
   return (
@@ -232,6 +238,9 @@ function ShellFrame({ env, ctx, children }: { env: Env; ctx?: ProjectCtx; childr
           <div className="tb-spacer" />
           <div className="tb-right">
             {ctx && <EnvToggle ctx={ctx} />}
+            <Link className="btn btn-ghost btn-sm hide-sm" to="/docs">
+              Docs
+            </Link>
             {local ? (
               <ThemeButton />
             ) : (
@@ -407,7 +416,7 @@ function NewProjectDialog({ ctx, open, onClose }: { ctx: ProjectCtx; open: boole
   );
 }
 
-function ThemeButton() {
+export function ThemeButton() {
   const { resolved } = useTheme();
   return (
     <button type="button" className="btn btn-icon btn-sm hit" aria-label={resolved === "dark" ? "Switch to light theme" : "Switch to dark theme"} title="Toggle theme" onClick={() => setChoice(resolved === "dark" ? "light" : "dark")}>
@@ -460,6 +469,10 @@ function UserMenu() {
             </button>
           ))}
           <div className="menu-sep" />
+          <Link className="menu-item" to="/docs" onClick={close}>
+            <Icon name="file" />
+            Docs
+          </Link>
           <button
             className="menu-item"
             onClick={async () => {

@@ -1,9 +1,9 @@
 {
     "name": "broisnees/nepal-payments",
-    "description": "Reference adapters for Nepali payment providers: eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay. Zero runtime Composer dependencies.",
+    "description": "Reference adapters for Nepali payment providers: eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay, NEPALPAY QR, Hamro Pay, GetPay. Zero runtime Composer dependencies.",
     "type": "library",
     "license": "MIT",
-    "keywords": ["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay", "nepal", "payments"],
+    "keywords": ["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay", "nepalpay", "hamropay", "getpay", "nepal", "payments"],
     "require": {
         "php": ">=8.1",
         "ext-curl": "*",

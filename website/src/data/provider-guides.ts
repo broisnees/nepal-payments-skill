@@ -19,6 +19,8 @@ export interface ProviderGuide {
   gotchas: string[];
   goLive: string[];
   extraSetup?: { title: string; body: string; code?: { lang: string; text: string } };
+  /** Heading for step 4 when the provider has no return URL. Default "Verify on return". */
+  verifyTitle?: string;
 }
 
 export const providerGuides: ProviderGuide[] = [
@@ -257,6 +259,138 @@ export const providerGuides: ProviderGuide[] = [
     goLive: [
       "Get your server IP whitelisted for port 7979.",
       "Confirm with the merchant team that web checkout is still offered after the merger.",
+    ],
+  },
+  {
+    key: "nepalpay",
+    name: "NEPALPAY QR",
+    description: "Integrate NEPALPAY QR (NCHL) dynamic QR step by step in TypeScript, Python, Java, Kotlin, PHP or Go: RSA token, generateQR and the transaction report.",
+    kind: "Bank QR",
+    summary:
+      "NEPALPAY QR is NCHL's national merchant QR. Your server signs a token with the key from your NPI `.pfx`, asks NCHL for a dynamic QR, and shows it. The payer scans it with any NEPALPAY QR enabled bank or wallet app, and the transaction report confirms the payment. There is no redirect and no return URL.",
+    flow: [
+      "Your server signs the token (RSA-SHA256) and calls `generateQR` with the amount in rupees and the attempt id as `billNumber`.",
+      "Store the `validationTraceId` it returns on the attempt, then show `qrImage` (a base64 PNG) or render `qrString`.",
+      "The payer scans the QR and pays from their own banking app. Your page polls a status route on your server every few seconds.",
+      "That route calls the transaction report (`merchanttxnreport`) by `validationTraceId`. That response decides.",
+    ],
+    callback:
+      "Nothing comes back to the browser: the payer is in their own app. Poll `verify()` from the QR page (every 3 to 5 seconds), and let the reconciliation job settle anyone who closes the page. Merchants that registered a callback with NCHL also get a confirm-payment POST; treat it as a hint, load the attempt by `merchantBillNo` and run the same `verify()`.",
+    verifyTitle: "Verify by polling",
+    env: {
+      required: ["NEPALPAY_ACQUIRER_ID", "NEPALPAY_MERCHANT_ID", "NEPALPAY_USERNAME", "NEPALPAY_PRIVATE_KEY_PEM"],
+      optional: [
+        "NEPALPAY_ENV",
+        "NEPALPAY_PASSWORD",
+        "NEPALPAY_MERCHANT_NAME",
+        "NEPALPAY_MCC",
+        "NEPALPAY_MERCHANT_CITY",
+        "NEPALPAY_MERCHANT_POSTAL_CODE",
+        "NEPALPAY_STORE_LABEL",
+        "NEPALPAY_TERMINAL_LABEL",
+        "NEPALPAY_CLIENT_ID",
+        "NEPALPAY_CLIENT_SECRET",
+        "NEPALPAY_NCHL_PUBLIC_KEY_PEM",
+        "NEPALPAY_WS_URL",
+        "NEPALPAY_WS_USERNAME",
+        "NEPALPAY_WS_API_TOKEN",
+      ],
+    },
+    sandbox: [
+      "There are no public sandbox credentials. Enrol through your bank, or email businesssupport@nchl.com.np for dynamic QR integration, and NCHL issues the UAT acquirer id, merchant id, NPI user and `NPI.pfx`.",
+      "The UAT host is `https://devopennpi.connectips.com`. It answers `E401 UNAUTHORIZED` until the credentials are right.",
+    ],
+    extraSetup: {
+      title: "Convert the .pfx once",
+      body: "The token is signed with the private key from the NPI `.pfx`. Convert it to PKCS#8 PEM exactly like connectIPS, and add `-legacy` on OpenSSL 3 if the `.pfx` uses RC2 or 3DES.",
+      code: {
+        lang: "bash",
+        text: "openssl pkcs12 -in NPI.pfx -nocerts -nodes | openssl pkcs8 -topk8 -nocrypt -out nepalpay.key.pem",
+      },
+    },
+    gotchas: [
+      "Persist `validationTraceId` (the `providerRef`). Without it only a date-wise report can find the payment.",
+      "Amounts go out in rupees with two decimals (`\"10.50\"`), unlike connectIPS, which takes paisa. Sign the exact string you send.",
+      "The token string joins `acquirerId,merchantId,merchantCategoryCode,transactionCurrency,transactionAmount,billNumber,userId` with bare commas. The docs print a space after each comma, but that is a typesetting artifact: every other NPI token and the working C# client use a bare comma.",
+      "One QR can have several report rows: a failed scan can be paid again on the same QR. The adapter reports `paid` when any row has `debitStatus` `000` and `creditStatus` `000`, `999` or `DEFER`.",
+      "`merchantName` must match the enrolled name, and `billNumber` is at most 25 characters. `newOrderId()` fits.",
+    ],
+    goLive: [
+      "Get the live acquirer id, merchant id, NPI user and `.pfx` from NCHL through your bank, and set `NEPALPAY_ENV=production` (`opennpi.connectips.com`).",
+      "Keep the reconciliation job running: payers who close the QR page never hit your status route.",
+    ],
+  },
+  {
+    key: "hamropay",
+    name: "Hamro Pay",
+    description: "Integrate Hamro Pay checkout step by step in TypeScript, Python, Java, Kotlin, PHP or Go: Create Session, signed form, Get Transaction and webhook.",
+    kind: "Wallet",
+    summary:
+      "Hamro Pay is Hamro Patro's wallet. Its checkout works like eSewa: your server creates a session, the browser posts a signed form to the gateway, the payer approves in Hamro Pay, and Get Transaction decides. It takes Rs 10 to Rs 50,000 per payment, from KYC-verified wallets only.",
+    flow: [
+      "Your server calls Create Session with the amount in paisa, signed with HMAC-SHA512, and stores the `sessionId`.",
+      "Your server signs the gateway `token` and renders an auto-submitting form to the Hamro Pay gateway.",
+      "The payer approves in Hamro Pay, which redirects to your success or failure URL with `?MerchantTxnId=`.",
+      "Your server calls Get Transaction for that attempt. That response decides.",
+    ],
+    callback:
+      "Both redirects carry only `MerchantTxnId`, which names the attempt and proves nothing. Check it matches the attempt id in your route, then call `verify()`. Get Transaction returns the amount in rupees; the adapter converts it to paisa. If you save a webhook URL in the portal, Hamro Pay also POSTs a signed JSON body: check it with `verifyWebhook()` and the webhook secret, then run the same `verify()`.",
+    env: {
+      required: ["HAMROPAY_MERCHANT_ID", "HAMROPAY_CLIENT_ID", "HAMROPAY_CLIENT_API_KEY", "HAMROPAY_CLIENT_SECRET"],
+      optional: ["HAMROPAY_ENV", "HAMROPAY_WEBHOOK_SECRET", "HAMROPAY_API_BASE_URL", "HAMROPAY_GATEWAY_URL"],
+    },
+    sandbox: [
+      "Merchant: sign up at https://pay-sandbox.hamropatro.com (signup OTP `000000`) and copy the merchant id, Client-Id, Client-API-Key and client secret from Client Credentials.",
+      "Payer: Hamro Pay number `9841414141`, T-PIN `0000`.",
+      "The UAT API is `https://uat-payclient.hamropatro.com` and the gateway form posts to `https://uat-checkout-pay.hamropatro.com/api/checkout`.",
+    ],
+    gotchas: [
+      "Amount units flip by direction: `transactionAmount` goes out in paisa as a string, and every amount Hamro Pay returns is in rupees.",
+      "Send `Connection: close`. The API drops each connection without closing it, and Hamro Pay's own sample saw every second keep-alive request fail on UAT.",
+      "Signatures join values with bare commas, so a comma inside a value is refused. `merchantTxnId` is at most 25 characters, and `newOrderId()` fits.",
+      "A session lives about 10 minutes. A timed-out Create Session may still exist, so retry with a new attempt id, never the same one.",
+      "The webhook is signed with the webhook secret, not the client secret, over Hamro Pay's own rendering of the amount (`1200`, `1200.0` or `1200.00`). `verifyWebhook()` tries each.",
+    ],
+    goLive: [
+      "Get the live credentials and the live gateway URL from Hamro Pay, set `HAMROPAY_ENV=production` and `HAMROPAY_GATEWAY_URL`. The live gateway host isn't published, so the adapter refuses to start a payment without it.",
+      "Save the live webhook URL in the live portal and set `HAMROPAY_WEBHOOK_SECRET` if you use it.",
+    ],
+  },
+  {
+    key: "getpay",
+    name: "GetPay",
+    description: "Accept cards through Nepali banks with NCHL's GetPay checkout, step by step in TypeScript, Python, Java, Kotlin, PHP or Go: SDK pages and token check.",
+    kind: "Cards",
+    summary:
+      "GetPay is the card checkout NCHL hosts for Nepali banks (NMB, Global IME and others): Visa and Mastercard with 3-D Secure. It is a browser SDK spread over four pages, not a redirect or a form. The bank sends back a token, and your server checks it against your `oprKey` before it asks `merchant-status`. Credentials come only from your bank, and the bank registers your domain with NCHL.",
+    flow: [
+      "`initiate()` returns `{ kind: \"sdk\", scriptUrl, options }`: the bundle URL and the SDK options, with the price in rupees and the attempt id as `clientRequestId`.",
+      "Your checkout page loads the bundle and runs `new GetPay(options).initialize()`. Its `onSuccess` opens your payment page, where GetPay renders the card form and runs 3-D Secure.",
+      "GetPay sends the payer to your success or fail page with a `token`, in the query or, for cards without 3-D Secure, in the `#hash`. That page breaks out of GetPay's iframe and forwards the token to your server.",
+      "Your server checks the token's `oprSecret`, calls `merchant-status`, and requires the transaction's `clientId` to equal the attempt id. That response decides.",
+    ],
+    callback:
+      "Point both callback URLs at a page that serves `returnPage()`: only the browser can read a token in the `#hash`. It forwards the token as `?token=` to your verify route, which passes it to `verify()` as `callback.token`. `merchant-status` answers for any transaction id, whoever asks, so the adapter reports `paid` only when the `oprSecret` matches your `oprKey` and `clientId` is your attempt id. Without a token (the reconciliation job), a success can't be proven yours and comes back `unknown` for a person to check in the bank portal.",
+    verifyTitle: "Verify the return token",
+    env: {
+      required: ["GETPAY_PAP_INFO", "GETPAY_OPR_KEY", "GETPAY_WEBSITE_DOMAIN"],
+      optional: ["GETPAY_ENV", "GETPAY_INS_KEY", "GETPAY_BUSINESS_NAME", "GETPAY_IMAGE_URL", "GETPAY_CURRENCY", "GETPAY_BUNDLE_URL", "GETPAY_BASE_URL"],
+    },
+    sandbox: [
+      "There are no public credentials. Your bank issues the UAT `papInfo`, `oprKey`, `insKey` (blank when operator-hosted) and bundle URL, and registers your domain with NCHL.",
+      "The card form refuses origins NCHL hasn't whitelisted (a `401` from CyberSource's card iframe), so `localhost` doesn't work. Test on the registered domain, with test cards from the bank.",
+      "The UAT status APIs are public: `merchant-status` and `transaction-statement` on `https://uat-bank-getpay.nchl.com.np` answer without auth, which is enough to check your server reaches them.",
+    ],
+    gotchas: [
+      "Use four separate pages (checkout, payment, fail, success). GetPay's docs warn that combining them causes caching problems.",
+      "`price` is a number in rupees (`1200.5`), not a string and not paisa.",
+      "`clientRequestId` must be present or absent, never empty. Keep it to 50 characters of `[A-Za-z0-9-]`; `newOrderId()` fits.",
+      "`oprKey` and `papInfo` reach the browser by GetPay's design. Neither is a secret, which is why the token check and the `clientId` check matter.",
+      "No refund API is published. Refunds go through the bank's portal. Store `crrn` with the transaction id for disputes.",
+    ],
+    goLive: [
+      "Get the live `papInfo`, `oprKey` and bundle URL from your bank, set `GETPAY_ENV=production`, and have the bank register the production domain with NCHL.",
+      "Deploy the four pages on that domain. Refunds go through the bank's portal, not an API.",
     ],
   },
 ];

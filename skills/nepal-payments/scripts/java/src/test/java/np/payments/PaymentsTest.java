@@ -65,6 +65,35 @@ class PaymentsTest {
     }
 
     @Test
+    @DisplayName("configFromEnv: HAMROPAY_* and GETPAY_* enable and register both adapters")
+    void configFromEnvHamroPayGetPay() {
+        Map<String, String> env = new HashMap<>();
+        env.put("HAMROPAY_MERCHANT_ID", "M");
+        env.put("HAMROPAY_CLIENT_ID", "C");
+        env.put("HAMROPAY_CLIENT_API_KEY", "K");
+        env.put("HAMROPAY_CLIENT_SECRET", "S");
+        env.put("HAMROPAY_ENV", "live");
+        env.put("HAMROPAY_GATEWAY_URL", "https://gw.example/api/checkout");
+        env.put("GETPAY_PAP_INFO", "e30=");
+        env.put("GETPAY_OPR_KEY", "k");
+        env.put("GETPAY_WEBSITE_DOMAIN", "https://shop.example");
+        PaymentsConfig cfg = Payments.configFromEnv(env);
+        assertEquals(Environment.PRODUCTION, cfg.hamropay().env());
+        assertEquals("https://gw.example/api/checkout", cfg.hamropay().gatewayUrl());
+        assertNull(cfg.hamropay().webhookSecret());
+        assertEquals(Environment.SANDBOX, cfg.getpay().env());
+        assertEquals("", cfg.getpay().businessName());
+        assertNull(cfg.getpay().insKey());
+        env.remove("GETPAY_OPR_KEY");
+        assertNull(Payments.configFromEnv(env).getpay());
+
+        Payments p = Payments.create(cfg, new MockTransport());
+        assertEquals(List.of(ProviderId.HAMROPAY, ProviderId.GETPAY), p.enabled());
+        assertSame(p.hamropay(), p.adapter("hamropay"));
+        assertSame(p.getpay(), p.adapter(ProviderId.fromWire("getpay")));
+    }
+
+    @Test
     @DisplayName("enums carry the TS wire strings")
     void wireStrings() {
         assertEquals("partially_refunded", PaymentStatus.PARTIALLY_REFUNDED.wire());

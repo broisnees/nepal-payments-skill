@@ -1,22 +1,13 @@
 import type { ReactNode } from "react";
-import { Logo } from "../components/Icon.tsx";
+import { PublicLayout } from "../public/PublicLayout.tsx";
 
-export function AuthLayout({ children }: { children: ReactNode }) {
+/** Sign-in, sign-up and check-email: the public top bar and footer around one narrow card. */
+export function AuthLayout({ children, current }: { children: ReactNode; current?: "signin" | "signup" }) {
   return (
-    <div className="auth">
-      <div className="auth-top">
-        <span className="brand-mark">
-          <Logo />
-          paynp
-        </span>
-      </div>
+    <PublicLayout current={current}>
       <main className="auth-main">
         <div className="auth-card fade-in">{children}</div>
       </main>
-      <footer className="auth-foot">
-        <span>Every payment, every gateway, one place.</span>
-        <span className="hide-sm">Times in Nepal time</span>
-      </footer>
-    </div>
+    </PublicLayout>
   );
 }

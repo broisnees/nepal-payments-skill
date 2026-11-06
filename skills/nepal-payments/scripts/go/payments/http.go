@@ -3,6 +3,7 @@ package payments
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -43,7 +44,8 @@ type httpRequest struct {
 	headers [][2]string
 	body    []byte // nil = no body
 	timeout time.Duration
-	retries int // extra attempts on network error / 5xx / 429 (idempotent reads only)
+	retries int  // extra attempts on network error / 5xx / 429 (idempotent reads only)
+	close   bool // send Connection: close and never reuse the connection
 }
 
 type httpResponse struct {
@@ -129,6 +131,7 @@ func doOnce(ctx context.Context, client Doer, req httpRequest) (*httpResponse, e
 		return nil, err
 	}
 	hr.Header.Set("Accept", "application/json")
+	hr.Close = req.close
 	for _, h := range req.headers {
 		hr.Header.Set(h[0], h[1])
 	}
@@ -144,7 +147,9 @@ func doOnce(ctx context.Context, client Doer, req httpRequest) (*httpResponse, e
 	}
 	defer resp.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
-	if err != nil {
+	// Hamro Pay (grpc-gateway behind Envoy) aborts the stream after its error answers. Keep a body cut off
+	// mid-stream only when what arrived is complete JSON.
+	if err != nil && (len(b) == 0 || !json.Valid(bytes.TrimPrefix(b, []byte("\xef\xbb\xbf")))) {
 		return nil, err
 	}
 	if len(b) > maxResponseBytes {

@@ -36,6 +36,9 @@ const REFERENCES = {
   "cybersource.md": { path: "providers/cybersource/reference", title: "CyberSource reference" },
   "nps.md": { path: "providers/nps/reference", title: "NPS OnePG reference" },
   "imepay.md": { path: "providers/imepay/reference", title: "IME Pay reference" },
+  "nepalpay.md": { path: "providers/nepalpay/reference", title: "NEPALPAY QR reference" },
+  "hamropay.md": { path: "providers/hamropay/reference", title: "Hamro Pay reference" },
+  "getpay.md": { path: "providers/getpay/reference", title: "GetPay reference" },
   "others.md": {
     path: "providers/others",
     title: "Other gateways",
@@ -108,6 +111,9 @@ const proof = {
   cybersource: "Signed response POST",
   nps: "`CheckTransactionStatus`",
   imepay: "`Recheck`",
+  nepalpay: "`merchanttxnreport`",
+  hamropay: "Get Transaction",
+  getpay: "Return token + `merchant-status`",
 };
 
 function guidePage(g) {
@@ -168,7 +174,7 @@ function guidePage(g) {
       return fence(s.lang, p.initiate) + (notes ? `\n\n${notes}` : "");
     }),
     "",
-    "## 4. Verify on return",
+    `## 4. ${g.verifyTitle ?? "Verify on return"}`,
     "",
     prose(g.callback),
     "",
@@ -209,7 +215,7 @@ function overviewPage() {
   return [
     frontmatter({
       title: q("Providers"),
-      description: q("Compare eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS and IME Pay, then follow the step-by-step guide for each."),
+      description: q("Compare eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay, NEPALPAY QR, Hamro Pay and GetPay, then follow the step-by-step guide for each."),
       sidebar: '{ label: "Overview", order: 0 }',
     }),
     'import GatewayLogo from "../../../../components/GatewayLogo.astro";',
@@ -231,8 +237,10 @@ function overviewPage() {
     "",
     "- **eSewa and Khalti** cover the largest wallets.",
     "- **NPS or Fonepay** reach most banks through one integration.",
+    "- **NEPALPAY QR** for an NCHL dynamic QR that any NEPALPAY QR enabled bank or wallet app can scan, at a counter, a kiosk or a desktop checkout.",
     "- **connectIPS** debits bank accounts directly.",
-    "- **CyberSource** only if a bank is acquiring cards for you.",
+    "- **Hamro Pay** for Hamro Patro's wallet users. Its UAT merchant portal is self-serve, like Khalti's.",
+    "- **CyberSource or GetPay** only if a bank is acquiring cards for you: GetPay is NCHL's hosted card checkout that NMB, Global IME and other banks issue.",
     "- **IME Pay** only for existing IME Pay merchants; new builds use Khalti.",
     "",
     "HBL (2C2P PACO), Prabhu Pay, Moru, CellPay and Namaste Pay have notes in [Other gateways](/docs/providers/others/) but no bundled adapter.",

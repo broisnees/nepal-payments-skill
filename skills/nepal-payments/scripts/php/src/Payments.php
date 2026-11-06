@@ -13,6 +13,10 @@ use NepalPayments\Esewa\EsewaConfig;
 use NepalPayments\Esewa\EsewaIntentConfig;
 use NepalPayments\Fonepay\FonepayAdapter;
 use NepalPayments\Fonepay\FonepayConfig;
+use NepalPayments\GetPay\GetPayAdapter;
+use NepalPayments\GetPay\GetPayConfig;
+use NepalPayments\HamroPay\HamroPayAdapter;
+use NepalPayments\HamroPay\HamroPayConfig;
 use NepalPayments\Http\CurlTransport;
 use NepalPayments\Http\HttpClient;
 use NepalPayments\Http\HttpTransport;
@@ -20,6 +24,8 @@ use NepalPayments\ImePay\ImePayAdapter;
 use NepalPayments\ImePay\ImePayConfig;
 use NepalPayments\Khalti\KhaltiAdapter;
 use NepalPayments\Khalti\KhaltiConfig;
+use NepalPayments\NepalPay\NepalPayAdapter;
+use NepalPayments\NepalPay\NepalPayConfig;
 use NepalPayments\Nps\NpsAdapter;
 use NepalPayments\Nps\NpsConfig;
 
@@ -61,6 +67,15 @@ final class Payments
         }
         if ($cfg->imepay !== null) {
             $built['imepay'] = new ImePayAdapter($cfg->imepay, $http);
+        }
+        if ($cfg->nepalpay !== null) {
+            $built['nepalpay'] = new NepalPayAdapter($cfg->nepalpay, $http);
+        }
+        if ($cfg->hamropay !== null) {
+            $built['hamropay'] = new HamroPayAdapter($cfg->hamropay, $http);
+        }
+        if ($cfg->getpay !== null) {
+            $built['getpay'] = new GetPayAdapter($cfg->getpay, $http);
         }
 
         return new self($built);
@@ -149,6 +164,30 @@ final class Payments
         return $a;
     }
 
+    public function nepalPay(): NepalPayAdapter
+    {
+        $a = $this->get(ProviderId::NepalPay);
+        assert($a instanceof NepalPayAdapter);
+
+        return $a;
+    }
+
+    public function hamroPay(): HamroPayAdapter
+    {
+        $a = $this->get(ProviderId::HamroPay);
+        assert($a instanceof HamroPayAdapter);
+
+        return $a;
+    }
+
+    public function getPay(): GetPayAdapter
+    {
+        $a = $this->get(ProviderId::GetPay);
+        assert($a instanceof GetPayAdapter);
+
+        return $a;
+    }
+
     /**
      * Build config from environment variables (same names as the TS paymentsConfigFromEnv / references/env.md).
      * A provider is enabled when its required vars are non-empty. Default source: $_ENV, then getenv().
@@ -174,7 +213,7 @@ final class Payments
         $set = static fn (string $k): bool => ($get($k) ?? '') !== '';
         $mode = static fn (string $k): Environment => Environment::fromMode($get($k));
 
-        $esewa = $khalti = $fonepay = $connectips = $cybersource = $nps = $imepay = null;
+        $esewa = $khalti = $fonepay = $connectips = $cybersource = $nps = $imepay = $nepalpay = $hamropay = $getpay = null;
         if ($set('ESEWA_PRODUCT_CODE') && $set('ESEWA_SECRET_KEY')) {
             $esewa = new EsewaConfig(
                 $mode('ESEWA_ENV'),
@@ -236,7 +275,60 @@ final class Payments
             );
         }
 
-        return new PaymentsConfig($esewa, $khalti, $fonepay, $connectips, $cybersource, $nps, $imepay);
+        if ($set('NEPALPAY_ACQUIRER_ID') && $set('NEPALPAY_MERCHANT_ID') && $set('NEPALPAY_USERNAME') && $set('NEPALPAY_PRIVATE_KEY_PEM')) {
+            $oauth = $set('NEPALPAY_CLIENT_ID');
+            $ws = $set('NEPALPAY_WS_URL');
+            $nepalpay = new NepalPayConfig(
+                $mode('NEPALPAY_ENV'),
+                (string) $get('NEPALPAY_ACQUIRER_ID'),
+                (string) $get('NEPALPAY_MERCHANT_ID'),
+                $get('NEPALPAY_MERCHANT_NAME') ?? '',
+                $get('NEPALPAY_MCC') ?? '',
+                $get('NEPALPAY_MERCHANT_CITY') ?? 'Kathmandu',
+                $get('NEPALPAY_MERCHANT_POSTAL_CODE') ?? '44600',
+                $get('NEPALPAY_STORE_LABEL') ?? 'Store1',
+                (string) $get('NEPALPAY_USERNAME'),
+                $get('NEPALPAY_PASSWORD') ?? '',
+                str_replace('\n', "\n", (string) $get('NEPALPAY_PRIVATE_KEY_PEM')),
+                $get('NEPALPAY_TERMINAL_LABEL'),
+                $oauth ? 'oauth' : 'basic',
+                $oauth ? $get('NEPALPAY_CLIENT_ID') : null,
+                $oauth ? ($get('NEPALPAY_CLIENT_SECRET') ?? '') : null,
+                nchlPublicKeyPem: $set('NEPALPAY_NCHL_PUBLIC_KEY_PEM') ? str_replace('\n', "\n", (string) $get('NEPALPAY_NCHL_PUBLIC_KEY_PEM')) : null,
+                wsUrl: $ws ? $get('NEPALPAY_WS_URL') : null,
+                wsUsername: $ws ? $get('NEPALPAY_WS_USERNAME') : null,
+                wsApiToken: $ws ? $get('NEPALPAY_WS_API_TOKEN') : null,
+            );
+        }
+
+        if ($set('HAMROPAY_MERCHANT_ID') && $set('HAMROPAY_CLIENT_ID') && $set('HAMROPAY_CLIENT_API_KEY') && $set('HAMROPAY_CLIENT_SECRET')) {
+            $hamropay = new HamroPayConfig(
+                $mode('HAMROPAY_ENV'),
+                (string) $get('HAMROPAY_MERCHANT_ID'),
+                (string) $get('HAMROPAY_CLIENT_ID'),
+                (string) $get('HAMROPAY_CLIENT_API_KEY'),
+                (string) $get('HAMROPAY_CLIENT_SECRET'),
+                $get('HAMROPAY_WEBHOOK_SECRET'),
+                $get('HAMROPAY_API_BASE_URL'),
+                $get('HAMROPAY_GATEWAY_URL'),
+            );
+        }
+        if ($set('GETPAY_PAP_INFO') && $set('GETPAY_OPR_KEY') && $set('GETPAY_WEBSITE_DOMAIN')) {
+            $getpay = new GetPayConfig(
+                $mode('GETPAY_ENV'),
+                (string) $get('GETPAY_PAP_INFO'),
+                (string) $get('GETPAY_OPR_KEY'),
+                (string) $get('GETPAY_WEBSITE_DOMAIN'),
+                $get('GETPAY_BUSINESS_NAME') ?? '',
+                $get('GETPAY_IMAGE_URL') ?? '',
+                insKey: $get('GETPAY_INS_KEY'),
+                currency: $get('GETPAY_CURRENCY'),
+                bundleUrl: $get('GETPAY_BUNDLE_URL'),
+                baseUrl: $get('GETPAY_BASE_URL'),
+            );
+        }
+
+        return new PaymentsConfig($esewa, $khalti, $fonepay, $connectips, $cybersource, $nps, $imepay, $nepalpay, $hamropay, $getpay);
     }
 
     /**

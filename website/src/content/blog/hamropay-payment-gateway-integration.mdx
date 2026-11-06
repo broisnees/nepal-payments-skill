@@ -1,0 +1,308 @@
+---
+title: "Hamro Pay Payment Gateway Integration: Step by Step in Any Framework"
+description: "Build Hamro Pay checkout in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: HMAC-SHA512 session, signed form, Get Transaction, UAT."
+label: Hamro Pay
+provider: hamropay
+published: 2026-11-06
+order: 90
+stack: true
+stackTitle: "Hamro Pay Payment Gateway Integration in {stack}: Step by Step"
+stackDescription: "Integrate Hamro Pay Checkout in {stack}: signed Create Session, the gateway form, Get Transaction, reconciliation and UAT testing, with code that runs."
+faq:
+  - q: "What are the Hamro Pay sandbox (UAT) credentials?"
+    a: "There is no shared test key. Sign up as a merchant at pay-sandbox.hamropatro.com (the signup OTP is 000000) and copy the merchant id, Client-Id, Client-API-Key and client secret from Client Credentials. To pay, use Hamro Pay number 9841414141 with T-PIN 0000. The UAT API is https://uat-payclient.hamropatro.com."
+  - q: "How is the Hamro Pay Signature header calculated?"
+    a: "base64 of HMAC-SHA512 over the values joined with bare commas, keyed with the client secret. Create Session signs merchantTxnId,transactionAmount,merchantId,clientId,clientApiKey. Get Transaction signs merchantTxnId,merchantId,clientId,clientApiKey. The gateway form token signs merchantId,merchantTxnId,sessionId,transactionAmount,clientId,clientApiKey."
+  - q: "Is the Hamro Pay amount in rupees or paisa?"
+    a: "Both, depending on direction. Create Session takes transactionAmount in paisa, as a string. Get Transaction, the webhook and productList price use rupees. Convert the returned amount to paisa before comparing it with the amount you stored."
+  - q: "Why does Hamro Pay return code 16 Unauthorized Request?"
+    a: "The Client-Id, Client-API-Key or Signature is wrong, or the credentials belong to the other environment. A signature over a different amount string than the one in the body also fails. Sign exactly the transactionAmount text you send."
+  - q: "Can I mark a Hamro Pay order paid from the success redirect?"
+    a: "No. The redirect only carries ?MerchantTxnId=. Check that it names the attempt in your URL, then call Get Transaction with your own id and fulfil only when status is COMPLETED and the amount, converted from rupees, equals what you stored."
+  - q: "Does Hamro Pay have webhooks?"
+    a: "Yes, optionally. Save a webhook URL in the merchant portal and Hamro Pay POSTs a signed JSON body with a Signature header, keyed with a separate webhook secret. Treat it as a trigger: verify the signature, then run Get Transaction before you fulfil."
+  - q: "What are the Hamro Pay amount limits?"
+    a: "Rs 10 to Rs 50,000 per transaction, and only from KYC-verified Hamro Pay users. Amounts outside the range come back as code 11 OUT_OF_RANGE."
+---
+
+import CodeGroup from "../../components/blog/CodeGroup.astro";
+import Note from "../../components/blog/Note.astro";
+import { app, gatewayNames, part, whole } from "../../data/blog-code";
+import { hamropay, vectors } from "../../data/blog-code/hamropay";
+
+export const code = app(gatewayNames("hamropay", "Hamro Pay", "HamroPay"));
+
+By the end of this guide you'll have a checkout that takes Hamro Pay payments and marks an order paid only after Hamro Pay confirms the money moved. Pick your framework above and the whole guide switches to it. Hamro Pay's UAT is self-serve: create a merchant account in the sandbox portal, copy four values, and the code runs against it as-is.
+
+Here is what I tested in November 2026. Every module on this page ran in all six languages against a local mock of Create Session and Get Transaction that checks the three headers and the HMAC-SHA512 signature, and that ends each response the way the real UAT host does (more on that below). The mock run covered the signed form, a forged `MerchantTxnId`, every status, a wrong amount and an answer for another attempt. The shared routes ran end to end against the same mock in Go net/http, Flask and plain PHP, and the order was fulfilled once. Every module also called the real UAT host with made-up credentials and got Hamro Pay's documented `401` with code `16` back. I did not make a UAT payment, because I tested without a sandbox merchant account, and I didn't run the Express, Hono, Next.js, Fastify, Django, FastAPI, Laravel, Spring Boot or Ktor routes.
+
+## How a Hamro Pay payment works
+
+Hamro Pay is the wallet inside Hamro Patro, and its web checkout works like eSewa's: a signed form posted from the browser, then a status call from your server. The difference is a server call before the form:
+
+<ol class="steps">
+  <li>Your server creates a <strong>payment attempt</strong> and calls <strong>Create Session</strong> with the amount in paisa and the attempt id. Hamro Pay answers with a <code>sessionId</code>, which lives about 10 minutes.</li>
+  <li>Your server signs a <code>token</code> for the gateway form and sends the browser a page that auto-posts the form to Hamro Pay. The buyer logs in and approves the payment with their T-PIN.</li>
+  <li>Hamro Pay sends the buyer back to your return URL with <code>?MerchantTxnId=&lt;attempt id&gt;</code>. Nothing else, and nothing signed.</li>
+  <li>Your server calls <strong>Get Transaction</strong> with its own attempt id. That answer decides whether the order is paid.</li>
+</ol>
+
+Three rules fall out of this:
+
+- **Sign on the server.** The client secret signs every call and the form token. It never reaches the browser or an app.
+- **A redirect is not a payment.** The return URL only says which attempt to look up.
+- **Watch the units.** Paisa goes out in Create Session; rupees come back from Get Transaction and the webhook.
+
+## What you need
+
+A UAT merchant account. Sign up at [pay-sandbox.hamropatro.com](https://pay-sandbox.hamropatro.com) (the signup OTP is `000000`), open **Client Credentials**, and copy the merchant id, `Client-Id`, `Client-API-Key` and client secret.
+
+| | UAT | Live |
+|---|---|---|
+| API | `https://uat-payclient.hamropatro.com` | `https://payclient.hamropatro.com` |
+| Create Session (POST) | `/v1/checkout/sessionId` | same |
+| Get Transaction (POST) | `/v1/checkout/transaction` | same |
+| Gateway form (POST from the browser) | `https://uat-checkout-pay.hamropatro.com/api/checkout` | issued by Hamro Pay at go-live |
+| Merchant portal | `pay-sandbox.hamropatro.com` | issued at go-live |
+
+The live gateway host isn't published (`checkout-pay.hamropatro.com` doesn't resolve), so the module refuses to start in production until `HAMROPAY_GATEWAY_URL` is set. Set the credentials before you start the server (and before `next build` on Next.js):
+
+```bash
+HAMROPAY_MERCHANT_ID='your-merchant-id'
+HAMROPAY_CLIENT_ID='your-client-id'
+HAMROPAY_CLIENT_API_KEY='your-client-api-key'
+HAMROPAY_CLIENT_SECRET='your-client-secret'
+# HAMROPAY_ENV=production
+# HAMROPAY_GATEWAY_URL=https://...   # required in production, from Hamro Pay
+```
+
+Hamro Pay takes **Rs 10 to Rs 50,000** per payment, and only from KYC-verified Hamro Pay users.
+
+## Set up the project
+
+Create the project and install the framework. The commands below match the stack you picked.
+
+<CodeGroup by="fw" blocks={code.setup} />
+
+## Step 1: Store payment attempts
+
+Every click on "Pay" creates a **payment attempt**: one row with its own id, the amount, and a status that starts at `initiated`. The attempt id goes to Hamro Pay as `merchantTxnId`, which is at most 25 characters and must never repeat: a reused one comes back as code `6` ALREADY_EXISTS.
+
+In production this is a table:
+
+```sql
+CREATE TABLE payment_attempts (
+  id            VARCHAR(25) PRIMARY KEY,   -- sent to Hamro Pay as merchantTxnId (25 chars max)
+  order_id      VARCHAR(64) NOT NULL,
+  amount_paisa  BIGINT      NOT NULL,      -- what we charge, in paisa (Rs 100 = 10000)
+  status        VARCHAR(16) NOT NULL,      -- initiated, pending, paid, failed, canceled, expired
+  provider_ref  VARCHAR(64),               -- Hamro Pay's sessionId from Create Session
+  created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+To keep this guide runnable with zero setup, the store below keeps attempts in memory (or in a JSON file for PHP, which forgets everything between requests). Swap its functions for queries when you move to a database. The function that matters is `transition`: it changes the status only if the current status is one you expect, in one atomic step. That rule is what stops an order from being fulfilled twice when the buyer refreshes the return page.
+
+<CodeGroup by="lang" blocks={code.store} />
+
+Next, the types every gateway module speaks, plus `settle`. `settle` takes Hamro Pay's answer and applies it: `paid` moves the attempt to paid and fulfils the order exactly once, `pending` waits, and `not_found` is left for the reconcile job in step 4.
+
+<CodeGroup by="lang" blocks={code.types} />
+
+## Step 2: Write the Hamro Pay module
+
+This file is the only Hamro Pay code in the project. It exports `startPayment`, which creates a session and returns the signed form, and `confirmPayment`, which asks Get Transaction what happened. It's the same file for every framework in your language.
+
+### Configuration
+
+The module reads the four credentials and refuses to start without them. Two optional variables:
+
+- `HAMROPAY_ENV=production` switches the API host to `payclient.hamropatro.com`, and then `HAMROPAY_GATEWAY_URL` becomes required.
+- `HAMROPAY_API_BASE_URL` overrides the API host. That's how I pointed every module at my mock.
+
+<CodeGroup by="lang" blocks={part(hamropay, "config")} />
+
+### Signing
+
+Every signature Hamro Pay uses has the same shape: **base64 of HMAC-SHA512**, keyed with the client secret, over a list of values joined with bare commas. Only the list changes:
+
+| Used for | Values, in order |
+|---|---|
+| Create Session (`Signature` header) | `merchantTxnId,transactionAmount,merchantId,clientId,clientApiKey` |
+| Gateway form (`token` field) | `merchantId,merchantTxnId,sessionId,transactionAmount,clientId,clientApiKey` |
+| Get Transaction (`Signature` header) | `merchantTxnId,merchantId,clientId,clientApiKey` |
+| Webhook (incoming `Signature` header) | `merchantTxnId,merchantId,status,amount`, keyed with the **webhook secret** |
+
+The join has no escaping, so `["a,b", "c"]` and `["a", "b,c"]` would sign the same text. The module refuses any value with a comma in it rather than sign something ambiguous. Attempt ids from the store are hex, so this never fires in the demo.
+
+<CodeGroup by="lang" blocks={part(hamropay, "sign")} />
+
+Check your signing code against this vector from my Hamro Pay reference before you call the API:
+
+<table>
+  <thead><tr><th>Key</th><th>Message</th><th>Signature</th></tr></thead>
+  <tbody>
+    {vectors.map((v) => (
+      <tr><td><code>{v.key}</code></td><td><code>{v.message}</code></td><td><code>{v.signature}</code></td></tr>
+    ))}
+  </tbody>
+</table>
+
+From a terminal:
+
+```bash
+printf 'T1,1000,M,C,K' | openssl dgst -sha512 -hmac abcdefg -binary | base64 -w0
+# 7MhTBtP9MzyiNUg7P/ljNqxHxrUPQSAHhNpAD9bPlacsF2lMj8GAka1pVKD7MSMnNdBLqCwz9SoY4l+2RHdpxA==
+```
+
+All six modules on this page reproduce it.
+
+### Calling the API
+
+Both server calls are a JSON POST with three headers: `Client-Id`, `Client-API-Key` and `Signature`. Errors come back in gRPC style, `{"code": 16, "message": "Unauthorized Request", "details": []}`, and the helper turns them into an exception.
+
+The helper does two more things, and both come from how the UAT host behaves:
+
+- **It sends `Connection: close`.** Hamro Pay's own sample store found that keep-alive fails on every second request. Java and Kotlin's `HttpClient` refuses that header, so those modules build a fresh client per call, which never reuses a socket either.
+- **It reads a body that never finishes.** I called the UAT host over raw HTTP/1.1 in November 2026: the response is chunked, the JSON arrives in one chunk, and then the connection closes without the final empty chunk. curl reports `transfer closed with outstanding read data remaining`. Against the UAT host, Java's `HttpClient` threw `chunked transfer encoding, state: READING_LENGTH`, Python raised `IncompleteRead`, and Go, which negotiated HTTP/2, got a stream reset while reading the body. Node's `fetch` and PHP's curl read it in my runs, but both failed against a mock that does the same thing over plain HTTP. So the helper keeps whatever bytes arrived and lets the JSON parser decide whether they're complete. It also explains why a pooled connection fails on the next request.
+
+<CodeGroup by="lang" blocks={part(hamropay, "http")} />
+
+From a terminal, made-up credentials show the error shape:
+
+```bash
+curl -s -X POST https://uat-payclient.hamropatro.com/v1/checkout/transaction \
+  -H 'Client-Id: x' -H 'Client-API-Key: x' -H 'Signature: x' -H 'Content-Type: application/json' \
+  -d '{"merchantId":"x","merchantTxnId":"x1"}'
+# {"code": 16, "message": "Unauthorized Request", "details": []}   (HTTP 401)
+```
+
+### Starting a payment
+
+`startPayment` makes two signatures. First it calls Create Session:
+
+| Field | Value |
+|---|---|
+| `merchantTxnId` | The attempt id, 25 characters max, unique per attempt |
+| `merchantId` | Your merchant id |
+| `transactionAmount` | **Paisa, as a string.** Rs 100 is `"10000"`. The `Signature` covers this exact text. |
+| `successRedirectionUrl`, `failedRedirectionUrl` | Your return route, `/pay/return/<attemptId>`. Hamro Pay adds `?MerchantTxnId=`. |
+| `productList` | `[{name, description, price, quantity}]`. `price` is **rupees** and only shown to the buyer. |
+
+Create Session also takes an optional `phone_number` to prefill the buyer's Hamro Pay number, `metadata` that comes back in the webhook, and `clientCommissionConfig` for marketplace splits. The module sends none of them. A success looks like this:
+
+```json
+{ "sessionId": "ca8f7b70-b9c9-11ee-8611-0a73743c8233", "merchantId": "PN_..." }
+```
+
+Then it signs the form `token` with the session id inside it. Create Session doesn't return a token, and building one needs the client secret, so this happens on the server too. The browser gets a page that auto-posts five fields to the gateway: `merchant_id`, `session_id`, `token`, `merchant_transaction_id` and `remarks` (250 characters max). The session id comes back as `providerRef` and the route stores it.
+
+Create Session has no idempotency key, and a timeout may still have created the session on Hamro Pay's side. The module never retries it: the buyer clicks Pay again and gets a new attempt with a new `merchantTxnId`.
+
+<CodeGroup by="lang" blocks={part(hamropay, "start")} />
+
+### Confirming a payment
+
+`confirmPayment` runs on the return route, with whatever Hamro Pay put on the URL, and in the reconcile job, with nothing:
+
+1. If the callback carries a `MerchantTxnId`, it has to equal the attempt id from the URL path. Anything else throws `PaymentError`, and the route answers 400.
+2. Call Get Transaction with **your** attempt id. Its answer echoes the id back. Hamro Pay's reference names that field `merchantTransactionId`, but the live API answers `merchantTxnId` (Hamro Pay's own sample store reads it that way), so the module accepts either and refuses an answer for a different attempt.
+3. Map the status. On `COMPLETED`, convert `amount` from **rupees** to paisa and compare it with the amount you stored. A mismatch throws `PaymentError`.
+
+This is what Get Transaction returns for a paid Rs 89.92 attempt:
+
+```json
+{ "merchantTxnId": "P1KX3M9Q2ZAB7C4D8E", "trackingId": "", "status": "COMPLETED", "amount": 89.92, "remarks": "", "message": "..." }
+```
+
+| Hamro Pay status | Means | Our status |
+|---|---|---|
+| `COMPLETED` | Paid. `amount` is rupees. | `paid` |
+| `PENDING`, `PROCESSING` | Not final yet | `pending` |
+| `FAILED` | The payment failed | `failed` |
+| `NOT_INITIATED` | "TRANSACTION NOT INITIATED YET": the buyer never paid | `not_found` |
+| anything else | Unknown to me | `pending`, so the reconcile job keeps asking |
+
+`amount` is `0` until the payment finishes, so the module only reads it on `COMPLETED`. A `401`, an error code or a body that isn't JSON is not an answer: the module throws a plain error, the route answers 502, and the reconcile job asks again later.
+
+<CodeGroup by="lang" blocks={part(hamropay, "confirm")} />
+
+<details class="full-file">
+  <summary>The whole Hamro Pay module in one block</summary>
+  <CodeGroup by="lang" blocks={whole(hamropay, ["config", "sign", "http", "start", "confirm"])} />
+</details>
+
+## Step 3: Add the routes
+
+Four routes connect it all. None of them mention Hamro Pay: they call `startPayment` and `confirmPayment` on whichever gateway module you import, so the same routes serve eSewa or Khalti with a different import.
+
+- `GET /` shows a demo order and a Pay button.
+- `POST /pay/{orderId}` creates an attempt, calls `startPayment`, saves the session id, and answers with a page that auto-posts the form to Hamro Pay.
+- `GET` and `POST /pay/return/{attemptId}` collect everything Hamro Pay sent, call `confirmPayment` with the **stored** amount, apply the answer with `settle`, and redirect to the order. Hamro Pay comes back with a GET; the route accepts POST too because other gateways post back.
+- `GET /orders/{orderId}` shows the order's payment status.
+
+The attempt id lives in the path, so the route never trusts `MerchantTxnId` to find the attempt. It only checks that the two agree.
+
+<CodeGroup by="fw" blocks={code.routes} />
+
+## Step 4: Catch payments the redirect missed
+
+Buyers close the tab after paying, or lose signal before the redirect. The reconcile job covers them: every minute it finds attempts still open after two minutes and runs `confirmPayment` with no callback data, which goes straight to Get Transaction. Paid ones get settled. Attempts still `NOT_INITIATED` after an hour are marked `expired`; the session died after about 10 minutes anyway. Anything still open after three days drops out of the loop and gets logged for a person to check.
+
+<CodeGroup by="lang" blocks={code.reconcile} />
+
+### Optional: the webhook
+
+Hamro Pay can also POST to a URL you save in the merchant portal (Configuration, then Webhook). Saving it shows a **webhook signing secret**, which is a different key from the client secret. The body looks like this, with a `Signature` header:
+
+```json
+{ "merchantTxnId": "P1...", "merchantId": "PN_...", "amount": 89.92, "status": "COMPLETED", "metadata": { "orderId": "..." } }
+```
+
+The signature is the same HMAC-SHA512 over `merchantTxnId,merchantId,status,amount`, keyed with the webhook secret. The catch is `amount`: Hamro Pay signs its own rendering of a floating-point number, which can be `1200`, `1200.0` or `1200.00`. Parse the JSON, then try each rendering of the parsed number and accept the webhook if one matches. Don't sign the raw bytes, or a body with a duplicate `amount` key could authenticate one value and settle on another.
+
+Treat a valid webhook as a trigger only: load the attempt by `merchantTxnId` and run `confirmPayment`, exactly like the reconcile job. The adapters in my project have `verifyWebhook` for the signature check, and the [Hamro Pay reference](/docs/providers/hamropay/reference/) has the details. The reconcile job makes the webhook optional.
+
+## Step 5: Pay in UAT
+
+Start the server with the run command from the setup step, with the four credentials from the sandbox portal set, then:
+
+<ol class="steps">
+  <li>Open the app and click <strong>Pay with Hamro Pay</strong>. The page posts the form and you land on <code>uat-checkout-pay.hamropatro.com</code>.</li>
+  <li>Log in with Hamro Pay number <code>9841414141</code> and approve with T-PIN <code>0000</code>.</li>
+  <li>Hamro Pay redirects to <code>/pay/return/&lt;attemptId&gt;?MerchantTxnId=&lt;attemptId&gt;</code>, and your server asks Get Transaction and settles it.</li>
+  <li>The order page shows <strong>paid</strong>, and the server log prints the fulfilment line once. Reload the return URL as often as you like: it never prints again.</li>
+</ol>
+
+To test the failure path, start a payment and cancel on Hamro Pay's page. Whatever Get Transaction answers decides: `FAILED` closes the attempt as failed, and `NOT_INITIATED` leaves it open for the reconcile job, which expires it after an hour. I haven't seen which of the two a cancel produces. Keep the amount between Rs 10 and Rs 50,000; the Rs 100 demo order fits.
+
+<Note title="How I tested without a merchant account">
+  Every module ran with <code>HAMROPAY_API_BASE_URL</code> pointed at a local mock that checks <code>Client-Id</code>, <code>Client-API-Key</code> and the HMAC-SHA512 <code>Signature</code> on both calls, rejects a numeric <code>transactionAmount</code>, and ends every response like the UAT host: a chunked body with no final chunk, then a dropped connection. In Go net/http, Flask and plain PHP the flow was: Pay (a form with an 88-character token), return before paying (order stays initiated), return with another attempt's <code>MerchantTxnId</code> (400), pay, return (paid, fulfilled once), return again (still fulfilled once).
+</Note>
+
+## Common Hamro Pay errors
+
+| Error | Cause | Fix |
+|---|---|---|
+| `401 {"code": 16, "message": "Unauthorized Request"}` | Wrong `Client-Id`, `Client-API-Key` or `Signature`, or UAT credentials on the live host. | Copy all four values from the portal for the right environment, and sign exactly the strings you send. |
+| `{"code": 3, ...}` INVALID_ARGUMENT | A missing or malformed field. With an empty body the message is "Merchant Txn Id cannot be null or empty". | Send every Create Session field; `merchantTxnId` at most 25 characters. |
+| `{"code": 6, ...}` ALREADY_EXISTS | A reused `merchantTxnId`. | Create a new attempt per click. |
+| `{"code": 11, ...}` OUT_OF_RANGE | Amount outside Rs 10 to Rs 50,000, or rupees sent where paisa was expected. | Send paisa: Rs 100 is `"10000"`. |
+| Signature fails only for some amounts | `transactionAmount` signed as one string and sent as another (a number, or `"100.00"`). | Format once, as a paisa string, and use it in both places. |
+| Every second request fails, or `IncompleteRead`, `chunked transfer encoding` errors | The response never finishes and the connection drops. | Send `Connection: close`, don't reuse sockets, and keep the bytes that arrived. |
+| Amount mismatch on a paid attempt | Get Transaction's `amount` compared as paisa. | It's rupees: multiply by 100 and round. |
+| Webhook signature never matches | Keyed with the client secret, or the amount rendered differently. | Use the webhook secret and try `1200`, `1200.0` and `1200.00`. |
+
+## Going live
+
+1. Finish Hamro Pay's merchant onboarding. It issues the live credentials and the live gateway host.
+2. Set `HAMROPAY_ENV=production`, `HAMROPAY_GATEWAY_URL` and the live credentials on the server. Leave `HAMROPAY_API_BASE_URL` unset.
+3. Replace the store with your database. Keep `transition` atomic: an `UPDATE ... WHERE id = ? AND status IN (...)` that reports how many rows changed. Save the session id in the same request that called Create Session.
+4. Run the reconcile job from a scheduler (cron, a queue worker, or the framework's scheduler) instead of the web process.
+5. Make one real low-value payment end to end. Only KYC-verified Hamro Pay users can pay, so use a verified account.
+
+## Hamro Pay in React, Vue or a mobile app
+
+**React, Vue, Svelte or any SPA:** the frontend POSTs the order id to your server's `/pay/{orderId}` route and lets the returned page post the form. Signing in the browser would ship the client secret to every visitor.
+
+**Flutter, React Native, Android, iOS:** keep the same server routes. The app opens `/pay/{orderId}` in a WebView or an in-app browser, watches for the navigation to your return URL, and asks your server for the order status. The server runs Get Transaction; the app never signs anything. The [mobile guide](/docs/guides/mobile/) covers keeping secrets off the device.

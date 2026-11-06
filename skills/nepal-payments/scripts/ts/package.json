@@ -1,7 +1,7 @@
 {
   "name": "nepal-payments",
   "version": "1.0.0",
-  "description": "Reference adapters for Nepali payment providers: eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay. Zero runtime deps (WebCrypto + fetch).",
+  "description": "Reference adapters for Nepali payment providers: eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay, NEPALPAY QR, Hamro Pay, GetPay. Zero runtime deps (WebCrypto + fetch).",
   "type": "module",
   "private": true,
   "exports": { ".": "./src/index.ts" },
