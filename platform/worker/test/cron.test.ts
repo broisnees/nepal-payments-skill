@@ -54,10 +54,10 @@ describe("retention", () => {
       env.DB.prepare("INSERT INTO payments (project_id, env, attempt_id, gateway, status, started_at, updated_at, event_count) VALUES ('rp', 'test', 'p-mid', 'esewa', 'paid', ?, ?, 1)").bind(old, old),
       env.DB.prepare("INSERT INTO minute_stats (project_id, env, gateway, minute) VALUES ('rp', 'test', 'esewa', ?)").bind(Math.floor((t - 401 * DAY) / 60_000)),
       env.DB.prepare("INSERT INTO minute_stats (project_id, env, gateway, minute) VALUES ('rp', 'test', 'esewa', ?)").bind(Math.floor(old / 60_000)),
-      env.DB.prepare("INSERT INTO login_tokens (token_hash, email, expires_at) VALUES ('h', 'x@example.com', 1)"),
+      env.DB.prepare("INSERT INTO auth_verification (id, identifier, value, expiresAt, createdAt, updatedAt) VALUES ('v-old', 'x', '{}', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')"),
     ]);
     const removed = await cleanup(env, t);
-    expect(removed).toMatchObject({ events: 1, payments: 1, minute_stats: 1, login_tokens: 1 });
+    expect(removed).toMatchObject({ events: 1, payments: 1, minute_stats: 1, auth_verification: 1 });
     const ids = await env.DB.prepare("SELECT id FROM events WHERE project_id = 'rp'").all();
     expect(ids.results).toEqual([{ id: "new" }]);
     const pays = await env.DB.prepare("SELECT attempt_id FROM payments WHERE project_id = 'rp'").all();
@@ -65,13 +65,13 @@ describe("retention", () => {
   });
 
   it("the scheduled handler routes the daily cron and the minute cron", async () => {
-    await env.DB.prepare("INSERT INTO login_tokens (token_hash, email, expires_at) VALUES ('h2', 'y@example.com', 1)").run();
+    await env.DB.prepare("INSERT INTO auth_verification (id, identifier, value, expiresAt, createdAt, updatedAt) VALUES ('v-h2', 'y', '{}', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')").run();
     for (const cron of ["* * * * *", DAILY_CRON]) {
       const ctx = createExecutionContext();
       await worker.scheduled!(createScheduledController({ cron, scheduledTime: Date.now() }), env, ctx);
       await waitOnExecutionContext(ctx);
     }
     // Only the daily cron runs retention.
-    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM login_tokens WHERE token_hash = 'h2'").first("n")).toBe(0);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM auth_verification WHERE id = 'v-h2'").first("n")).toBe(0);
   });
 });

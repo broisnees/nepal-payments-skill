@@ -13,7 +13,7 @@ describe("magic link", () => {
     expect(v.status).toBe(302);
     expect(v.headers.get("location")).toBe("/");
     const set = v.headers.get("set-cookie")!;
-    expect(set).toMatch(/paynp_session=/);
+    expect(set).toMatch(/__Secure-paynp\.session_token=/);
     expect(set).toMatch(/HttpOnly/);
     expect(set).toMatch(/Secure/);
     expect(set).toMatch(/SameSite=Lax/);
@@ -28,10 +28,9 @@ describe("magic link", () => {
     const email = uniqueEmail("exp");
     await call("POST", "/auth/login", { body: { email } });
     const token = tokenFromMail(email);
-    const row = await env.DB.prepare("SELECT token_hash FROM login_tokens WHERE email = ?").bind(email).first<{ token_hash: string }>();
-    expect(row!.token_hash).not.toBe(token);
-    expect(row!.token_hash).toMatch(/^[0-9a-f]{64}$/);
-    await env.DB.prepare("UPDATE login_tokens SET expires_at = 1 WHERE email = ?").bind(email).run();
+    const rows = await env.DB.prepare("SELECT identifier FROM auth_verification").all<{ identifier: string }>();
+    expect(rows.results.some((r) => r.identifier.includes(token))).toBe(false);
+    await env.DB.prepare("UPDATE auth_verification SET expiresAt = '2020-01-01T00:00:00.000Z'").run();
     expect((await call("GET", `/auth/verify?token=${token}`)).headers.get("location")).toMatch(/error=/);
   });
 
@@ -70,14 +69,17 @@ describe("sessions", () => {
     expect((await call("GET", "/api/me", { cookie })).status).toBe(401);
   });
 
-  it("slides: last_seen_at refreshes after 10 minutes and the cookie is re-set", async () => {
+  it("slides: a session older than a day is extended and the cookie is re-set", async () => {
     const { cookie } = await signUp();
-    await env.DB.prepare("UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = (SELECT id FROM sessions ORDER BY created_at DESC LIMIT 1)").bind(Date.now() - 11 * 60_000, Date.now() + 1000).run();
+    const day = 24 * 3600_000;
+    await env.DB.prepare("UPDATE auth_session SET updatedAt = ?, expiresAt = ? WHERE id = (SELECT id FROM auth_session ORDER BY createdAt DESC LIMIT 1)")
+      .bind(new Date(Date.now() - 2 * day).toISOString(), new Date(Date.now() + 2 * day).toISOString())
+      .run();
     const r = await call("GET", "/api/me", { cookie });
     expect(r.status).toBe(200);
-    expect(r.headers.get("set-cookie")).toMatch(/paynp_session=/);
-    const s = await env.DB.prepare("SELECT expires_at FROM sessions ORDER BY created_at DESC LIMIT 1").first<{ expires_at: number }>();
-    expect(s!.expires_at).toBeGreaterThan(Date.now() + 29 * 24 * 3600_000);
+    expect(r.headers.get("set-cookie")).toMatch(/paynp\.session_token=/);
+    const s = await env.DB.prepare("SELECT expiresAt FROM auth_session ORDER BY createdAt DESC LIMIT 1").first<{ expiresAt: string }>();
+    expect(Date.parse(s!.expiresAt)).toBeGreaterThan(Date.now() + 29 * day);
   });
 });
 

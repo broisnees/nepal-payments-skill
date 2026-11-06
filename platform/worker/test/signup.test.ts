@@ -49,8 +49,6 @@ describe("sign-up", () => {
   it("rejects missing, overlong or malformed fields without storing a token", async () => {
     const email = uniqueEmail("bad");
     const bad: Record<string, unknown>[] = [
-      { email, org: "Acme" },
-      { email, name: "Ram" },
       { email, name: "   ", org: "Acme" },
       { email, name: "Ram", org: "x".repeat(81) },
       { email, name: "y".repeat(81), org: "Acme" },
@@ -64,8 +62,18 @@ describe("sign-up", () => {
       expect(r.status, JSON.stringify(body)).toBe(400);
       expect(((await r.json()) as { error: { code: string } }).error.code).toBe("bad_request");
     }
-    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM login_tokens WHERE email = ?").bind(email).first<{ n: number }>();
+    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM signup_intents WHERE email = ?").bind(email).first<{ n: number }>();
     expect(n!.n).toBe(0);
+    expect(lastMailTo(email)).toBeUndefined();
+  });
+
+  it("an email alone is enough: the account gets the default org name", async () => {
+    const email = uniqueEmail("only");
+    expect((await call("POST", "/auth/signup", { body: { email } })).status).toBe(204);
+    const cookie = cookieFrom(await call("GET", `/auth/verify?token=${tokenFromMail(email)}`));
+    const me = await json(call("GET", "/api/me", { cookie }));
+    expect(me.user.name).toBeNull();
+    expect(me.orgs[0].name).toBe(`${email.split("@")[0]}'s org`);
   });
 
   it("refuses a cross-origin sign-up", async () => {

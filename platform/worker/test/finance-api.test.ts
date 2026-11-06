@@ -54,7 +54,7 @@ async function upload(s: Setup, fields: Record<string, string>, csv: string, nam
   for (const [k, v] of Object.entries(fields)) form.set(k, v);
   const req = new Request(`${BASE}/api/projects/${s.projectId}/statements?env=${envName}`, {
     method: "POST",
-    headers: { cookie: `paynp_session=${s.cookie}`, "x-paynp-csrf": "1" },
+    headers: { cookie: s.cookie, "x-paynp-csrf": "1" },
     body: form,
   });
   const ctx = createExecutionContext();

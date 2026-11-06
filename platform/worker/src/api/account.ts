@@ -1,7 +1,7 @@
 // /api/me, orgs, members, invites, sessions, PATs, device approval.
 import { newId, type Me, type Role, type Session } from "@paynp/shared";
 import type { Context, Hono } from "hono";
-import { approveDevice, INVITE_TTL } from "../auth.ts";
+import { approveDevice, INVITE_TTL, issuePat } from "../auth.ts";
 import { htmlMail, sendMail } from "../email.ts";
 import { audit, requireOrg } from "../lib/access.ts";
 import { appOrigin, badRequest, decodeCursor, forbidden, HttpError, isEmail, notFound, now, page, parseLimit, randomToken, readJson, sha256Hex, str } from "../lib/util.ts";
@@ -114,9 +114,9 @@ export function registerAccount(api: Hono<AppEnv>) {
     c.executionCtx.waitUntil(
       sendMail(c.env, {
         to: [email],
-        subject: `${by} invited you to ${org?.name ?? "an org"} on paynp`,
-        text: `${by} invited you to ${org?.name} on paynp as ${role}.\n\nAccept: ${link}\n\nThe link expires in 7 days.`,
-        html: htmlMail(`Join ${org?.name} on paynp`, [`${by} invited you as ${role}. The link expires in 7 days.`], { href: link, label: "Accept invite" }),
+        subject: `${by} invited you to ${org?.name ?? "an org"} on discerns`,
+        text: `${by} invited you to ${org?.name} on discerns as ${role}.\n\nAccept: ${link}\n\nThe link expires in 7 days.`,
+        html: htmlMail(`Join ${org?.name} on discerns`, [`${by} invited you as ${role}. The link expires in 7 days.`], { href: link, label: "Accept invite" }),
       }).catch((e: unknown) => console.error(JSON.stringify({ msg: "invite email failed", error: String(e) }))),
     );
     return c.json({ id, email, role, expires_at: t + INVITE_TTL }, 201);
@@ -148,22 +148,24 @@ export function registerAccount(api: Hono<AppEnv>) {
   api.patch("/orgs/:org/members/:user", async (c) => memberChange(c, parseRole((await readJson(c.req.raw)).role)));
   api.delete("/orgs/:org/members/:user", async (c) => memberChange(c, null));
 
+  // Sessions live in Better Auth's auth_session (ISO dates); the API keeps its epoch-ms shape.
   api.get("/sessions", async (c) => {
     const limit = parseLimit(c.req.query("limit"));
     const cur = decodeCursor(c.req.query("cursor"));
     const rows = await c.env.DB.prepare(
-      `SELECT id, user_agent, ip, created_at, last_seen_at FROM sessions WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?
-       ${cur ? "AND (last_seen_at, id) < (?, ?)" : ""} ORDER BY last_seen_at DESC, id DESC LIMIT ?`,
+      `SELECT id, userAgent AS user_agent, ipAddress AS ip, createdAt, updatedAt FROM auth_session WHERE userId = ? AND expiresAt > ?
+       ${cur ? "AND (updatedAt, id) < (?, ?)" : ""} ORDER BY updatedAt DESC, id DESC LIMIT ?`,
     )
-      .bind(...[c.get("user").id, now(), ...(cur ?? []), limit + 1])
-      .all<Omit<Session, "current">>();
+      .bind(...[c.get("user").id, new Date().toISOString(), ...(cur ? [new Date(Number(cur[0])).toISOString(), cur[1]] : []), limit + 1])
+      .all<{ id: string; user_agent: string | null; ip: string | null; createdAt: string; updatedAt: string }>();
     const current = c.get("sessionId");
-    const p = page(rows.results, limit, (r) => [r.last_seen_at, r.id]);
+    const sessions = rows.results.map((r) => ({ id: r.id, user_agent: r.user_agent, ip: r.ip, created_at: Date.parse(r.createdAt), last_seen_at: Date.parse(r.updatedAt) }));
+    const p = page(sessions, limit, (r) => [r.last_seen_at, r.id]);
     return c.json({ items: p.items.map((s): Session => ({ ...s, current: s.id === current })), next_cursor: p.next_cursor });
   });
 
   api.delete("/sessions/:id", async (c) => {
-    const r = await c.env.DB.prepare("UPDATE sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL").bind(now(), c.req.param("id"), c.get("user").id).run();
+    const r = await c.env.DB.prepare("DELETE FROM auth_session WHERE id = ? AND userId = ?").bind(c.req.param("id"), c.get("user").id).run();
     if (!r.meta.changes) throw notFound("session");
     return c.body(null, 204);
   });
@@ -180,6 +182,15 @@ export function registerAccount(api: Hono<AppEnv>) {
     const currentPat = c.get("patId");
     const p = page(rows.results, limit, (r) => [r.created_at, r.id]);
     return c.json({ items: p.items.map((r) => ({ ...r, current: r.id === currentPat })), next_cursor: p.next_cursor });
+  });
+
+  // Tokens for MCP clients and scripts. Only from a browser session: a token cannot mint more tokens.
+  api.post("/pats", async (c) => {
+    if (c.get("authKind") !== "session") throw new HttpError(403, "forbidden", "create tokens from the dashboard");
+    const body = await readJson(c.req.raw);
+    const name = str(body, "name", { max: 80 }) ?? "API token";
+    const token = await issuePat(c.env, c.get("user").id, name);
+    return c.json({ token, name }, 201);
   });
 
   api.delete("/pats/:id", async (c) => {
