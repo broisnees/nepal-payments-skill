@@ -99,3 +99,34 @@ export function useQuery<T>(key: string | null, opts: { refreshMs?: number; stal
   const refresh = useCallback(() => (key ? fetchKey(key) : Promise.resolve()), [key]);
   return { ...snap, refresh, initial: snap.data === undefined && snap.error === undefined };
 }
+
+/**
+ * An optimistic change: the UI updates now, the request runs, and a failure puts the previous data back before
+ * rethrowing. The key is refetched afterwards either way, so the screen ends on what the server holds.
+ */
+export async function optimistic<T, R = unknown>(key: string, update: (prev: T | undefined) => T | undefined, request: () => Promise<R>): Promise<R> {
+  const e = entry(key);
+  const before = e.data;
+  setData<T>(key, update);
+  try {
+    return await request();
+  } catch (err) {
+    e.data = before;
+    publish(e);
+    throw err;
+  } finally {
+    invalidate(key);
+  }
+}
+
+/** Drops one row from a cached page, for removals. */
+export const without =
+  <T extends { id: string }>(id: string) =>
+  (pg: { items: T[]; next_cursor: string | null } | undefined) =>
+    pg && { ...pg, items: pg.items.filter((x) => x.id !== id) };
+
+/** Patches one row of a cached page in place. */
+export const patchRow =
+  <T extends { id: string }>(id: string, patch: Partial<T>) =>
+  (pg: { items: T[]; next_cursor: string | null } | undefined) =>
+    pg && { ...pg, items: pg.items.map((x) => (x.id === id ? { ...x, ...patch } : x)) };

@@ -1,4 +1,4 @@
-// Signed actions (SPEC-v2 section 3): paynp POSTs to the merchant's own server, which acts with its own gateway keys.
+// Signed actions (SPEC-v2 section 3): discerns POSTs to the merchant's own server, which acts with its own gateway keys.
 //   X-Paynp-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>
 //   X-Paynp-Timestamp: <unix seconds>
 import { SIGNATURE_HEADER, TIMESTAMP_HEADER, newId, type ActionKind, type ActionPayload, type ActionRecord, type ActionReply, type Env as PayEnv, type PaymentStatus } from "@paynp/shared";

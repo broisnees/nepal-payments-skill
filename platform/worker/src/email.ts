@@ -22,7 +22,7 @@ const RESEND_URL = "https://api.resend.com/emails";
 export async function sendMail(env: Env, mail: Mail): Promise<void> {
   const to = [...new Set(mail.to)].slice(0, 50);
   if (!to.length) return;
-  const from = env.EMAIL_FROM || "paynp <alerts@paynp.dev>";
+  const from = env.EMAIL_FROM || "discerns <alerts@paynp.dev>";
   if (env.RESEND_API_KEY) {
     // Resend takes at most 50 recipients per message, which the slice above already guarantees.
     const res = await fetch(RESEND_URL, {
@@ -37,7 +37,7 @@ export async function sendMail(env: Env, mail: Mail): Promise<void> {
     await env.EMAIL.send({ to, from: parseFrom(from), subject: mail.subject, text: mail.text, html: mail.html });
     return;
   }
-  console.log(`\n[paynp email] (no email provider configured, not sent)\nTo: ${to.join(", ")}\nSubject: ${mail.subject}\n\n${mail.text}\n`);
+  console.log(`\n[discerns email] (no email provider configured, not sent)\nTo: ${to.join(", ")}\nSubject: ${mail.subject}\n\n${mail.text}\n`);
   devOutbox.push({ ...mail, to });
   if (devOutbox.length > 50) devOutbox.shift();
 }

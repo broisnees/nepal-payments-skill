@@ -51,11 +51,11 @@ async function deliver(env: Env, channel: ChannelRow, msg: Message): Promise<voi
   switch (channel.type) {
     case "email": {
       const to = Array.isArray(cfg.to) ? (cfg.to as string[]) : [];
-      await sendMail(env, { to, subject: `[paynp] ${msg.title}`, text, html: htmlMail(msg.title, msg.lines, { href: msg.link, label: "Open in paynp" }) });
+      await sendMail(env, { to, subject: `[discerns] ${msg.title}`, text, html: htmlMail(msg.title, msg.lines, { href: msg.link, label: "Open in discerns" }) });
       return;
     }
     case "slack":
-      return post(String(cfg.webhook_url), JSON.stringify({ text: `*${msg.title}*\n${msg.lines.join("\n")}\n<${msg.link}|Open in paynp>` }));
+      return post(String(cfg.webhook_url), JSON.stringify({ text: `*${msg.title}*\n${msg.lines.join("\n")}\n<${msg.link}|Open in discerns>` }));
     case "discord":
       return post(String(cfg.webhook_url), JSON.stringify({ content: `**${msg.title}**\n${msg.lines.join("\n")}\n${msg.link}`.slice(0, 2000) }));
     case "webhook": {

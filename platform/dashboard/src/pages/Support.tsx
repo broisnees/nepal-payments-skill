@@ -122,7 +122,7 @@ export default function Support() {
           <div className="note">
             <Icon name="info" />
             <span>
-              Phone and email search works for payments that carried a customer. Add <code>customer: (i) =&gt; ({"{ phone: i.phone }"})</code> to <code>wrapGateway</code>. paynp keeps only a salted hash and a masked form.
+              Phone and email search works for payments that carried a customer. Add <code>customer: (i) =&gt; ({"{ phone: i.phone }"})</code> to <code>wrapGateway</code>. discerns keeps only a salted hash and a masked form.
             </span>
           </div>
         </section>
@@ -165,7 +165,7 @@ export default function Support() {
               <EmptySmall icon="search" title="No payment matches">
                 {noCustomers ? (
                   <>
-                    Nothing with that {r.data.query.kind}. If the app does not send <code>customer</code> to paynp yet, phone and email cannot match; try the order id or the gateway reference from their SMS.
+                    Nothing with that {r.data.query.kind}. If the app does not send <code>customer</code> to discerns yet, phone and email cannot match; try the order id or the gateway reference from their SMS.
                   </>
                 ) : (
                   <>Check the other environment, widen the dates, or try the reference from the customer's {"SMS"} or screenshot.</>

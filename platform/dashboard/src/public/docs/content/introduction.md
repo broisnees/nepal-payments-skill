@@ -1,8 +1,8 @@
 # Introduction
 
-paynp shows every payment from every app and every Nepali gateway in one place: a list of attempts, a timeline for each one, the cause of each failure, analytics, and alerts by email, Slack, Discord or webhook.
+discerns shows every payment from every app and every Nepali gateway in one place: a list of attempts, a timeline for each one, the cause of each failure, analytics, and alerts by email, Slack, Discord or webhook.
 
-My server sends events through a small SDK, `@paynp/sdk`. Nothing about the payment itself goes through paynp. The SDK only reports, so if paynp is down, slow, or the key is wrong, checkout behaves exactly as before.
+My server sends events through a small SDK, `@paynp/sdk`. Nothing about the payment itself goes through discerns. The SDK only reports, so if discerns is down, slow, or the key is wrong, checkout behaves exactly as before.
 
 ## What it covers
 

@@ -5,10 +5,26 @@ import { ConfirmHost, Toaster } from "./components/ui.tsx";
 
 // Declarative routes keep the router small; pages load on demand. Navigations run in a transition, so the
 // current page stays on screen until the next one has loaded instead of flashing a fallback.
+const loaders: (() => Promise<unknown>)[] = [];
 const page = (load: () => Promise<{ default: ComponentType }>) => {
+  loaders.push(load);
   const C = lazy(load);
   return <C />;
 };
+
+/**
+ * After the first page is on screen, fetch every other page's chunk while the browser is idle, so later
+ * navigation never waits on the network. Skipped when the visitor asked to save data.
+ */
+function prefetchPages() {
+  const conn = (navigator as { connection?: { saveData?: boolean } }).connection;
+  if (conn?.saveData) return;
+  const idle = (fn: () => void) => ("requestIdleCallback" in window ? requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500));
+  idle(() => {
+    for (const load of loaders) void load().catch(() => {});
+  });
+}
+if (typeof window !== "undefined") window.addEventListener("load", prefetchPages, { once: true });
 
 export function App() {
   return (
@@ -35,6 +51,7 @@ export function App() {
               <Route path="payments/:attempt" element={page(() => import("./pages/PaymentDetail.tsx"))} />
               <Route path="live" element={page(() => import("./pages/Live.tsx"))} />
               <Route path="analytics" element={page(() => import("./pages/Analytics.tsx"))} />
+              <Route path="ask" element={page(() => import("./pages/Ask.tsx"))} />
               <Route path="support" element={page(() => import("./pages/Support.tsx"))} />
               <Route path="refunds" element={page(() => import("./pages/Refunds.tsx"))} />
               <Route path="reconcile" element={page(() => import("./pages/Reconcile.tsx"))} />

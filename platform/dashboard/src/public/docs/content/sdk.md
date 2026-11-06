@@ -1,6 +1,6 @@
 # SDK reference
 
-`@paynp/sdk` sends what happens to each payment in my app to paynp. It only reports: if paynp is down, slow, or the key is wrong, checkout behaves exactly as before.
+`@paynp/sdk` sends what happens to each payment in my app to discerns. It only reports: if discerns is down, slow, or the key is wrong, checkout behaves exactly as before.
 
 - Zero runtime dependencies. ESM with types.
 - Node 20+, Bun, Deno, Cloudflare Workers, Next.js edge: it only uses `fetch`, `crypto.getRandomValues` and timers.
@@ -69,7 +69,7 @@ after(() => paynp.flush());
 
 Outcome statuses map onto the event schema: `paid`, `pending`, `failed`, `canceled`, `refunded` as is, `partially_refunded` becomes `refunded`, and `not_found` sends no status. For adapters, a `paid` whose amount differs from the stored one is sent as status `unknown` with reason `amount_mismatch`, the same rule as `decideTransition()`.
 
-Every `gateway.request` and `payment.redirected` carries `gw_env: "sandbox" | "production"`, worked out from the host the module called. The host itself is never sent. paynp flags a live key whose events say `sandbox`.
+Every `gateway.request` and `payment.redirected` carries `gw_env: "sandbox" | "production"`, worked out from the host the module called. The host itself is never sent. discerns flags a live key whose events say `sandbox`.
 
 ### Errors
 
@@ -119,16 +119,16 @@ export const gateway = paynp.wrapGateway("esewa", esewa, {
 });
 ```
 
-The getter runs once per start and its result goes on `payment.started`. paynp keeps phone and email only as a salted hash plus a masked form (`98XXXXX123`), so support can find "I already paid" payments by phone without storing the number.
+The getter runs once per start and its result goes on `payment.started`. discerns keeps phone and email only as a salted hash plus a masked form (`98XXXXX123`), so support can find "I already paid" payments by phone without storing the number.
 
 ## Action endpoint (refunds and re-checks)
 
-paynp never holds gateway keys. "Send refund via your server" and "Re-check" in the dashboard send a signed request to a route on my server, which acts with its own keys. See [Reconcile, refunds and exports](/docs/operations) for the setup.
+discerns never holds gateway keys. "Send refund via your server" and "Re-check" in the dashboard send a signed request to a route on my server, which acts with its own keys. See [Reconcile, refunds and exports](/docs/operations) for the setup.
 
 ```ts
 // Hono
 app.post("/paynp/actions", (c) => paynp.actionHandler({ ...actions, secret: c.env?.PAYNP_ACTION_SECRET })(c.req.raw));
-// Express: raw body, so the handler sees the exact bytes paynp signed
+// Express: raw body, so the handler sees the exact bytes discerns signed
 app.post("/paynp/actions", express.raw({ type: "application/json" }), paynp.nodeActionHandler(actions));
 ```
 
@@ -139,7 +139,7 @@ The handler accepts only `POST` with a valid `X-Paynp-Signature: sha256=<hex HMA
 ```ts
 createPaynp({
   key,                  // pnp_test_... or pnp_live_...; empty = paynp dev outside production, else no-op
-  endpoint,             // default PAYNP_ENDPOINT, else https://paynp.discerns.app
+  endpoint,             // default PAYNP_ENDPOINT, else https://discerns.app
   dev,                  // no key only: dev server URL, or false to never look for one
   flushIntervalMs: 2000,
   maxBatch: 15,         // events per request (max 100); a full batch is sent at once

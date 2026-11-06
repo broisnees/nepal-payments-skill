@@ -1,6 +1,6 @@
 # Reconcile, refunds and exports
 
-paynp never holds gateway secret keys. Anything that has to act on a gateway (a refund, a re-check) is a signed request from paynp to my own server, which acts with its own keys and reports back.
+discerns never holds gateway secret keys. Anything that has to act on a gateway (a refund, a re-check) is a signed request from discerns to my own server, which acts with its own keys and reports back.
 
 ## Action endpoint
 
@@ -8,7 +8,7 @@ paynp never holds gateway secret keys. Anything that has to act on a gateway (a 
 2. Settings, Action endpoint: enter the URL, one per environment. The secret is shown once.
 3. Set it on the server as `PAYNP_ACTION_SECRET`, then press Test.
 
-paynp sends:
+discerns sends:
 
 ```bash
 POST <url>
@@ -21,7 +21,7 @@ It waits up to 20 seconds for `{"ok": true, "refund_ref"?, "status"?}` or `{"ok"
 
 ## Double payments and the refund queue
 
-When a payment becomes paid, paynp looks for another paid payment in the same project and environment with the same order id (any time), or the same customer and amount started within 30 minutes. The later one becomes an open refund case linked to the earlier one, and the `double_payment` alert rule can announce it.
+When a payment becomes paid, discerns looks for another paid payment in the same project and environment with the same order id (any time), or the same customer and amount started within 30 minutes. The later one becomes an open refund case linked to the earlier one, and the `double_payment` alert rule can announce it.
 
 The Refunds tab lists cases (duplicate, manual, customer request) with a per-gateway checklist:
 
@@ -47,7 +47,7 @@ The Reconcile tab takes a gateway's settlement statement as CSV, up to 5 MB.
 - Amounts like `1,000.00`, `Rs. 1,000`, lakh grouping `1,00,000.50` and negative refunds are understood; the mapping says whether the file is in rupees or paisa.
 - Rows match by exact gateway reference first, then by amount within 10 minutes when exactly one payment fits.
 
-The result shows matched rows and amounts, statement rows paynp never saw, paid payments missing from any statement, amount mismatches, fees, net and the effective fee percentage. Without a statement, fees can be estimated from a percentage and a fixed fee per gateway.
+The result shows matched rows and amounts, statement rows discerns never saw, paid payments missing from any statement, amount mismatches, fees, net and the effective fee percentage. Without a statement, fees can be estimated from a percentage and a fixed fee per gateway.
 
 ## Exports
 

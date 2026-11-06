@@ -58,7 +58,7 @@ export function SetupEmpty({ title }: { title?: string }) {
         <p className="muted">
           {env === "live"
             ? "Live events arrive once the server runs with a live key. Test first, then swap the key."
-            : "Your server sends events through a small SDK. Nothing about the payment itself goes through paynp, so a checkout never waits on it."}
+            : "Your server sends events through a small SDK. Nothing about the payment itself goes through discerns, so a checkout never waits on it."}
         </p>
       </div>
       <div className="empty-steps">

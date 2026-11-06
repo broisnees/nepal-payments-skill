@@ -81,7 +81,7 @@ export default function Reconcile() {
       <div className="page-head" style={{ marginBlockEnd: 0 }}>
         <div>
           <h1>Reconcile</h1>
-          <p>Upload a gateway's settlement statement. paynp matches every row to a payment and shows what is missing.</p>
+          <p>Upload a gateway's settlement statement. discerns matches every row to a payment and shows what is missing.</p>
         </div>
         {statements.length > 0 && !pending && (
           <div className="stmt-pick">
@@ -159,7 +159,7 @@ function Upload({ gateway, setGateway, busy, onFile, compact }: { gateway: strin
           <div className="note">
             <Icon name="info" />
             <span>
-              eSewa, Khalti and Fonepay presets read common column names. They are <span className="unverified">unverified</span> against real merchant exports, so the first upload may ask which column is which. paynp remembers the answer per gateway.
+              eSewa, Khalti and Fonepay presets read common column names. They are <span className="unverified">unverified</span> against real merchant exports, so the first upload may ask which column is which. discerns remembers the answer per gateway.
             </span>
           </div>
         )}
@@ -200,7 +200,7 @@ function Mapping({ pending, busy, onCancel, onSubmit }: { pending: Pending; busy
         <div>
           <h2 id="map-title">Which column is which?</h2>
           <span className="hint">
-            {pending.file.name}, {gatewayName(pending.gateway)}. paynp did not recognise these columns. Pick them once; the next {gatewayName(pending.gateway)} statement uses the same choice.
+            {pending.file.name}, {gatewayName(pending.gateway)}. discerns did not recognise these columns. Pick them once; the next {gatewayName(pending.gateway)} statement uses the same choice.
           </span>
         </div>
       </div>
@@ -252,7 +252,7 @@ function Mapping({ pending, busy, onCancel, onSubmit }: { pending: Pending; busy
         <div>
           <div className="section-title" style={{ marginBlockEnd: 8 }}>
             <span>Preview</span>
-            <span className="hint">{badAmounts ? `${badAmounts} of ${preview.length} amounts are not numbers: check the Amount column` : `First ${preview.length} rows as paynp will read them`}</span>
+            <span className="hint">{badAmounts ? `${badAmounts} of ${preview.length} amounts are not numbers: check the Amount column` : `First ${preview.length} rows as discerns will read them`}</span>
           </div>
           <div className="table-wrap preview">
             <table className="t t-stack">
@@ -312,10 +312,10 @@ function Mapping({ pending, busy, onCancel, onSubmit }: { pending: Pending; busy
 
 // ------------------------------------------------------------------ results
 const TABS: { key: Tab; label: string; problem: boolean; help: string }[] = [
-  { key: "matched", label: "Matched", problem: false, help: "Each row tied to a paynp payment, by reference or by amount within 10 minutes." },
-  { key: "missing", label: "Missing settlement", problem: true, help: "paynp saw these paid in the statement period, but the statement has no row for them. Ask the gateway, or check the next statement." },
-  { key: "unmatched", label: "Not in paynp", problem: true, help: "In the statement but not in paynp: payments from before the SDK was added, from another app, or with a reference paynp never saw." },
-  { key: "mismatch", label: "Mismatch", problem: true, help: "Matched, but the statement amount differs from what paynp recorded." },
+  { key: "matched", label: "Matched", problem: false, help: "Each row tied to a discerns payment, by reference or by amount within 10 minutes." },
+  { key: "missing", label: "Missing settlement", problem: true, help: "discerns saw these paid in the statement period, but the statement has no row for them. Ask the gateway, or check the next statement." },
+  { key: "unmatched", label: "Not in discerns", problem: true, help: "In the statement but not in discerns: payments from before the SDK was added, from another app, or with a reference discerns never saw." },
+  { key: "mismatch", label: "Mismatch", problem: true, help: "Matched, but the statement amount differs from what discerns recorded." },
 ];
 
 function Results({ id, onDeleted }: { id: string; onDeleted: () => void }) {
@@ -502,7 +502,7 @@ function Rows({ id, tab }: { id: string; tab: Tab }) {
                 <th>Order</th>
                 <th>Reference</th>
                 <th className="r">Statement</th>
-                <th className="r">paynp</th>
+                <th className="r">discerns</th>
                 <th className="r">Difference</th>
               </tr>
             ) : (
@@ -542,7 +542,7 @@ function Rows({ id, tab }: { id: string; tab: Tab }) {
                       <td className="r" data-label="Statement">
                         <Money paisa={x.amount_paisa} />
                       </td>
-                      <td className="r" data-label="paynp">
+                      <td className="r" data-label="discerns">
                         <Money paisa={x.paynp_amount_paisa} />
                       </td>
                       <td className="r" data-label="Difference" style={{ color: "var(--crit-ink)" }}>

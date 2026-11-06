@@ -74,7 +74,7 @@ describe("webhook signatures", () => {
     const slack = await channel(s, "slack", { webhook_url: slackUrl });
     const discord = await channel(s, "discord", { webhook_url: discordUrl });
     await call("POST", `/api/projects/${s.projectId}/channels/${slack.id}/test`, { cookie: s.cookie });
-    expect(to(slackUrl)[0].body.text).toMatch(/^\*Test alert from paynp\*/);
+    expect(to(slackUrl)[0].body.text).toMatch(/^\*Test alert from discerns\*/);
     failNext = 1;
     const r = await call("POST", `/api/projects/${s.projectId}/channels/${discord.id}/test`, { cookie: s.cookie });
     expect(r.status).toBe(200);
@@ -279,13 +279,13 @@ describe("sendMail through Resend", () => {
       calls.push({ url, init });
       return new Response(status === 200 ? '{"id":"x"}' : '{"message":"invalid from"}', { status });
     }) as typeof fetch;
-    const testEnv = { EMAIL_FROM: "paynp <noreply@paynp.discerns.app>", RESEND_API_KEY: "re_test" } as unknown as Env;
+    const testEnv = { EMAIL_FROM: "paynp <noreply@discerns.app>", RESEND_API_KEY: "re_test" } as unknown as Env;
     try {
       await sendMail(testEnv, { to: ["a@example.com", "a@example.com"], subject: "Hi", text: "t", html: "<p>t</p>" });
       expect(calls).toHaveLength(1);
       expect(calls[0].url).toBe("https://api.resend.com/emails");
       expect((calls[0].init.headers as Record<string, string>).Authorization).toBe("Bearer re_test");
-      expect(JSON.parse(calls[0].init.body as string)).toEqual({ from: "paynp <noreply@paynp.discerns.app>", to: ["a@example.com"], subject: "Hi", text: "t", html: "<p>t</p>" });
+      expect(JSON.parse(calls[0].init.body as string)).toEqual({ from: "paynp <noreply@discerns.app>", to: ["a@example.com"], subject: "Hi", text: "t", html: "<p>t</p>" });
       status = 422;
       await expect(sendMail(testEnv, { to: ["b@example.com"], subject: "Hi", text: "t", html: "" })).rejects.toThrow(/Resend answered 422/);
     } finally {
