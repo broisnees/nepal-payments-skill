@@ -228,6 +228,67 @@ if d.next == "paid":
         "`verify_confirmation()` and `confirmation_response()` handle NCHL's confirm-payment callback; `web_socket_request()` builds the STOMP request for live status.",
       ],
     },
+    hamropay: {
+      initiate: `init = payments["hamropay"].initiate(
+    order_id=attempt.id,  # merchantTxnId: 1-25 chars [A-Za-z0-9-]
+    amount_paisa=attempt.amount_paisa,  # Rs 10 to Rs 50,000; sent as a paisa string
+    description="Order #42",  # product line and form remarks
+    return_url=f"{base_url}/payments/hamropay/return/{attempt.id}",  # Hamro Pay appends ?MerchantTxnId=
+)
+# provider_ref is the sessionId. verify() looks up by order id, but keep it for support.
+db.save_provider_ref(attempt.id, init.provider_ref)
+# init.kind == "form": serve render_auto_submit_form(init) as text/html. The session lives about 10 minutes.`,
+      verify: `# ?MerchantTxnId= only names the attempt; it must match the one in the path.
+echoed = payments["hamropay"].order_id_from_callback(params)
+if echoed and echoed != attempt.id:
+    raise ValueError("callback is for a different attempt")
+result = payments["hamropay"].verify(
+    order_id=attempt.id,
+    amount_paisa=attempt.amount_paisa,  # Get Transaction answers in rupees; verify() converts to paisa
+)
+d = decide_transition(attempt.status, result.status, result.amount_paisa, attempt.amount_paisa,
+                      time.time() - attempt.created_at.timestamp())
+# Write d.next with UPDATE ... WHERE id = attempt.id AND status = attempt.status.
+# d.review_required or d.late_paid: alert a human.
+if d.next == "paid":
+    pass  # fulfil the order here, only when that UPDATE changed a row`,
+      notes: [
+        "Optional `remarks=` and `metadata=` go in the same `initiate()` call; `metadata` comes back in the webhook.",
+        "`verify_webhook(body, request.headers.get(\"Signature\"))` checks the optional webhook with `HAMROPAY_WEBHOOK_SECRET`. Treat it as a trigger and run `verify()` before fulfilling.",
+      ],
+    },
+    getpay: {
+      initiate: `gp = payments["getpay"]
+# Both callback URLs must be on GETPAY_WEBSITE_DOMAIN and serve gp.return_page().
+init = gp.initiate(
+    order_id=attempt.id,  # clientRequestId: 1-50 chars [A-Za-z0-9-]
+    amount_paisa=attempt.amount_paisa,  # sent as a rupee number (price)
+    description="Order #42",  # shown beside the card form
+    return_url=f"{base_url}/payments/getpay/return/{attempt.id}",
+)
+# init.kind == "sdk". Four separate pages, as GetPay's docs require:
+#   POST /payments/{id}/start         -> gp.checkout_page(init, f"{base_url}/payments/getpay/card")
+#   GET  /payments/getpay/card        -> gp.payment_page()
+#   GET  /payments/getpay/return/{id} -> gp.return_page(f"{base_url}/payments/getpay/verify/{attempt.id}")`,
+      verify: `# GET /payments/getpay/verify/{id}?token=..., reached from return_page(), which reads the token
+# from the query or the #hash and breaks out of GetPay's iframe.
+result = payments["getpay"].verify(
+    order_id=attempt.id,
+    amount_paisa=attempt.amount_paisa,
+    callback=params,  # params["token"]: oprSecret checked against opr_key, then merchant-status, then clientId
+)
+d = decide_transition(attempt.status, result.status, result.amount_paisa, attempt.amount_paisa,
+                      time.time() - attempt.created_at.timestamp())
+# Write d.next with UPDATE ... WHERE id = attempt.id AND status = attempt.status.
+# d.review_required or d.late_paid: alert a human.
+if d.next == "paid":
+    pass  # fulfil the order here, only when that UPDATE changed a row`,
+      notes: [
+        "`initiate()` returns an `SdkResult` (`kind == \"sdk\"`) with `script_url` and `options`.",
+        "Without a token (the reconciliation job), `verify()` uses `transaction-statement` by `clientRequestId` and reports a success as `unknown`: it can't prove the transaction is yours.",
+        "`status(transaction_id)` and `statement(transaction_id=...)` return the raw status data, including `crrn` for disputes.",
+      ],
+    },
   },
 };
 

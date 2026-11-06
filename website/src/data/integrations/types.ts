@@ -1,4 +1,4 @@
-export type ProviderKey = "esewa" | "khalti" | "fonepay" | "connectips" | "cybersource" | "nps" | "imepay" | "nepalpay";
+export type ProviderKey = "esewa" | "khalti" | "fonepay" | "connectips" | "cybersource" | "nps" | "imepay" | "nepalpay" | "hamropay" | "getpay";
 
 export interface ProviderSnippet {
   /** Start a payment for one attempt. */

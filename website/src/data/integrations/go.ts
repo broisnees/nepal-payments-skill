@@ -235,6 +235,64 @@ ${verifyTail}`,
         "`VerifyConfirmation` and `ConfirmationResponse` handle NCHL's confirm-payment callback; `WebSocketRequest` builds the STOMP request for live status.",
       ],
     },
+    hamropay: {
+      initiate: `res, err := p.HamroPay.Initiate(ctx, payments.InitiateInput{
+	OrderID:     attempt.ID,          // merchantTxnId: 1 to 25 chars [A-Za-z0-9-]
+	AmountPaisa: attempt.AmountPaisa, // Rs 10 to Rs 50,000; sent as a paisa string
+	Description: "Order #42",
+	// Hamro Pay appends ?MerchantTxnId=..., so the attempt id goes in the path
+	ReturnURL: baseURL + "/payments/hamropay/return/" + attempt.ID,
+})
+if err != nil {
+	return err
+}
+// sessionId: Verify looks up by order id, but keep it for support
+${saveRef}
+// form result: serve payments.RenderAutoSubmitForm(res) as text/html. The session lives about 10 minutes.`,
+      verify: `// ?MerchantTxnId= only names the attempt; it must match the one in the path.
+if echoed := p.HamroPay.OrderIDFromCallback(params); echoed != "" && echoed != attempt.ID {
+	return errors.New("callback is for a different attempt")
+}
+// Get Transaction answers in rupees; Verify converts to paisa.
+v, err := p.HamroPay.Verify(ctx, payments.VerifyInput{
+	OrderID:     attempt.ID,
+	AmountPaisa: attempt.AmountPaisa,
+})
+${verifyTail}`,
+      notes: [
+        "`HamroPay: &payments.HamroPayInitiateOptions{Remarks: ..., Metadata: ...}` on the input sets the form remarks and the metadata the webhook echoes.",
+        "`VerifyWebhook(body, r.Header.Get(\"Signature\"))` checks the optional webhook with `HAMROPAY_WEBHOOK_SECRET`. Treat it as a trigger and run `Verify` before fulfilling.",
+        "Every request sets `req.Close`: the API drops keep-alive connections.",
+      ],
+    },
+    getpay: {
+      initiate: `// Both callback URLs must be on GETPAY_WEBSITE_DOMAIN and serve ReturnPage.
+res, err := p.GetPay.Initiate(ctx, payments.InitiateInput{
+	OrderID:     attempt.ID,          // clientRequestId: 1 to 50 chars [A-Za-z0-9-]
+	AmountPaisa: attempt.AmountPaisa, // sent as a rupee number (price)
+	Description: "Order #42",         // shown beside the card form
+	ReturnURL:   baseURL + "/payments/getpay/return/" + attempt.ID,
+})
+if err != nil {
+	return err
+}
+// res.Kind == payments.KindSDK. Four separate pages, as GetPay's docs require:
+//   POST /payments/{id}/start         -> p.GetPay.CheckoutPage(res, baseURL+"/payments/getpay/card")
+//   GET  /payments/getpay/card        -> p.GetPay.PaymentPage()
+//   GET  /payments/getpay/return/{id} -> p.GetPay.ReturnPage(baseURL + "/payments/getpay/verify/" + attempt.ID)`,
+      verify: `// GET /payments/getpay/verify/{id}?token=..., reached from ReturnPage, which reads the token
+// from the query or the #hash and breaks out of GetPay's iframe.
+v, err := p.GetPay.Verify(ctx, payments.VerifyInput{
+	OrderID:     attempt.ID,
+	AmountPaisa: attempt.AmountPaisa,
+	Callback:    params, // params["token"]: oprSecret, then merchant-status, then clientId
+})
+${verifyTail}`,
+      notes: [
+        "Without a token (the reconciliation job), a success from `transaction-statement` comes back `StatusUnknown`: it can't prove the transaction is yours.",
+        "`Status(ctx, id)` and `Statement(ctx, payments.GetPayStatementQuery{TransactionID: id})` return the raw status data, including `crrn` for disputes.",
+      ],
+    },
   },
 };
 

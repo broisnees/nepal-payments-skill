@@ -222,6 +222,55 @@ ${transition}`,
         "`verifyConfirmation` and `confirmationResponse` handle NCHL's confirm-payment callback; `webSocketRequest` builds the STOMP request for live status.",
       ],
     },
+    hamropay: {
+      initiate: `// Hamro Pay appends ?MerchantTxnId=..., so the attempt id goes in the path.
+val init = payments.hamropay.initiate(
+    InitiateInput(
+        orderId = attempt.id, // merchantTxnId: 1-25 chars [A-Za-z0-9-]
+        amountPaisa = attempt.amountPaisa, // Rs 10 to Rs 50,000
+        description = "Order #42",
+        returnUrl = "$baseUrl/payments/hamropay/return/\${attempt.id}",
+    ),
+) as InitiateResult.Form
+// providerRef is the sessionId. verify() looks up by order id, but keep it for support.
+db.saveProviderRef(attempt.id, init.providerRef)
+// Respond with renderAutoSubmitForm(init) as text/html. The session lives about 10 minutes.`,
+      verify: `// ?MerchantTxnId= only names the attempt; it must match the one in the path.
+val echoed = payments.hamropay.orderIdFromCallback(params)
+require(echoed == null || echoed == attempt.id) { "callback is for a different attempt" }
+// Get Transaction answers in rupees; verify() converts to paisa.
+val result = payments.hamropay.verify(VerifyInput(orderId = attempt.id, amountPaisa = attempt.amountPaisa))
+${transition}`,
+      notes: [
+        "`initiate(input, HamroPayInitiateExtras(remarks = ..., metadata = ...))` sets the form remarks and the metadata the webhook echoes.",
+        "`verifyWebhook(body, signatureHeader)` checks the optional webhook with `HAMROPAY_WEBHOOK_SECRET`. Treat it as a trigger and run `verify()` before fulfilling.",
+      ],
+    },
+    getpay: {
+      initiate: `// Both callback URLs must be on GETPAY_WEBSITE_DOMAIN and serve returnPage().
+val init = payments.getpay.initiate(
+    InitiateInput(
+        orderId = attempt.id, // clientRequestId: 1-50 chars [A-Za-z0-9-]
+        amountPaisa = attempt.amountPaisa, // sent as a rupee number (price)
+        description = "Order #42",
+        returnUrl = "$baseUrl/payments/getpay/return/\${attempt.id}",
+    ),
+) as InitiateResult.Sdk
+// Four separate pages, as GetPay's docs require:
+//   POST /payments/{id}/start         -> payments.getpay.checkoutPage(init, "$baseUrl/payments/getpay/card")
+//   GET  /payments/getpay/card        -> payments.getpay.paymentPage()
+//   GET  /payments/getpay/return/{id} -> payments.getpay.returnPage("$baseUrl/payments/getpay/verify/\${attempt.id}")`,
+      verify: `// GET /payments/getpay/verify/{id}?token=..., reached from returnPage(), which reads the token
+// from the query or the #hash and breaks out of GetPay's iframe.
+val result = payments.getpay.verify(
+    VerifyInput(orderId = attempt.id, amountPaisa = attempt.amountPaisa, callback = params), // params["token"]
+)
+${transition}`,
+      notes: [
+        "`verify()` checks the token's `oprSecret` against `oprKey`, calls `merchant-status`, and requires `clientId` to equal the attempt id.",
+        "Without a token (the reconciliation job), a success from `transaction-statement` comes back `UNKNOWN`: it can't prove the transaction is yours.",
+      ],
+    },
   },
 };
 

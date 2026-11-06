@@ -15,9 +15,11 @@ const providerNav = [
   ["NPS OnePG", "nps"],
   ["IME Pay", "imepay"],
   ["NEPALPAY QR", "nepalpay"],
+  ["Hamro Pay", "hamropay"],
+  ["GetPay", "getpay"],
 ];
 const description =
-  "Agent skill and tested adapters for Nepali payment gateways: eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay and NEPALPAY QR, in TypeScript, Python, Java, Kotlin, PHP and Go.";
+  "Agent skill and tested adapters for Nepali payment gateways: eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay, NEPALPAY QR, Hamro Pay and GetPay, in TypeScript, Python, Java, Kotlin, PHP and Go.";
 
 export default defineConfig({
   site,

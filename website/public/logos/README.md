@@ -14,6 +14,8 @@ guidelines forbid changing colours or proportions), and keep the site's "not aff
 | `connectips.png` | connectIPS (NCHL) | https://connectips.com/ (only a 100x65 file is published) |
 | `nps.png`, `nps-white.png` | Nepal Payment Solution (NPX brand), resized to 1200 px wide | https://nepalpayment.com/ |
 | `cybersource.png` | CyberSource, a Visa solution | https://www.cybersource.com/ |
+| `hamropay.svg`, `icons/hamropay.png` | Hamro Pay | Vector, from https://hamropay.com.np/checkout (`hpLogo.svg`), taken 2026-11-06 |
+| `getpay.png`, `getpay-white.png`, `icons/getpay.png` | GetPay (NCHL card gateway) | https://getpay.global/ header logo (colour and white) and its `g` mark (`g-logo2.png`), taken 2026-11-06 |
 | `nepalpay.png`, `icons/nepalpay.png` | NEPALPAY QR (NCHL) | Cropped from NCHL's poster https://nchl.com.np/wp-content/uploads/2026/08/NEPALPAY-QR-800x800.jpg on 2026-11-06. The standalone `nepalpayqrlogo.png` on nchl.com.np is a near-transparent watermark (alpha at most 23 of 255), so it can't be used. |
 
 Only eSewa and Khalti publish vector logos; the others are their official PNGs, not traced copies.

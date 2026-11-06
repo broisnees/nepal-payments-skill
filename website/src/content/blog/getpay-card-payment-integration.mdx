@@ -1,0 +1,305 @@
+---
+title: "GetPay Card Payment Integration: NCHL Card Checkout Step by Step in Any Framework"
+description: "Take Visa and Mastercard through GetPay, NCHL's card gateway for Nepali banks, in Express, Laravel, Django, Go, Spring or Ktor: SDK pages, token, status API."
+label: GetPay (cards)
+provider: getpay
+published: 2026-11-06
+order: 100
+stack: true
+stackTitle: "GetPay Card Payment Integration in {stack}: Step by Step"
+stackDescription: "Integrate GetPay, NCHL's card checkout for Nepali banks, in {stack}: the four SDK pages, the oprSecret token check, merchant-status and reconciliation."
+faq:
+  - q: "What is GetPay?"
+    a: "GetPay is the card checkout NCHL (Nepal Clearing House) hosts for banks. It takes Visa and Mastercard, domestic and international, with 3-D Secure. NMB Bank and Global IME Bank launched their card gateways on it, and NCHL reports 14 banks on its hosted gateway. You integrate it through your bank, not by signing up with GetPay."
+  - q: "Are there GetPay sandbox credentials?"
+    a: "No public ones. Your bank issues papInfo, the oprKey, the insKey (blank when the operator hosts the checkout), the SDK bundle URL and the base URL, and registers your website domain with NCHL. The UAT base URL is https://uat-bank-getpay.nchl.com.np/ecom-web-checkout/v1/secure-merchant/transactions."
+  - q: "Why does the GetPay card form fail on localhost?"
+    a: "The card form runs on CyberSource, which only accepts origins NCHL has whitelisted for your merchant. An unregistered origin such as localhost gets a 401 from testflex.cybersource.com. Ask your bank to register the domain you test on."
+  - q: "How do I verify a GetPay payment?"
+    a: "GetPay returns a base64 token holding the transaction id and an oprSecret. Check that oprSecret equals base64(SHA-256(oprKey + id)) for your oprKey, call merchant-status with the id and your papInfo, and accept the payment only when data.clientId is your attempt id, the status is SUCCESS and the amount matches what you stored."
+  - q: "Why can't I trust GetPay's merchant-status on its own?"
+    a: "On UAT it returned a transaction to a request carrying a made-up papInfo for another institution, so it answers for any transaction id. Without the oprSecret check, a buyer could hand your return route the id of someone else's successful payment."
+  - q: "Does GetPay have a refund API or webhooks?"
+    a: "Neither is published. Refunds go through your bank's portal, and nothing calls your server when a payment completes. The return page and a reconcile job that reads the transaction statement cover the gap."
+---
+
+import { Code } from "astro-expressive-code/components";
+import CodeGroup from "../../components/blog/CodeGroup.astro";
+import Note from "../../components/blog/Note.astro";
+import { app, gatewayNames, part, whole } from "../../data/blog-code";
+import { cardRoutes, getpay, oprSecretVector } from "../../data/blog-code/getpay";
+
+export const code = app(gatewayNames("getpay", "GetPay", "GetPay"));
+
+By the end of this guide you'll have a checkout that takes Visa and Mastercard through GetPay and marks an order paid only after GetPay's status API confirms it, for the right attempt and the right amount. Pick your framework above and the whole guide switches to it.
+
+GetPay credentials only come from a bank, and the card form only loads on a domain NCHL has registered, so I couldn't pay a single card in UAT for this guide. Here is what I did test in November 2026. Every module and route on this page ran in all twelve frameworks (Next.js as a production build) against a local mock of `merchant-status` and `transaction-statement`: the checkout, payment and return pages, a forged token, a token for another attempt, a wrong amount, a missing token, a failed payment, a good token that fulfilled the order once, and a replay of it. I ran the return page's script with the token in the query, in the hash and inside an iframe. All six modules reproduce the oprSecret test vector below. And because GetPay's status APIs need no credentials, I called the real UAT host from each of the six modules with a made-up id and got GetPay's not-found answer back.
+
+## How a GetPay payment works
+
+GetPay is the card checkout NCHL hosts for Nepali banks: Visa and Mastercard, domestic and international, with 3-D Secure (CyberSource runs underneath). NMB Bank and Global IME Bank launched their card gateways on it, and NCHL reports 14 banks on the hosted gateway. If your bank offers card payments through NCHL, this is what it hands you.
+
+It is a browser SDK, not a redirect or a signed form. GetPay's docs require four separate pages:
+
+<ol class="steps">
+  <li>A <strong>checkout page</strong> loads GetPay's script and starts it with your options: the amount, your attempt id as <code>clientRequestId</code>, and where to come back to.</li>
+  <li>When GetPay accepts the options, the browser moves to a <strong>payment page</strong>. GetPay draws the card form there and runs 3-D Secure.</li>
+  <li>GetPay sends the buyer to your <strong>success or failure page</strong> with a <code>token</code>: base64 of the GetPay transaction id and an <code>oprSecret</code>. For cards without 3-D Secure the token sits in the URL hash, which never reaches a server, so that page is a bit of JavaScript that forwards it.</li>
+  <li>Your server checks the <code>oprSecret</code> against your key, then asks <strong>merchant-status</strong> about the transaction. That answer decides.</li>
+</ol>
+
+Three rules fall out of this:
+
+- **The token alone proves nothing.** It names a transaction. Only `merchant-status` says what happened to it.
+- **The status API answers anyone.** On UAT it returned a transaction for a request carrying a made-up `papInfo` from another institution. So the module checks the `oprSecret` (only your `oprKey` produces it) and that the transaction's `clientId` is your attempt.
+- **Use your own numbers.** Compare the amount with the one you stored, never with anything in the URL.
+
+## What you need
+
+A merchant account with a bank that issues GetPay. GetPay doesn't onboard merchants itself. The bank gives you:
+
+- **papInfo**: base64 of `{"institutionId", "mid", "tid"}`
+- **oprKey**: the operator key. It goes to the browser by GetPay's design, so it isn't a secret, but it also signs the return token.
+- **insKey**: blank when the operator hosts the checkout, which is the usual case
+- the **bundle URL** for the SDK and the **base URL** for the status APIs
+
+The bank also registers your website's domain with NCHL. The card form refuses any other origin: CyberSource answers `401` from `testflex.cybersource.com`, so `localhost` doesn't work. Test on a host whose domain the bank registered, a staging server for example.
+
+| | UAT | Live |
+|---|---|---|
+| Base URL | `https://uat-bank-getpay.nchl.com.np/ecom-web-checkout/v1/secure-merchant/transactions` | `https://ecom-getpay.nchl.com.np/ecom-web-checkout/v1/secure-merchant/transactions` |
+| SDK bundle | `https://minio-getpay.nchl.com.np/getpay-cdn/webcheckout/v5/bundle.js` | from your bank |
+| Status APIs | `{base}/merchant-status`, `{base}/transaction-statement` | same paths |
+| Credentials | from your bank | from your bank |
+
+Set everything as environment variables. The module uses UAT unless `GETPAY_ENV` says otherwise:
+
+```bash
+GETPAY_ENV=production                        # leave unset for UAT
+GETPAY_PAP_INFO='eyJpbnN0aXR1dGlvbklk...'    # from your bank
+GETPAY_OPR_KEY='your-opr-key'
+GETPAY_INS_KEY=''                            # blank when operator hosted
+GETPAY_WEBSITE_DOMAIN=https://shop.example.com   # the domain your bank registered
+GETPAY_BUSINESS_NAME='Everest Store'
+GETPAY_IMAGE_URL=https://shop.example.com/logo.png
+GETPAY_CURRENCY=NPR                          # default NPR
+GETPAY_BUNDLE_URL=...                        # the bundle URL your bank gives you
+GETPAY_BASE_URL=...                          # optional: the bank's base URL, or a local mock
+```
+
+`BASE_URL`, which every guide's setup sets, must have the same origin as `GETPAY_WEBSITE_DOMAIN`: GetPay sends the buyer back only to that domain, and the module refuses a return URL on any other.
+
+## Set up the project
+
+Create the project and install the framework. The commands below match the stack you picked. The module needs nothing beyond each language's standard library (plus Jackson on Spring and kotlinx.serialization on Ktor, as in every guide).
+
+<CodeGroup by="fw" blocks={code.setup} />
+
+## Step 1: Store payment attempts
+
+Every click on "Pay" creates a **payment attempt**: one row with its own id, the amount, and a status that starts at `initiated`. The attempt id goes to GetPay as `clientRequestId` and comes back as `clientId` in the status answer, which is how the module knows a transaction belongs to this attempt.
+
+In production this is a table:
+
+```sql
+CREATE TABLE payment_attempts (
+  id            VARCHAR(50) PRIMARY KEY,   -- sent to GetPay as clientRequestId (50 chars max)
+  order_id      VARCHAR(64) NOT NULL,
+  amount_paisa  BIGINT      NOT NULL,      -- what we charge, in paisa (Rs 100 = 10000)
+  status        VARCHAR(16) NOT NULL,      -- initiated, pending, paid, failed, canceled, expired
+  provider_ref  VARCHAR(64),               -- GetPay's transaction id, saved once it's paid
+  created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+GetPay hands out no id when the checkout starts, so `provider_ref` stays empty until a payment settles. Then `settle` saves GetPay's transaction id there. Keep it: it's what the bank's portal and card disputes use.
+
+To keep this guide runnable with zero setup, the store below keeps attempts in memory (or in a JSON file for PHP, which forgets everything between requests). Swap its functions for queries when you move to a database. The function that matters is `transition`: it changes the status only if the current status is one you expect, in one atomic step. A buyer who reloads the return page, and the reconcile job, can both see the same payment, and `transition` lets exactly one of them fulfil the order.
+
+<CodeGroup by="lang" blocks={code.store} />
+
+Next, the types every gateway module speaks, plus `settle`. `settle` takes GetPay's answer and applies it: `paid` moves the attempt to paid and fulfils the order exactly once, `pending` waits, and `not_found` is left for the reconcile job in step 4.
+
+<CodeGroup by="lang" blocks={code.types} />
+
+## Step 2: Write the GetPay module
+
+This file is the only GetPay code in the project. It builds the SDK options, renders GetPay's pages, and decides what happened. It's the same file for every framework in your language. In Java and PHP the start function is called `startCard`, because the shared `Gateway` interface already has a `startPayment` that returns a redirect or a form, and those languages can't overload on return type.
+
+### Configuration
+
+The module reads the variables above and refuses to start without the five your bank must give you. There are no public test values to fall back on. `startPayment` returns its own `CardStart` type, not the shared redirect-or-form `Start`: the script URL and the options object for the SDK.
+
+<CodeGroup by="lang" blocks={part(getpay, "config")} />
+
+### Checking the return token
+
+GetPay's token is base64 of a small JSON object:
+
+```text
+token     = base64( {"id": "<GetPay transaction id>", "oprSecret": "<...>"} )
+oprSecret = base64( SHA-256( oprKey + id ) )
+```
+
+The SHA-256 is over the two strings joined with nothing between them, and the base64 is of the raw 32-byte digest, not of its hex. Two independent integrations compute it this way, and NCHL's docs describe it as a hash of the oprKey and the transaction id. One integration decodes the token as `id:oprSecret` text instead of JSON, so the module accepts both. A `+` in the token can turn into a space on the way through a URL, so it's put back before decoding.
+
+The module compares the two secrets in constant time. All six modules on this page reproduce the test vector from my GetPay reference, and so does `openssl`:
+
+```bash
+printf '%s%s' '4fa4c6b9-3f91-43e5-9b4f-319f68187ba5' '0cc5b1a39f3c4cad864bc1c6a524534f' \
+  | openssl dgst -sha256 -binary | base64
+```
+
+<Code code={`oprKey     ${oprSecretVector.oprKey}\nid         ${oprSecretVector.id}\noprSecret  ${oprSecretVector.oprSecret}`} lang="text" title="oprSecret test vector" />
+
+<CodeGroup by="lang" blocks={part(getpay, "token")} />
+
+### Building the SDK options
+
+`startPayment` sends nothing to GetPay. It checks the attempt id and the return URL, then builds the options object the checkout page hands to the SDK:
+
+| Option | Value |
+|---|---|
+| `clientRequestId` | The attempt id. Send a value or leave it out, never `""`. At most 50 characters of `[A-Za-z0-9-]`. |
+| `price` | **A number in rupees**: `100` or `100.5`. A string or paisa breaks the checkout. |
+| `currency` | `NPR` (USD works on accounts the bank enables for it) |
+| `papInfo`, `oprKey`, `insKey` | From your bank |
+| `websiteDomain` | Your registered origin. The callback URLs must be on this host. |
+| `baseUrl` | The environment's base URL |
+| `businessName`, `imageUrl` | Shown on GetPay's page |
+| `callbackUrl` | `successUrl` and `failUrl`. Both point at `/pay/return/<attemptId>`, because the status API says which one it was. |
+| `orderInformationUI` | Inline HTML GetPay shows beside the form. The module escapes your description. |
+| `userInfo`, `prefill`, `disableFields`, `allowBillingAddressFields`, `themeColor` | Optional UI. The module sends empty user info. |
+
+`oprKey` and `papInfo` end up in the page source. That's GetPay's design, and neither is a secret: the `oprKey` lets anyone compute an `oprSecret`, but a token is only accepted when `merchant-status` also says the transaction carries your attempt id.
+
+<CodeGroup by="lang" blocks={part(getpay, "start")} />
+
+### The pages
+
+The module renders the three pages GetPay runs in:
+
+- **Checkout page.** Loads the bundle and calls `new GetPay(options).initialize()`. `onSuccess` and `onError` are functions, so the page adds them in the browser; `onSuccess` opens the payment page. The options are written into the script as JSON with `<` escaped, so no value can close the script tag.
+- **Payment page.** An empty `<div id="checkout">` and the bundle. GetPay draws the card form and runs 3-D Secure inside it.
+- **Return page.** Serves as both the success and the failure page. GetPay may load it inside its own iframe, so it first breaks out to the top window. Then it reads `token` from the query string or the hash, and replaces itself with your verify route, `?token=` attached.
+
+GetPay's docs say to keep these as separate pages, because combining them causes caching problems.
+
+<CodeGroup by="lang" blocks={part(getpay, "pages")} />
+
+### Confirming a payment
+
+`confirmPayment` runs from the verify route with the token, and from the reconcile job without one.
+
+**With a token**, it decodes it, checks the `oprSecret`, and posts `{"id", "papInfo"}` to `merchant-status`. Neither status API takes auth headers. A success looks like this:
+
+```json
+{"status":0,"message":"SUCCESS","data":{"status":"SUCCESS","amount":1200.0,"currency":"NPR",
+ "stan":"379832","crrn":"624503379832","clientId":"<your clientRequestId>","remarks":"Success"}}
+```
+
+An unknown id comes back as HTTP 400 with `status: -1`, which the module reads as `not_found`. This is what the real UAT host answered my modules for a made-up id:
+
+```json
+{"status":-1,"message":"Failed to fetch merchant information: Transaction not found for ID: 0cc5b1a39f3c4cad864bc1c6a5245ffff"}
+```
+
+| `data.status` | Our status |
+|---|---|
+| `SUCCESS`, `APPROVED`, with `clientId` equal to the attempt and a matching amount | `paid` |
+| `SUCCESS` with another `clientId`, or a different amount | `PaymentError`, the route answers 400 |
+| `FAILED`, `FAILURE`, `DECLINED` | `failed` |
+| `CANCELLED` | `canceled` |
+| `PENDING`, or a value the module doesn't know | `pending` |
+| `status: -1` "not found" | `not_found` |
+| A token that won't decode, or a wrong `oprSecret` | `PaymentError`, the route answers 400 |
+
+`amount` is rupees as a number, so the module converts it to paisa before comparing. On `paid` the outcome carries GetPay's transaction id, which `settle` stores.
+
+**Without a token**, the buyer never reached the return page: they closed the tab during 3-D Secure, or lost signal. The module posts `{"clientRequestId": <attempt id>}` to `transaction-statement` instead. That lookup can't prove the transaction is yours, because another GetPay merchant could create one with the same `clientRequestId`. So this is the one place the module departs from a plain mapping:
+
+- **A `SUCCESS` from the statement comes back as `pending`, never `paid`.** The attempt stays open. If the buyer comes back with the token, the verify route settles it properly. If not, the reconcile job flags it for manual review after three days, and a person checks the bank's portal. The adapters in my project report this case as `unknown`; the shared `settle` here has no `unknown`, so `pending` keeps it open the same way.
+- `FAILED` and not-found map normally, so an abandoned checkout expires after an hour.
+
+<CodeGroup by="lang" blocks={part(getpay, "confirm")} />
+
+<details class="full-file">
+  <summary>The whole GetPay module in one block</summary>
+  <CodeGroup by="lang" blocks={whole(getpay, ["config", "token", "start", "pages", "confirm"])} />
+</details>
+
+## Step 3: Add the routes
+
+Most guides on this site share one set of routes: a pay route that redirects, and a return route the gateway sends the buyer back to. GetPay needs a page for each step, so this guide has six routes of its own:
+
+- `GET /` shows a demo order and a Pay button.
+- `POST /pay/{orderId}` creates an attempt, calls `startPayment`, and answers with the checkout page.
+- `GET /pay/card/{attemptId}` is the payment page, where GetPay draws the card form.
+- `GET /pay/return/{attemptId}` is GetPay's success and failure URL. It serves the return page, which forwards the token.
+- `GET /pay/verify/{attemptId}?token=...` calls `confirmPayment` with the **stored** amount, applies the answer with `settle`, and redirects to the order. It answers 400 on a `PaymentError` and 502 when GetPay is unreachable.
+- `GET /orders/{orderId}` shows the order's payment status.
+
+The attempt id lives in the path, so the verify route never trusts the token to say which attempt it's for: the `clientId` check does that. Every route after the first is a GET, and the first is your own form, so no CSRF exemption is needed.
+
+<CodeGroup by="fw" blocks={cardRoutes} />
+
+## Step 4: Catch payments the return page missed
+
+GetPay sends no webhook. A buyer who pays and then closes the tab, or whose phone drops off during 3-D Secure, never reaches the return page, and nothing tells your server. The reconcile job runs every minute, finds attempts still open after two minutes, and runs `confirmPayment` on them without a token, which reads `transaction-statement` by `clientRequestId`. Declined ones close as `failed`, and attempts still `not_found` after an hour are marked `expired`. Anything still open after three days drops out of the loop: the job logs it as needing manual review.
+
+<CodeGroup by="lang" blocks={code.reconcile} />
+
+For GetPay, the review case is almost always a statement `SUCCESS` that the buyer never confirmed with a token. Look the transaction up in your bank's portal, check the card network reference (`crrn`), and settle it by hand.
+
+## Step 5: Pay in UAT
+
+Once the bank has sent your UAT credentials and registered your test domain, deploy the app to that domain, set the variables and `BASE_URL`, start it with the run command from the setup step, then:
+
+<ol class="steps">
+  <li>Open the app and click <strong>Pay by card</strong>. The checkout page loads GetPay's bundle and moves to the payment page.</li>
+  <li>Pay with a UAT card from your bank. GetPay runs 3-D Secure and sends you to <code>/pay/return/&lt;attemptId&gt;</code>.</li>
+  <li>The return page forwards the token to <code>/pay/verify/&lt;attemptId&gt;</code>, your server checks it, and the order page shows <strong>paid</strong>. The server log prints the fulfilment line once. Reload the verify URL as often as you like: it never prints again.</li>
+</ol>
+
+To check you can reach the status APIs before any of that, call them yourself. They take no credentials:
+
+```bash
+curl -s -H 'Content-Type: application/json' -d '{"clientRequestId":"0f3a9c2e7b1d4a6c8e5f"}' \
+  https://uat-bank-getpay.nchl.com.np/ecom-web-checkout/v1/secure-merchant/transactions/transaction-statement
+# {"status":-1,"message":"Failed to fetch transaction statement: Transaction not found for client request ID: 0f3a9c2e7b1d4a6c8e5f"}
+```
+
+I got that answer, with HTTP 400, in November 2026.
+
+<Note type="warn" title="Python's default User-Agent gets a 403 on UAT">
+  The UAT host sits behind Cloudflare, which answers <code>Python-urllib/3.x</code> with HTTP 403 and <code>error code: 1010</code>. With <code>shop/1.0</code>, or no User-Agent at all, the same request got the normal answer, and the live host didn't block urllib. The Python module sends <code>User-Agent: shop/1.0</code> for that reason.
+</Note>
+
+## Common GetPay errors
+
+| Error | Cause | Fix |
+|---|---|---|
+| `401` from `testflex.cybersource.com`, card form doesn't load | The page's origin isn't registered with NCHL, or you're on `localhost`. | Ask your bank to register the domain, and test there. |
+| Checkout won't start | `price` sent as a string or in paisa, or `clientRequestId` sent as `""`. | Send a number in rupees, and a real attempt id. |
+| `return URL ... must be on GETPAY_WEBSITE_DOMAIN` | `BASE_URL` and `GETPAY_WEBSITE_DOMAIN` differ. | Set both to the registered origin. |
+| `oprSecret does not match` | Wrong `GETPAY_OPR_KEY`, or a forged or edited token. | Use the oprKey your bank sent for this environment. |
+| `transaction is for another clientRequestId` | The token names someone else's transaction. | Nothing to fix: the module refused it. |
+| `Transaction not found for ID` | An id from the other environment, or a made-up one. | Query the host that ran the payment. |
+| HTTP 403 `error code: 1010` on UAT | Cloudflare blocks the default Python urllib User-Agent. | Send your own User-Agent, as the module does. |
+| Verify route gets no token | Cards without 3-D Secure put it in the hash, which servers never see. | Keep the return page's script. Don't replace it with a server redirect. |
+
+## Going live
+
+1. Get the live papInfo, oprKey, bundle URL and base URL from your bank, and have it register your production domain with NCHL.
+2. Set `GETPAY_ENV=production`, the live credentials, `GETPAY_WEBSITE_DOMAIN` and `BASE_URL` on the server.
+3. Replace the store with your database. Keep `transition` atomic: an `UPDATE ... WHERE id = ? AND status IN (...)` that reports how many rows changed. Store GetPay's transaction id and `crrn` for disputes.
+4. Run the reconcile job from a scheduler (cron, a queue worker, or the framework's scheduler) instead of the web process, and watch its manual-review lines.
+5. Make one real low-value payment end to end. GetPay publishes no refund API, so refund it from the bank's portal.
+
+The [GetPay reference](/docs/providers/getpay/reference/) has the full option list, both status APIs and the security notes.
+
+## GetPay in a SPA or a mobile app
+
+**React, Vue, Svelte or any SPA:** the four pages have to stay real pages, because GetPay navigates between them and the return page has to break out of GetPay's iframe. Have the SPA post the order id to `/pay/{orderId}` and let the browser follow the server's pages. GetPay also publishes React and Next.js integration pages on getpay.global.
+
+**Flutter, React Native, Android, iOS:** open your server's `/pay/{orderId}` in a WebView or an in-app browser on a registered domain, and watch for the navigation to `/orders/`. The app never sees the oprKey check or the status call; your server does both. GetPay has a Flutter page on getpay.global too. The [mobile guide](/docs/guides/mobile/) covers keeping secrets off the device.

@@ -9,7 +9,7 @@ Every provider implements the same interface in all six languages. This page use
 
 ```ts
 interface PaymentAdapter {
-  readonly id: ProviderId; // "esewa" | "khalti" | "fonepay" | "connectips" | "cybersource" | "nps" | "imepay" | "nepalpay"
+  readonly id: ProviderId; // "esewa" | "khalti" | "fonepay" | "connectips" | "cybersource" | "nps" | "imepay" | "nepalpay" | "hamropay" | "getpay"
   initiate(input: InitiateInput): Promise<InitiateResult>;
   /** Server-to-server confirmation. Never trust callback params alone. */
   verify(input: VerifyInput): Promise<VerifyResult>;
@@ -18,7 +18,7 @@ interface PaymentAdapter {
 }
 ```
 
-Providers add their own methods on top, for example eSewa's `intentBook` / `intentVerify`, Khalti refunds, Fonepay Dynamic QR, NPS's instrument list and NEPALPAY QR's `verifyConfirmation` / `webSocketRequest`. Each provider page documents them.
+Providers add their own methods on top, for example eSewa's `intentBook` / `intentVerify`, Khalti refunds, Fonepay Dynamic QR, NPS's instrument list, NEPALPAY QR's `verifyConfirmation` / `webSocketRequest`, Hamro Pay's `verifyWebhook` and GetPay's `checkoutPage` / `paymentPage` / `returnPage`. Each provider page documents them.
 
 ## Inputs
 
@@ -36,7 +36,7 @@ interface VerifyInput {
   orderId: string;
   amountPaisa: number;            // the amount YOU stored for this attempt
   providerRef?: string | null;    // from initiate(): Khalti pidx, NPS ProcessId, IME Pay token, NEPALPAY validationTraceId
-  callback?: Record<string, string>; // raw params the provider sent to your return URL
+  callback?: Record<string, string>; // raw params the provider sent to your return URL (GetPay: { token })
 }
 ```
 
@@ -48,7 +48,9 @@ type InitiateResult =
   | { kind: "form"; action: string; method: "POST"; fields: Record<string, string>;
       enctype?: "multipart/form-data"; providerRef?: string }
   // NEPALPAY QR: show the QR, persist providerRef (validationTraceId), then poll verify()
-  | { kind: "qr"; qrString: string; qrImage?: string; providerRef: string; raw?: unknown };
+  | { kind: "qr"; qrString: string; qrImage?: string; providerRef: string; raw?: unknown }
+  // GetPay: load scriptUrl, start new GetPay(options) on your checkout page (the adapter renders the pages)
+  | { kind: "sdk"; scriptUrl: string; options: Record<string, unknown>; providerRef?: string };
 
 interface VerifyResult {
   provider: ProviderId;
