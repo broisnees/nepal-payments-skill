@@ -76,7 +76,7 @@ export default function Live() {
       <div className="page-head">
         <div>
           <h1>Live</h1>
-          <p>Events as they reach paynp, newest on top. Nepal time.</p>
+          <p>Events as they reach discerns, newest on top. Nepal time.</p>
         </div>
         <div className="actions">
           <button type="button" className="btn btn-secondary" onClick={toggle} aria-pressed={paused}>

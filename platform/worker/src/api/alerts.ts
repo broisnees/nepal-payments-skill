@@ -158,7 +158,7 @@ export function registerAlerts(api: Hono<AppEnv>) {
       row,
       {
         kind: "test",
-        title: `Test alert from paynp`,
+        title: `Test alert from discerns`,
         lines: [`Channel "${row.name}" in project ${project.name} works.`],
         link: projectLink(c.env, project.id, "/alerts"),
         payload: { project: { id: project.id, name: project.name }, channel: { id: row.id, name: row.name } },

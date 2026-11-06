@@ -1,4 +1,4 @@
-// Credit notes (SPEC-v2 4.7): every refund gets a number CN-YYYYMM-#### once, in the order paynp first sees it, so
+// Credit notes (SPEC-v2 4.7): every refund gets a number CN-YYYYMM-#### once, in the order discerns first sees it, so
 // exports for VAT stay stable after the events behind them expire (events are kept 30 days).
 // Sources: payment.refunded events, and refund cases marked refunded by hand (gateways with no refund API) when no
 // payment.refunded event exists for that payment. One INSERT ... SELECT per source; numbering uses ROW_NUMBER over

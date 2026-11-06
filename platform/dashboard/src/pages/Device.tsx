@@ -69,7 +69,7 @@ export default function Device() {
     return (
       <AuthLayout>
         <div className="stack" style={{ gap: 6 }}>
-          <h1>Connect the paynp CLI</h1>
+          <h1>Connect the discerns CLI</h1>
           <p className="lead">Enter the code shown in the terminal after paynp login.</p>
         </div>
         <form

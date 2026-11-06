@@ -2,8 +2,10 @@ export const REPO = "https://github.com/broisnees/nepal-payments-skill";
 export const INSTALL = "npx skills add broisnees/nepal-payments-skill";
 export const SITE_NAME = "Nepal Payments";
 /** The sister product: payment observability. Its name lives in platform/shared/src/brand.ts; mirror it here. */
-export const PLATFORM_URL = "https://paynp.discerns.app";
-export const PLATFORM_NAME = "paynp";
+export const PLATFORM_URL = "https://discerns.app";
+export const PLATFORM_NAME = "discerns";
+/** The third product: live status of every Nepali gateway, with a public API. */
+export const STATUS_URL = "https://status.discerns.app";
 /** Counts read from platform/shared/src (EVENT_TYPES in events.ts, RuleType and ChannelType in api.ts). */
 export const platformFacts = [
   { value: "11", label: "event types, from payment.started to payment.refunded" },

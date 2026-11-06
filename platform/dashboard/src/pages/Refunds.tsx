@@ -66,7 +66,7 @@ export default function Refunds() {
       <div className="page-head" style={{ marginBlockEnd: 0 }}>
         <div>
           <h1>Refunds</h1>
-          <p>{openCount ? `${openCount} open ${openCount === 1 ? "case" : "cases"}.` : "Duplicate payments and refund requests."} paynp never holds gateway keys: refunds run on your server or in the gateway's portal.</p>
+          <p>{openCount ? `${openCount} open ${openCount === 1 ? "case" : "cases"}.` : "Duplicate payments and refund requests."} discerns never holds gateway keys: refunds run on your server or in the gateway's portal.</p>
         </div>
       </div>
 
@@ -196,7 +196,7 @@ function CaseDetail({ c, onChange, local }: { c: RefundCase; onChange: (c: Refun
   const send = async () => {
     const ok = await confirmAction({
       title: `Refund ${formatMoney(c.amount_paisa)} on ${gatewayName(c.gateway)}?`,
-      body: "paynp sends a signed request to your action endpoint. Your server calls the gateway with its own keys and reports back. This cannot be undone from here.",
+      body: "discerns sends a signed request to your action endpoint. Your server calls the gateway with its own keys and reports back. This cannot be undone from here.",
       action: "Send refund",
     });
     if (!ok) return;
@@ -329,7 +329,7 @@ function CaseDetail({ c, onChange, local }: { c: RefundCase; onChange: (c: Refun
             <div>
               <h3>Refund {gatewayName(c.gateway)} payments with one button</h3>
               <p className="muted" style={{ marginBlockStart: 4 }}>
-                Add an action endpoint: a route on your server that paynp calls, signed, when someone presses Send. Your server refunds with its own keys; paynp never sees them.
+                Add an action endpoint: a route on your server that discerns calls, signed, when someone presses Send. Your server refunds with its own keys; discerns never sees them.
               </p>
             </div>
             <CodeBlock code={SNIPPET} />

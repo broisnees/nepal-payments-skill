@@ -1,4 +1,4 @@
-// Settlement statements (SPEC-v2 4.5): column presets, mapping, row extraction and matching against paynp payments.
+// Settlement statements (SPEC-v2 4.5): column presets, mapping, row extraction and matching against discerns payments.
 import type { MatchKind, StatementMapping, StatementNeedsMapping, StatementPreset, StatementRowKind } from "@paynp/shared";
 import { detectDateOrder, parseAmount, parseDate, type DateOrder } from "./csv.ts";
 
@@ -261,7 +261,7 @@ export interface RefundCandidate {
 export interface Match {
   attempt_id: string | null;
   kind: MatchKind;
-  /** The paynp amount the row was compared with (payment amount, or the refund amount). */
+  /** The discerns amount the row was compared with (payment amount, or the refund amount). */
   paynp_amount_paisa: number | null;
   mismatch: boolean;
 }
@@ -270,7 +270,7 @@ export interface Match {
  * Matches rows to payments: (1) a reference that resolves to exactly one payment (several: the one paid with the
  * same amount), then (2) amount and time within 10 minutes, only when the row and the payment are each other's single
  * candidate. Refund rows match a refund by ref (the original transaction's reference) or by amount and time against
- * paynp's refunds.
+ * discerns' refunds.
  */
 export function matchRows(
   rows: ParsedRow[],

@@ -1,4 +1,4 @@
-// Copy-ready replies for a customer who asks "did my payment go through?". Plain, polite, and only what paynp
+// Copy-ready replies for a customer who asks "did my payment go through?". Plain, polite, and only what discerns
 // knows: it never promises a refund date or that money did not leave the account.
 import type { PaymentSummary, Verdict } from "@paynp/shared";
 import { formatClock, formatDate, formatMoney, gatewayName } from "./format.ts";
