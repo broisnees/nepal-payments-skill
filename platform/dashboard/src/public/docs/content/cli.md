@@ -1,6 +1,6 @@
 # CLI
 
-The terminal side of paynp: sign in, link an app to a project, get a test key into `.env`, wire the SDK, send a test payment and watch events arrive live. Node 20 or newer, no runtime dependencies.
+The terminal side of discerns: sign in, link an app to a project, get a test key into `.env`, wire the SDK, send a test payment and watch events arrive live. Node 20 or newer, no runtime dependencies.
 
 ```bash
 npx paynp dev       # local dashboard while building, no account
@@ -67,4 +67,4 @@ Events are kept in `.paynp/dev/events.db` when Node has `node:sqlite`, and only 
 paynp login --endpoint http://localhost:8787
 ```
 
-The endpoint comes from, in order: `--endpoint`, `PAYNP_ENDPOINT`, `PAYNP_ENDPOINT` in the project's `.env`, the endpoint last logged in to, then `https://paynp.discerns.app`. Tokens are stored per endpoint.
+The endpoint comes from, in order: `--endpoint`, `PAYNP_ENDPOINT`, `PAYNP_ENDPOINT` in the project's `.env`, the endpoint last logged in to, then `https://discerns.app`. Tokens are stored per endpoint.

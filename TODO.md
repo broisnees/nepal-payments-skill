@@ -67,7 +67,7 @@ A hosted dashboard where a business sees every payment from every app and every 
 
 Deployed 2026-11-05 at https://paynp.discerns.app (Workers free plan, ingest capped at 15 events per request).
 
-- [ ] Verify `paynp.discerns.app` in Resend so sign-in and alert emails send (Resend answers 403 until then).
+- [ ] Verify `discerns.app` in Resend so sign-in and alert emails send (Resend answers 403 until then).
 - [ ] Rotate the Resend API key (it was shared in a chat) with `wrangler secret put RESEND_API_KEY`.
 - [ ] Publish `@paynp/sdk` and the `paynp` CLI to npm.
 

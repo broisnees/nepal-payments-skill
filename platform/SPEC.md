@@ -231,7 +231,7 @@ paynp.callbackReceived({ attemptId, gateway, method: "GET" });
 await paynp.flush(); // serverless: pass to ctx.waitUntil / after()
 ```
 
-The wrappers emit `payment.started`, `payment.redirected`, `gateway.request` (timed), `signature.checked`, `error` (with `reason` from PaymentError messages: amount_mismatch, bad_signature, id_mismatch) and `status` from outcomes, and rethrow exactly what the wrapped function threw. Events queue in memory and flush every 2 s or at 50 events with `fetch(..., {keepalive: true})`; failures retry with backoff up to 3 times, then drop with one console warning per minute. The queue is capped at 1000 events. Zero dependencies; runs on Node 20+, Bun, Deno, Workers, Next.js edge. `PAYNP_ENDPOINT` overrides the ingest URL (default `DEFAULT_ENDPOINT` in `shared/src/brand.ts`, today `https://paynp.discerns.app`; local `http://localhost:8787`).
+The wrappers emit `payment.started`, `payment.redirected`, `gateway.request` (timed), `signature.checked`, `error` (with `reason` from PaymentError messages: amount_mismatch, bad_signature, id_mismatch) and `status` from outcomes, and rethrow exactly what the wrapped function threw. Events queue in memory and flush every 2 s or at 50 events with `fetch(..., {keepalive: true})`; failures retry with backoff up to 3 times, then drop with one console warning per minute. The queue is capped at 1000 events. Zero dependencies; runs on Node 20+, Bun, Deno, Workers, Next.js edge. `PAYNP_ENDPOINT` overrides the ingest URL (default `DEFAULT_ENDPOINT` in `shared/src/brand.ts`, today `https://discerns.app`; local `http://localhost:8787`).
 
 ## 12. CLI (`npx paynp`)
 

@@ -14,6 +14,6 @@ npm run build      # static site in dist/
 node scripts/og.mjs  # re-render public/og.png after changing the social card copy
 ```
 
-Set `SITE_URL` to the production origin when building (default `https://nepal-payments-skill.pages.dev`). It feeds canonical links, the sitemap, `robots.txt`, Open Graph URLs and `llms.txt`.
+Set `SITE_URL` to the production origin when building (default `https://skill.discerns.app`). It feeds canonical links, the sitemap, `robots.txt`, Open Graph URLs and `llms.txt`.
 
-The output is static, so any static host works. For Cloudflare Pages: build command `npm run build`, output `dist`, root directory `website`.
+The output is static. It deploys as a static-assets Worker on `skill.discerns.app` (`wrangler.jsonc`): `SITE_URL=https://skill.discerns.app npm run build && npx wrangler deploy`. Any other static host works too (output `dist`).
