@@ -16,6 +16,8 @@ import { toEvent, toPayment } from "./lib/rows.ts";
 import { MAX_PARAMS, afterStatements, eventOps, refStatements, type DuplicateHit } from "./ops/ingest-ops.ts";
 import { MINUTE, errorBody, now as clock, sha256Hex } from "./lib/util.ts";
 import { statusMinuteStatements } from "./status/ingest.ts";
+import { fanoutStatements } from "./webhooks/fanout.ts";
+import { kick } from "./webhooks/deliver.ts";
 import type { AppEnv, EventRow, PaymentRow } from "./types.ts";
 
 const F = `(${FINAL_STATUSES.map((s) => `'${s}'`).join(",")})`;
@@ -114,11 +116,16 @@ export interface IngestResult {
   stored: { event: EventRow; attempt_id: string }[];
   /** Duplicate-payment refund cases this batch opened (SPEC-v2 4.1). */
   duplicates_found: DuplicateHit[];
+  /** Webhook deliveries this batch queued (src/webhooks). */
+  webhooks: number;
 }
 
 export interface IngestOptions {
   /** The project's customer salt when the caller already has it (ingest reads it with the key). */
   salt?: string | null;
+  /** Whether the environment has an enabled webhook endpoint, when the caller knows (ingest reads it with the key).
+   *  False skips the webhook fan-out statement; unknown runs it. */
+  webhooks?: boolean;
 }
 
 /** Writes validated events for one project environment. Exported so tests and the synthetic trace can call it directly. */
@@ -180,7 +187,7 @@ export async function ingestEvents(env: Env, projectId: string, envName: string,
   const current = new Map<string, PaymentRow>();
   for (let i = 0; i < reads; i++) for (const r of results[i].results as PaymentRow[]) current.set(r.attempt_id, r);
 
-  const out: IngestResult = { accepted: 0, duplicates: all.length - sorted.length, transitions: [], payments: new Map(), stored: [], duplicates_found: [] };
+  const out: IngestResult = { accepted: 0, duplicates: all.length - sorted.length, transitions: [], payments: new Map(), stored: [], duplicates_found: [], webhooks: 0 };
   sorted.forEach(({ e, ts }, n) => {
     const old = current.get(e.attempt_id) ?? null;
     const payment = results[reads + n].results[0] as PaymentRow | undefined;
@@ -227,9 +234,12 @@ export async function ingestEvents(env: Env, projectId: string, envName: string,
   const opsAfter = afterStatements(env, projectId, envName, out.transitions, receivedAt);
   const opsStart = after.length;
   after.push(...opsAfter.statements);
+  const hooksStart = after.length;
+  if (opts.webhooks !== false) after.push(...fanoutStatements(env, projectId, envName, out.transitions, receivedAt));
   if (after.length) {
     const res = await env.DB.batch(after);
-    out.duplicates_found = opsAfter.apply(res.slice(opsStart));
+    out.duplicates_found = opsAfter.apply(res.slice(opsStart, hooksStart));
+    for (const r of res.slice(hooksStart)) out.webhooks += r.meta.changes ?? 0;
   }
   return out;
 }
@@ -266,9 +276,14 @@ export async function handleIngest(c: Context<AppEnv>): Promise<Response> {
   const key = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   const m = KEY_RE.exec(key);
   if (!m) return c.json(errorBody("unauthorized", `expected Authorization: Bearer ${KEY_PREFIX.test}...`), 401);
-  const row = await env.DB.prepare("SELECT k.id, k.project_id, k.env, k.last_used_at, p.salt FROM api_keys k JOIN projects p ON p.id = k.project_id WHERE k.key_hash = ? AND k.revoked_at IS NULL")
+  // The same read says whether any webhook endpoint listens, so projects without one pay no fan-out statement.
+  const row = await env.DB.prepare(
+    `SELECT k.id, k.project_id, k.env, k.last_used_at, p.salt,
+       EXISTS (SELECT 1 FROM webhook_endpoints w WHERE w.project_id = k.project_id AND w.env = k.env AND w.enabled = 1) AS hooks
+     FROM api_keys k JOIN projects p ON p.id = k.project_id WHERE k.key_hash = ? AND k.revoked_at IS NULL`,
+  )
     .bind(await sha256Hex(key))
-    .first<{ id: string; project_id: string; env: string; last_used_at: number | null; salt: string | null }>();
+    .first<{ id: string; project_id: string; env: string; last_used_at: number | null; salt: string | null; hooks: number }>();
   if (!row || row.env !== m[1]) return c.json(errorBody("unauthorized", "unknown or revoked key"), 401);
 
   const { success } = await env.INGEST_LIMITER.limit({ key: row.id });
@@ -302,7 +317,7 @@ export async function handleIngest(c: Context<AppEnv>): Promise<Response> {
   });
 
   const t = clock();
-  const result = await ingestEvents(env, row.project_id, row.env, valid, t, { salt: row.salt });
+  const result = await ingestEvents(env, row.project_id, row.env, valid, t, { salt: row.salt, webhooks: !!row.hooks });
   if (row.last_used_at === null || t - row.last_used_at > MINUTE) {
     c.executionCtx.waitUntil(env.DB.prepare("UPDATE api_keys SET last_used_at = ? WHERE id = ?").bind(t, row.id).run());
   }
@@ -313,7 +328,7 @@ export async function handleIngest(c: Context<AppEnv>): Promise<Response> {
   return c.json(payload, 202);
 }
 
-/** Live broadcast and per-event alert rules. Runs after the response. */
+/** Live broadcast, per-event alert rules and the webhook sender. Runs after the response. */
 export async function afterIngest(env: Env, projectId: string, envName: string, result: IngestResult, t: number): Promise<void> {
   const items = result.stored.map(({ event, attempt_id }) => ({ event: toEvent(event), payment: toPayment(result.payments.get(attempt_id)!) }));
   const tasks: Promise<unknown>[] = [
@@ -322,5 +337,6 @@ export async function afterIngest(env: Env, projectId: string, envName: string, 
       .catch((e: unknown) => console.error(JSON.stringify({ msg: "live publish failed", error: String(e) }))),
     onIngest(env, projectId, envName, result.transitions, t).catch((e: unknown) => console.error(JSON.stringify({ msg: "alert evaluation failed", error: String(e) }))),
   ];
+  if (result.webhooks) tasks.push(kick(env, projectId, envName));
   await Promise.all(tasks);
 }

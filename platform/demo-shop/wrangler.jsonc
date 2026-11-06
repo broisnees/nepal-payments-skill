@@ -14,9 +14,15 @@
   // Every minute: confirm payments where the buyer never came back.
   "triggers": { "crons": ["* * * * *"] },
   "vars": {
+    // eSewa's public sandbox credentials (EPAYTEST), from its developer docs. Not secrets.
     "ESEWA_ENV": "sandbox",
-    "PAYNP_ENDPOINT": "https://paynp.discerns.app",
-    "DASHBOARD_URL": "https://paynp.discerns.app/p/prj_01M6N90FHB6ZDRKXSF0QPKCCQC/test/payments"
+    "ESEWA_PRODUCT_CODE": "EPAYTEST",
+    "ESEWA_SECRET_KEY": "8gBm/:&EnhH.1/q",
+    "KHALTI_ENV": "sandbox",
+    "KHALTI_WEBSITE_URL": "https://paynp-shop.discerns.app",
+    "PAYNP_ENDPOINT": "https://discerns.app",
+    "DASHBOARD_URL": "https://discerns.app/p/prj_01M6N90FHB6ZDRKXSF0QPKCCQC/test/payments"
   }
-  // Secret: PAYNP_KEY (a pnp_test_ key of the paynp-demo project).
+  // Secrets: PAYNP_KEY (a pnp_test_ key of the paynp-demo project), PAYNP_WEBHOOK_SECRET (its webhook endpoint's
+  // whsec_ secret), KHALTI_SECRET_KEY (Khalti sandbox).
 }

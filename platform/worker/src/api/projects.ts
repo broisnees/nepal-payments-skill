@@ -12,7 +12,7 @@ const toProject = (p: ProjectRow): Project => ({ id: p.id, org_id: p.org_id, nam
 
 /** Deletes a project and everything under it. */
 export function deleteProjectStatements(env: Env, projectId: string): D1PreparedStatement[] {
-  const tables = ["api_keys", "payments", "events", "minute_stats", "alert_channels", "alert_rules", "alert_incidents"];
+  const tables = ["api_keys", "payments", "events", "minute_stats", "alert_channels", "alert_rules", "alert_incidents", "webhook_deliveries", "webhook_endpoints"];
   return [
     env.DB.prepare("DELETE FROM notifications WHERE channel_id IN (SELECT id FROM alert_channels WHERE project_id = ?)").bind(projectId),
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t} WHERE project_id = ?`).bind(projectId)),
