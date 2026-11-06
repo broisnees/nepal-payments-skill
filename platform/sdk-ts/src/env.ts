@@ -14,6 +14,7 @@ export const SANDBOX_HOSTS: Record<string, readonly string[]> = {
   nps: ["apisandbox.nepalpayment.com", "gatewaysandbox.nepalpayment.com"],
   // IME Pay runs both on port 7979; the test one is stg.
   imepay: ["stg.imepay.com.np"],
+  nepalpay: ["devopennpi.connectips.com"],
 };
 
 const SANDBOX = new Set(Object.values(SANDBOX_HOSTS).flat());

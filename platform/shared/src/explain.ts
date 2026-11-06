@@ -140,6 +140,32 @@ const ENTRIES: Entry[] = [
     docs_url: doc("connectips"),
   },
 
+  // NEPALPAY QR (nepalpay.md)
+  {
+    gateway: "nepalpay",
+    match: ["E003"],
+    title: "NEPALPAY QR: invalid token",
+    cause: "generateQR rejected the RSA token: the signed string differs from the request (amount not as \"10.50\", wrong field order, a space after the commas) or the key is not the NPI .pfx key.",
+    fix: "Sign acquirerId,merchantId,merchantCategoryCode,524,transactionAmount,billNumber,npiUsername with bare commas, using the exact amount string you send.",
+    docs_url: doc("nepalpay", "#4-token-signature"),
+  },
+  {
+    gateway: "nepalpay",
+    match: ["E010"],
+    title: "NEPALPAY QR: merchant not found",
+    cause: "E010 RECORD NOT FOUND: the acquirerId and merchantId pair is not enrolled in this environment (UAT and live ids differ).",
+    fix: "Check NEPALPAY_ACQUIRER_ID, NEPALPAY_MERCHANT_ID and NEPALPAY_ENV against the enrollment email from your bank.",
+    docs_url: doc("nepalpay"),
+  },
+  {
+    gateway: "nepalpay",
+    match: ["E401", "unauthorized"],
+    title: "NEPALPAY QR: unauthorized",
+    cause: "E401: the NPI username or password is wrong, or OAuth client credentials are missing when the account expects Bearer tokens.",
+    fix: "Check NEPALPAY_USERNAME and NEPALPAY_PASSWORD; if NCHL issued client credentials, set NEPALPAY_CLIENT_ID and NEPALPAY_CLIENT_SECRET.",
+    docs_url: doc("nepalpay", "#2-auth"),
+  },
+
   // NPS (nps.md)
   {
     gateway: "nps",

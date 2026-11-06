@@ -178,7 +178,7 @@ export function readScopes(cwd: string): { scopes: Scope[]; files: string[] } {
 
 // ---------------------------------------------------------------- gateway facts
 
-const PREFIX: Record<string, string> = { esewa: "ESEWA_", khalti: "KHALTI_", fonepay: "FONEPAY_", connectips: "CONNECTIPS_", cybersource: "CYBERSOURCE_", nps: "NPS_", imepay: "IMEPAY_" };
+const PREFIX: Record<string, string> = { esewa: "ESEWA_", khalti: "KHALTI_", fonepay: "FONEPAY_", connectips: "CONNECTIPS_", cybersource: "CYBERSOURCE_", nps: "NPS_", imepay: "IMEPAY_", nepalpay: "NEPALPAY_" };
 
 /** Values published in the gateways' docs for their sandboxes (references/*.md). Safe to print. */
 const PUBLIC_SANDBOX: Record<string, Record<string, string>> = {

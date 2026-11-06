@@ -18,5 +18,6 @@ export const GATEWAY_LOGOS: Record<string, GatewayLogo> = {
   connectips: { icon: "/logos/icons/connectips.png", light: "/logos/connectips.png", ratio: 100 / 65, chip: true, scale: 1.7 },
   cybersource: { icon: "/logos/icons/cybersource.png", light: "/logos/cybersource.png", ratio: 177 / 44, chip: true, scale: 1.2 },
   nps: { icon: "/logos/icons/nps.png", light: "/logos/nps.png", dark: "/logos/nps-white.png", ratio: 1200 / 527 },
+  nepalpay: { icon: "/logos/icons/nepalpay.png", light: "/logos/nepalpay.png", ratio: 169 / 92, chip: true, scale: 1.2 },
   imepay: { icon: "/logos/icons/imepay.png", light: "/logos/khalti-by-ime.png", ratio: 1028 / 569, chip: true, scale: 1.45 },
 };

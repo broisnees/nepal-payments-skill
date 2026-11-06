@@ -33,6 +33,8 @@ export const GATEWAY_HOSTS: Record<string, readonly string[]> = {
   cybersource: ["cybersource.com"],
   nps: ["nepalpayment.com"],
   imepay: ["imepay.com.np"],
+  // NPI hosts share connectips.com; scope by subdomain so connectIPS gateway calls are not attributed here.
+  nepalpay: ["opennpi.connectips.com", "devopennpi.connectips.com"],
 };
 
 const active = new Set<CallScope>();
