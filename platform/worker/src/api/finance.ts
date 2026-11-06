@@ -239,7 +239,7 @@ async function storeStatement(env: Env, projectId: string, u: Upload, by: string
   const lo = (periodFrom ?? t) - MATCH_WINDOW_MS;
   const hi = (periodTo ?? t) + MATCH_WINDOW_MS;
   const [, , pay, ref] = await env.DB.batch([
-    // Number any refunds paynp has seen around this period first, so refund rows can match them.
+    // Number any refunds discerns has seen around this period first, so refund rows can match them.
     ...captureProjectStatements(env, projectId, u.env, lo - 40 * DAY, hi + DAY, t),
     env.DB.prepare(
       `SELECT attempt_id, amount_paisa, status, COALESCE(finished_at, started_at) AS at, gateway FROM payments
