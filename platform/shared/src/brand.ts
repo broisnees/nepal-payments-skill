@@ -9,3 +9,7 @@ export const SESSION_COOKIE = `${NAME}_session`;
 export const CSRF_HEADER = "X-Paynp-CSRF";
 export const SIGNATURE_HEADER = "X-Paynp-Signature";
 export const TIMESTAMP_HEADER = "X-Paynp-Timestamp";
+// The sister product: the open-source skill and gateway adapters. One line each, so a rename touches only these.
+export const SKILL_SITE_NAME = "Nepal Payments";
+export const SKILL_SITE_URL = "https://nepal-payments-skill.pages.dev";
+export const REPO_URL = "https://github.com/broisnees/nepal-payments-skill";

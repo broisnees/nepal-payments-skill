@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { Icon } from "../components/Icon.tsx";
 import { toast } from "../components/ui.tsx";
 import { api } from "../lib/api.ts";
+import { signupFor } from "../lib/signup.ts";
 import { AuthLayout } from "./AuthLayout.tsx";
 
 export default function CheckEmail() {
@@ -11,6 +12,8 @@ export default function CheckEmail() {
   const email = params.get("email") ?? "";
   const next = params.get("next") ?? "/";
   const [wait, setWait] = useState(30);
+  // Back to the form the visitor came from, with the email filled in.
+  const back = `${signupFor(email) ? "/signup" : "/signin"}?email=${encodeURIComponent(email)}`;
 
   useEffect(() => {
     if (wait <= 0) return;
@@ -21,7 +24,9 @@ export default function CheckEmail() {
   const resend = async () => {
     setWait(30);
     try {
-      await api("/auth/login", { method: "POST", body: { email } });
+      const draft = signupFor(email);
+      if (draft) await api("/auth/signup", { method: "POST", body: draft });
+      else await api("/auth/login", { method: "POST", body: { email } });
       toast("Sent another link", { sub: email });
     } catch {
       toast("Could not send the link", { kind: "error" });
@@ -35,7 +40,7 @@ export default function CheckEmail() {
         <div className="stack" style={{ gap: 4 }}>
           <h1 style={{ fontSize: 20, lineHeight: "28px" }}>Check your email</h1>
           <p className="muted">
-            A sign-in link is on its way to <span className="ink">{email || "your inbox"}</span>. It works once and expires in 15 minutes.
+            A link is on its way to <span className="ink">{email || "your inbox"}</span>. It works once and expires in 15 minutes.
           </p>
         </div>
       </div>
@@ -57,7 +62,7 @@ export default function CheckEmail() {
       </div>
       <p className="hint">
         Nothing after a minute? Check spam, or{" "}
-        <Link className="inline-link" to={`/signin?email=${encodeURIComponent(email)}`} onClick={(e) => (e.preventDefault(), nav(`/signin?email=${encodeURIComponent(email)}`))}>
+        <Link className="inline-link" to={back} onClick={(e) => (e.preventDefault(), nav(back))}>
           use a different email
         </Link>
         .

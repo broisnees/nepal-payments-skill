@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
+import { DISPLAY_NAME } from "@paynp/shared";
 import { api, errorMessage } from "../lib/api.ts";
 import { Icon } from "../components/Icon.tsx";
 import { saveNext } from "../components/Shell.tsx";
+import { forgetSignup } from "../lib/signup.ts";
 import { AuthLayout } from "./AuthLayout.tsx";
 
 export default function SignIn() {
@@ -22,6 +24,7 @@ export default function SignIn() {
     try {
       await api("/auth/login", { method: "POST", body: { email: v } });
       saveNext(params.get("next"));
+      forgetSignup();
       const q = new URLSearchParams({ email: v });
       if (params.get("next")) q.set("next", params.get("next")!);
       nav(`/signin/check?${q}`);
@@ -32,9 +35,9 @@ export default function SignIn() {
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout current="signin">
       <div className="stack" style={{ gap: 6 }}>
-        <h1>Sign in to paynp</h1>
+        <h1>Sign in to {DISPLAY_NAME}</h1>
         <p className="lead">We email a link that signs you in. No password to remember.</p>
       </div>
       {linkError && (
@@ -73,7 +76,13 @@ export default function SignIn() {
           Email me a sign-in link
         </button>
       </form>
-      <p className="hint">New here? The same link creates the account, a personal organization and a first project.</p>
+      <p className="hint">
+        New here?{" "}
+        <Link className="inline-link" to={`/signup${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ""}`}>
+          Create an account
+        </Link>{" "}
+        with your name and company.
+      </p>
     </AuthLayout>
   );
 }

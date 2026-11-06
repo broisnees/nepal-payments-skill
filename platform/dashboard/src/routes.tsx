@@ -18,8 +18,14 @@ export function App() {
           <Route path="/signin" element={page(() => import("./pages/SignIn.tsx"))} />
           <Route path="/signin/check" element={page(() => import("./pages/CheckEmail.tsx"))} />
           <Route path="/sign-in" element={<Navigate to="/signin" replace />} />
-          <Route element={<RequireAuth />}>
+          <Route path="/signup" element={page(() => import("./pages/SignUp.tsx"))} />
+          <Route path="/sign-up" element={<Navigate to="/signup" replace />} />
+          <Route path="/docs/:slug?" element={page(() => import("./public/docs/Docs.tsx"))} />
+          {/* Signed in: "/" goes to the last project as before. Signed out: the landing page. */}
+          <Route element={<RequireAuth fallback={page(() => import("./public/Landing.tsx"))} />}>
             <Route path="/" element={<Home />} />
+          </Route>
+          <Route element={<RequireAuth />}>
             <Route path="/device" element={page(() => import("./pages/Device.tsx"))} />
             <Route path="/projects/:project/*" element={<ProjectLink />} />
             <Route path="/p/:project/:env" element={<ProjectShell />}>

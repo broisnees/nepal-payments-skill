@@ -2376,20 +2376,6 @@ a.list-row:hover {
 }
 
 /* ------------------------------------------------------------------ auth pages */
-.auth {
-  min-height: 100dvh;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-}
-
-.auth-top {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 64px;
-  padding-inline: var(--gutter);
-}
-
 .auth-main {
   display: grid;
   place-items: center;
@@ -2410,15 +2396,6 @@ a.list-row:hover {
 
 .auth-card .lead {
   color: var(--muted);
-}
-
-.auth-foot {
-  padding: 16px var(--gutter);
-  font-size: 12px;
-  color: var(--subtle);
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 .device-code {

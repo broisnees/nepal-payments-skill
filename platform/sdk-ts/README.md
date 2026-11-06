@@ -313,7 +313,7 @@ createPaynp({
   endpoint,             // default PAYNP_ENDPOINT, else https://paynp.discerns.app (local worker: http://localhost:8787)
   dev,                  // no key only: dev server URL, or false to never look for one
   flushIntervalMs: 2000,
-  maxBatch: 50,         // events per request (max 100); a full batch is sent at once
+  maxBatch: 15,         // events per request (max 100); a full batch is sent at once
   maxQueue: 1000,       // oldest events are dropped beyond this
   retryBaseMs: 500,     // retries wait 500 ms, 1 s, 2 s (plus jitter, or Retry-After if longer)
   onError: (err) => {}, // every dropped batch or invalid event; replaces the console warning
