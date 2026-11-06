@@ -1,4 +1,5 @@
-import "@fontsource-variable/inter/opsz.css";
+// Weight axis only: the optical-size build is 25 KB heavier for a difference nobody sees at UI sizes.
+import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
 import "./styles/tokens.css";
 import "./styles/app.css";

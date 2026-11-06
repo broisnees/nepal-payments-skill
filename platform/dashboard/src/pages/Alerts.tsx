@@ -8,7 +8,7 @@ import { api, errorMessage, items, qs } from "../lib/api.ts";
 import { formatDuration, formatMoney, formatRelative, gatewayName, parseRupees } from "../lib/format.ts";
 import { RULES } from "../lib/labels.ts";
 import type { IncidentExtra } from "../lib/types.ts";
-import { invalidate, setData, useQuery } from "../lib/query.ts";
+import { invalidate, optimistic, patchRow, useQuery, without } from "../lib/query.ts";
 
 export default function Alerts() {
   const { tab = "rules" } = useParams();
@@ -146,19 +146,16 @@ function Rules() {
   const chs = items(channels.data);
 
   const toggle = async (r: AlertRule, enabled: boolean) => {
-    setData<Page<AlertRule>>(key, (pg) => pg && { ...pg, items: pg.items.map((x) => (x.id === r.id ? { ...x, enabled } : x)) });
     try {
-      await api(`${key}/${r.id}`, { method: "PATCH", body: { enabled } });
+      await optimistic<Page<AlertRule>>(key, patchRow<AlertRule>(r.id, { enabled }), () => api(`${key}/${r.id}`, { method: "PATCH", body: { enabled } }));
     } catch (e) {
       toast("Could not update the rule", { kind: "error", sub: errorMessage(e) });
-      invalidate(key);
     }
   };
   const remove = async (r: AlertRule) => {
     if (!(await confirmAction({ title: `Delete the ${RULES[r.type].title} rule?`, body: "Open incidents from it stay in the history.", action: "Delete rule", danger: true }))) return;
     try {
-      await api(`${key}/${r.id}`, { method: "DELETE" });
-      invalidate(key);
+      await optimistic<Page<AlertRule>>(key, without<AlertRule>(r.id), () => api(`${key}/${r.id}`, { method: "DELETE" }));
       toast("Rule deleted");
     } catch (e) {
       toast("Could not delete the rule", { kind: "error", sub: errorMessage(e) });
@@ -443,8 +440,9 @@ function Channels() {
   };
   const remove = async (c: AlertChannel) => {
     if (!(await confirmAction({ title: `Delete ${c.name}?`, body: "Rules that send to it stop sending there.", action: "Delete channel", danger: true }))) return;
-    await api(`${key}/${c.id}`, { method: "DELETE" }).catch((e) => toast("Could not delete", { kind: "error", sub: errorMessage(e) }));
-    invalidate(key);
+    await optimistic<Page<AlertChannel>>(key, without<AlertChannel>(c.id), () => api(`${key}/${c.id}`, { method: "DELETE" })).catch((e) =>
+      toast("Could not delete", { kind: "error", sub: errorMessage(e) }),
+    );
     invalidate(`/api/projects/${project.id}/rules`);
   };
 

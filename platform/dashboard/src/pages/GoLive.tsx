@@ -6,7 +6,7 @@ import { useProject } from "../components/Shell.tsx";
 import { Command, EmptySmall, Gateway, Skeleton, Time, toast, useNow } from "../components/ui.tsx";
 import { api, errorMessage, qs } from "../lib/api.ts";
 import { formatCount, formatFull, formatRelative, shortId } from "../lib/format.ts";
-import { setData, useQuery } from "../lib/query.ts";
+import { optimistic, useQuery } from "../lib/query.ts";
 import "../styles/ops.css";
 
 export default function GoLive() {
@@ -21,14 +21,16 @@ export default function GoLive() {
   const state = !r ? undefined : critical.length ? "critical" : warnings.length ? "warning" : "ok";
 
   const resolve = async (f: DoctorFinding) => {
-    setData<DoctorReport>(key, (x) => x && { ...x, findings: x.findings.filter((y) => !(y.code === f.code && y.gateway === f.gateway)) });
     try {
-      await api(`/api/projects/${project.id}/doctor/${f.code}/resolve${qs({ env })}`, { method: "POST", body: { env, gateway: f.gateway } });
+      await optimistic<DoctorReport>(
+        key,
+        (x) => x && { ...x, findings: x.findings.filter((y) => !(y.code === f.code && y.gateway === f.gateway)) },
+        () => api(`/api/projects/${project.id}/doctor/${f.code}/resolve${qs({ env })}`, { method: "POST", body: { env, gateway: f.gateway } }),
+      );
       toast("Marked as fixed", { sub: "It comes back if the problem shows up again in new traffic." });
     } catch (e) {
       toast("Could not resolve", { kind: "error", sub: errorMessage(e) });
     }
-    void d.refresh();
   };
 
   return (
@@ -36,7 +38,7 @@ export default function GoLive() {
       <div className="page-head" style={{ marginBlockEnd: 0 }}>
         <div>
           <h1>Go-live check</h1>
-          <p>What paynp sees in {env === "live" ? "live" : "test"} traffic that would cost money or orders in production.</p>
+          <p>What discerns sees in {env === "live" ? "live" : "test"} traffic that would cost money or orders in production.</p>
         </div>
       </div>
 
