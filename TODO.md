@@ -29,6 +29,13 @@ NEPALPAY QR dynamic QR shipped in all six ports on 2026-11-06 (`references/nepal
 - [ ] Confirm which NCHL key signs confirm-payment notifications. `verifyConfirmation` checks against `nchlPublicKeyPem` (assumed `NPI.cer`), and `webSocketRequest` builds the STOMP subscription; both are unit-tested only.
 - [ ] Deploy the paynp worker with `nepalpay` in the registry. Blocked: the live worker has a `WebhookSender` Durable Object (migration `v2`) that is not in this repo.
 
+## Hamro Pay and GetPay
+
+Shipped in all six ports on 2026-11-06 (`references/hamropay.md`, `references/getpay.md`). Open:
+
+- [ ] Hamro Pay: full UAT payment with a self-serve test merchant (pay-sandbox.hamropatro.com) and the test payer 9841414141; confirm the live gateway host.
+- [ ] GetPay: end-to-end card payment on a registered UAT domain with bank credentials; confirm the token is JSON, not `id:secret`, for 3-D Secure and non-3DS cards.
+
 ## Distribution
 
 - [ ] Publish the PHP package to Packagist and tag a Go module version so they can be installed without copying.
