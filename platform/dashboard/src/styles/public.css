@@ -1191,3 +1191,96 @@ a.pub-cell.pub-cta:hover {
     animation-duration: 0ms !important;
   }
 }
+
+/* AI section: three feature cells, then the MCP command under them. */
+@media (min-width: 900px) {
+  .pub-features-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.pub-ai-code {
+  margin-block-start: 16px;
+  max-width: 44rem;
+}
+
+/* Copy page: the group eyebrow on the leading edge, the control on the trailing edge, above the title. */
+.docs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.copy-page {
+  display: inline-flex;
+}
+
+.copy-page > .btn,
+.copy-page .menu-anchor > .btn {
+  border: 1px solid var(--line);
+}
+
+.copy-page .menu-anchor > .btn {
+  border-inline-start: 0;
+}
+
+.copy-page-item {
+  align-items: flex-start;
+  min-width: 260px;
+}
+
+.copy-page-item > span {
+  display: grid;
+  line-height: 1.3;
+}
+
+.copy-page-item .subtle {
+  font-size: 12px;
+}
+
+/* Hero: one column, read top to bottom. */
+.pub-hero-one {
+  display: grid;
+  justify-items: start;
+  max-width: 48rem;
+}
+
+.pub-hero-one h1 {
+  max-width: 15ch;
+}
+
+.pub-hero-one .pub-lede {
+  margin-block-start: 20px;
+  max-width: 34rem;
+}
+
+.pub-hero-one .pub-actions {
+  margin-block-start: 28px;
+}
+
+.pub-badge-link {
+  align-items: center;
+  color: inherit;
+  text-decoration: none;
+  margin-block-end: 28px;
+  transition: border-color 150ms var(--ease);
+}
+
+.pub-badge-link:hover {
+  border-color: var(--line-strong);
+}
+
+.pub-badge-link .pub-badge-mark {
+  align-self: stretch;
+  min-width: 40px;
+}
+
+.pub-badge-link .pub-badge-text {
+  padding-block: 9px;
+}
+
+.pub-badge-go {
+  margin-inline-end: 12px;
+  color: var(--muted);
+}

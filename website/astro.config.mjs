@@ -4,7 +4,7 @@ import starlight from "@astrojs/starlight";
 import starlightLlmsTxt from "starlight-llms-txt";
 
 // Canonical origin for sitemap, canonical links and Open Graph URLs. Set SITE_URL in the deploy env.
-const site = process.env.SITE_URL ?? "https://nepal-payments-skill.pages.dev";
+const site = process.env.SITE_URL ?? "https://skill.discerns.app";
 const repo = "https://github.com/broisnees/nepal-payments-skill";
 const providerNav = [
   ["eSewa", "esewa"],
@@ -49,6 +49,7 @@ export default defineConfig({
         ThemeSelect: "./src/components/SettingsMenu.astro",
         SocialIcons: "./src/components/DocsSocialIcons.astro",
         Footer: "./src/components/DocsFooter.astro",
+        PageTitle: "./src/components/PageTitle.astro",
       },
       head: [
         { tag: "meta", attrs: { name: "theme-color", content: "#ffffff" } },

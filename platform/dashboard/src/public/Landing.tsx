@@ -1,6 +1,6 @@
 // The landing page for signed-out visitors at "/". Every claim here comes from the specs and the code; the product
 // panel runs the dashboard's own components on sample data.
-import { DISPLAY_NAME, EVENT_TYPES, GATEWAYS, GATEWAY_LOGOS, SKILL_SITE_NAME, SKILL_SITE_URL, explain } from "@paynp/shared";
+import { DEFAULT_ENDPOINT, DISPLAY_NAME, GATEWAYS, GATEWAY_LOGOS, SKILL_SITE_NAME, SKILL_SITE_URL, STATUS_SITE_URL, explain } from "@paynp/shared";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { Icon, type IconName } from "../components/Icon.tsx";
@@ -29,12 +29,22 @@ const FEATURES: { icon: IconName; title: string; body: string; doc: string }[] =
   { icon: "chart", title: "Analytics", body: "Success rate, revenue, gateway latency and error rate, the checkout funnel, failure reasons, time to pay at p50 and p95.", doc: "analytics" },
   { icon: "mail", title: "Daily digest", body: "At 09:00 Nepal time: yesterday's payments, success rate, revenue, top failure reasons and open incidents.", doc: "analytics#daily-digest" },
   { icon: "undo", title: "Refunds and duplicates", body: "A paid-twice order becomes a refund case with the gateway's checklist. Khalti refunds run through a signed request to my own server.", doc: "operations#double-payments-and-the-refund-queue" },
-  { icon: "file", title: "Reconcile", body: "Upload a settlement CSV and see matched rows, settlements paynp never saw, paid payments missing from the statement, and fees.", doc: "operations#settlement-reconciliation" },
+  { icon: "file", title: "Reconcile", body: "Upload a settlement CSV and see matched rows, settlements discerns never saw, paid payments missing from the statement, and fees.", doc: "operations#settlement-reconciliation" },
   { icon: "download", title: "Exports", body: "Transactions, Tally-style and Hamrokhata CSVs, credit notes for refunds, and a Nepal fiscal year summary.", doc: "operations#exports" },
   { icon: "checkCircle", title: "Go-live checklist", body: "Sandbox credentials on live traffic, http return URLs, a return route that trusts the redirect. Checked on traffic and by paynp doctor.", doc: "go-live" },
-  { icon: "monitor", title: "Status page", body: "A public page with each gateway's error rate and latency, from live traffic across at least 3 projects per minute.", doc: "status-page" },
+  { icon: "sparkles", title: "Ask AI", body: "Ask about payments in plain words from any page. Every number in the answer comes from a query it shows, with links to the timelines.", doc: "ai#ask" },
+  { icon: "monitor", title: "Gateway status", body: "Each gateway's production API checked every minute, with a free JSON API a server can use to skip a gateway that is down.", doc: "status-page" },
   { icon: "terminal", title: "CLI", body: "login, init (writes the key and wires the SDK, diff first), tail, test, keys, doctor, and a local dev server with no account.", doc: "cli" },
 ];
+
+const MCP_CMD = `claude mcp add --transport http \\
+  discerns ${DEFAULT_ENDPOINT}/mcp \\
+  --header "Authorization: Bearer pnp_pat_..."`;
+
+const STATUS_CURL = `curl ${STATUS_SITE_URL}/v1/status/esewa
+
+{ "gateway": "esewa", "state": "operational", "action": "show",
+  "error_rate": 0, "p95_ms": 412, "uptime_90d_pct": 0.9993, ... }`;
 
 export default function Landing() {
   useEffect(() => {
@@ -48,29 +58,26 @@ export default function Landing() {
     <PublicLayout current="home">
       <main className="landing">
         <section className="pub-container pub-hero" aria-labelledby="hero-title">
-          <span className="pub-badge">
-            <span className="pub-badge-mark num">{GATEWAYS.length}</span>
-            <span className="pub-badge-text">
-              Nepali gateways, one dashboard
-              <span className="mono">{EVENT_TYPES.length} event types · {RULE_COUNT} alert rules</span>
-            </span>
-          </span>
-          <div className="pub-split">
+          <div className="pub-hero-one">
+            <a className="pub-badge pub-badge-link" href="#ai-title">
+              <span className="pub-badge-mark">
+                <Icon name="sparkles" size={16} />
+              </span>
+              <span className="pub-badge-text">New: Ask AI and MCP for coding agents</span>
+              <Icon name="chevronRight" size={14} className="pub-badge-go" />
+            </a>
             <h1 id="hero-title">Every payment, every gateway, one place.</h1>
-            <div>
-              <p className="pub-lede">
-                {DISPLAY_NAME} records every payment attempt on eSewa, Khalti, Fonepay and seven more gateways as a timeline: what the gateway answered, how long it took, where it failed and why. The SDK only reports, so checkout never waits on it.
-              </p>
-              <div className="pub-actions">
-                <Link className="btn pub-btn btn-primary" to="/signup">
-                  Sign up
-                </Link>
-                <Link className="btn pub-btn btn-secondary" to="/docs/quickstart">
-                  Read the quickstart
-                  <Icon name="chevronRight" />
-                </Link>
-              </div>
-              <p className="pub-fine subtle">Sign in with an email link, no password. Test and live environments from the first project.</p>
+            <p className="pub-lede">
+              A timeline for every attempt on eSewa, Khalti, Fonepay and {GATEWAYS.length - 3} more gateways, and an AI that answers from those payments, not from the docs.
+            </p>
+            <div className="pub-actions">
+              <Link className="btn pub-btn btn-primary" to="/signup">
+                Sign up
+              </Link>
+              <Link className="btn pub-btn btn-secondary" to="/docs/quickstart">
+                Read the quickstart
+                <Icon name="chevronRight" />
+              </Link>
             </div>
           </div>
         </section>
@@ -156,6 +163,56 @@ export default function Landing() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section className="pub-container pub-section" aria-labelledby="ai-title">
+          <div className="pub-split pub-head">
+            <h2 id="ai-title">AI that reads the payments, not the docs</h2>
+            <p>Answers, alert summaries and agent access all go through the same API the dashboard uses, with my own role, so the AI sees what I can see and nothing else.</p>
+          </div>
+          <ul className="pub-features pub-features-3">
+            <li>
+              <Link to="/docs/ai#ask">
+                <Icon name="sparkles" size={18} />
+                <h3>Ask AI</h3>
+                <p>Ctrl+I on any project page opens a chat about it. It searches payments, reads timelines and analytics, shows each lookup it made, and links the answer back to the payments.</p>
+              </Link>
+            </li>
+            <li>
+              <Link to="/docs/ai#incident-summaries">
+                <Icon name="bell" size={18} />
+                <h3>Incident summaries</h3>
+                <p>When an alert opens an incident, the email, Slack or webhook message carries two or three sentences on what is failing, where, and what to check first.</p>
+              </Link>
+            </li>
+            <li>
+              <Link to="/docs/ai#mcp-server-for-coding-agents">
+                <Icon name="terminal" size={18} />
+                <h3>MCP for coding agents</h3>
+                <p>Claude Code, Cursor and other agents get 8 read tools and recheck, with a token from Settings. Refunds stay a deliberate action in the dashboard.</p>
+              </Link>
+            </li>
+          </ul>
+          <div className="pub-ai-code">
+            <CodeBlock code={MCP_CMD} />
+          </div>
+        </section>
+
+        <section className="pub-container pub-section" aria-labelledby="status-title">
+          <div className="pub-sister">
+            <div>
+              <p className="pub-kicker">{STATUS_SITE_URL.replace("https://", "")}</p>
+              <h2 id="status-title">Is eSewa down? Know before the buyer taps.</h2>
+              <p className="muted">
+                Every gateway's production API, checked every minute: availability, response time, incidents and 90-day uptime. The free Status API tells a server whether to offer a gateway, warn while it is slow, or route buyers to one that works.
+              </p>
+              <CodeBlock code={STATUS_CURL} />
+            </div>
+            <a className="btn pub-btn btn-secondary" href={STATUS_SITE_URL}>
+              Gateway status
+              <Icon name="arrowUpRight" />
+            </a>
+          </div>
         </section>
 
         <section className="pub-container pub-section" aria-labelledby="privacy-title">

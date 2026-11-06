@@ -1,19 +1,30 @@
 ---
-// Starlight's social icons, led by the Skill | Platform switch and a Blog link so the docs header carries the
+// The GitHub link (the same outline icon set as the rest of the site), led by the Skill | Platform switch and a Blog link so the docs header carries the
 // same family links as the landing page nav. Also renders in the mobile menu footer.
-import Default from "@astrojs/starlight/components/SocialIcons.astro";
+import { iconSvg } from "../lib/hugeicons";
+import { REPO } from "../data/site";
 import ProductSwitch from "./ProductSwitch.astro";
 ---
 
 <ProductSwitch variant="header" />
 <a class="docs-blog" href="/blog/">Blog</a>
-<Default />
+<a class="docs-gh" href={REPO} rel="noopener" aria-label="GitHub" title="GitHub"><Fragment set:html={iconSvg("github", 20)} /></a>
 
 <style>
   .docs-blog {
     font-size: var(--sl-text-sm);
     color: var(--sl-color-gray-2);
     text-decoration: none;
+  }
+  .docs-gh {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    color: var(--sl-color-gray-2);
+  }
+  .docs-gh:hover {
+    color: var(--sl-color-white);
   }
   .docs-blog:hover {
     color: var(--sl-color-white);

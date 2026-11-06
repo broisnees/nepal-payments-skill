@@ -1,0 +1,205 @@
+---
+// Starlight's page title, with a Copy page control on its trailing edge: the page as Markdown for an LLM, or
+// opened straight in ChatGPT, Claude or Perplexity. Every docs page is also served as Markdown at <path>.md.
+import { iconSvg } from "../lib/hugeicons";
+
+const title = Astro.locals.starlightRoute.entry.data.title;
+const path = Astro.url.pathname.replace(/\/$/, "");
+const mdUrl = `${path}.md`;
+const mdAbs = new URL(mdUrl, Astro.site).href;
+const prompt = encodeURIComponent(`Read ${mdAbs} and help me with it.`);
+---
+
+<div class="np-titlebar">
+  <h1 id="_top">{title}</h1>
+  <np-copy-page class="np-cp" data-md={mdUrl}>
+    <button type="button" class="np-cp-main" data-copy>
+      <Fragment set:html={iconSvg("copy", 16)} />
+      <span data-label>Copy page</span>
+    </button>
+    <button type="button" class="np-cp-more" aria-label="More ways to use this page" aria-haspopup="menu" aria-expanded="false" aria-controls="np-cp-menu">
+      <Fragment set:html={iconSvg("down", 16)} />
+    </button>
+    <div class="np-cp-menu" id="np-cp-menu" role="menu" hidden>
+      <button type="button" role="menuitem" data-copy>
+        <Fragment set:html={iconSvg("copy", 16)} />
+        <span><b>Copy page</b><small>Markdown for an LLM</small></span>
+      </button>
+      <a role="menuitem" href={mdUrl}>
+        <Fragment set:html={iconSvg("markdown", 16)} />
+        <span><b>View as Markdown</b><small>Plain text of this page</small></span>
+      </a>
+      <a role="menuitem" href={`https://chatgpt.com/?hints=search&q=${prompt}`} target="_blank" rel="noopener">
+        <Fragment set:html={iconSvg("sparkles", 16)} />
+        <span><b>Open in ChatGPT</b><small>Ask questions about this page</small></span>
+      </a>
+      <a role="menuitem" href={`https://claude.ai/new?q=${prompt}`} target="_blank" rel="noopener">
+        <Fragment set:html={iconSvg("bot", 16)} />
+        <span><b>Open in Claude</b><small>Ask questions about this page</small></span>
+      </a>
+      <a role="menuitem" href={`https://www.perplexity.ai/search/new?q=${prompt}`} target="_blank" rel="noopener">
+        <Fragment set:html={iconSvg("search", 16)} />
+        <span><b>Open in Perplexity</b><small>Ask questions about this page</small></span>
+      </a>
+      <a role="menuitem" href="/llms.txt">
+        <Fragment set:html={iconSvg("file", 16)} />
+        <span><b>llms.txt</b><small>Every page, for agents</small></span>
+      </a>
+    </div>
+  </np-copy-page>
+</div>
+
+<style>
+  .np-titlebar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+  }
+
+  .np-titlebar h1 {
+    margin: 0;
+    font-size: var(--sl-text-h1);
+    line-height: var(--sl-line-height-headings);
+    font-weight: 500;
+    color: var(--sl-color-white);
+    min-width: 0;
+  }
+
+  .np-cp {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    margin-top: 0.35rem;
+  }
+
+  .np-cp > button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding-inline: 12px;
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-black);
+    color: var(--sl-color-white);
+    font: 500 13px var(--sl-font);
+    cursor: pointer;
+  }
+
+  .np-cp > button:hover,
+  .np-cp > button[aria-expanded="true"] {
+    background: var(--sl-color-gray-6);
+  }
+
+  .np-cp-more {
+    padding-inline: 8px !important;
+    border-inline-start: 0 !important;
+  }
+
+  .np-cp :global(svg) {
+    flex: none;
+  }
+
+  .np-cp-menu {
+    position: absolute;
+    inset-inline-end: 0;
+    top: calc(100% + 6px);
+    z-index: 20;
+    width: 280px;
+    padding: 4px;
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-black);
+    box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.25);
+  }
+
+  .np-cp-menu > * {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--sl-color-white);
+    font: inherit;
+    text-align: start;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .np-cp-menu > *:hover,
+  .np-cp-menu > *:focus-visible {
+    background: var(--sl-color-gray-6);
+    outline: none;
+  }
+
+  .np-cp-menu :global(svg) {
+    margin-top: 2px;
+    color: var(--sl-color-gray-2);
+  }
+
+  .np-cp-menu span {
+    display: grid;
+    line-height: 1.3;
+  }
+
+  .np-cp-menu b {
+    font-weight: 500;
+    font-size: 13.5px;
+  }
+
+  .np-cp-menu small {
+    color: var(--sl-color-gray-3);
+    font-size: 12px;
+  }
+</style>
+
+<script>
+  class CopyPage extends HTMLElement {
+    connectedCallback() {
+      const md = this.dataset.md!;
+      const more = this.querySelector<HTMLButtonElement>(".np-cp-more")!;
+      const menu = this.querySelector<HTMLElement>(".np-cp-menu")!;
+      const label = this.querySelector<HTMLElement>("[data-label]")!;
+      let text: Promise<string> | null = null;
+      // Fetched on first hover or focus, so the click copies without waiting.
+      const load = () => (text ??= fetch(md).then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status))))));
+      const close = () => {
+        menu.hidden = true;
+        more.setAttribute("aria-expanded", "false");
+      };
+      this.addEventListener("pointerenter", () => void load().catch(() => {}), { once: true });
+      for (const b of this.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+        b.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(await load());
+            label.textContent = "Copied";
+          } catch {
+            text = null;
+            label.textContent = "Copy failed";
+          }
+          close();
+          setTimeout(() => (label.textContent = "Copy page"), 1600);
+        });
+      }
+      more.addEventListener("click", () => {
+        const open = menu.hidden;
+        menu.hidden = !open;
+        more.setAttribute("aria-expanded", String(open));
+        if (open) menu.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+      });
+      document.addEventListener("click", (e) => {
+        if (!this.contains(e.target as Node)) close();
+      });
+      this.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          close();
+          more.focus();
+        }
+      });
+    }
+  }
+  customElements.define("np-copy-page", CopyPage);
+</script>
