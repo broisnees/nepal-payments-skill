@@ -1,4 +1,5 @@
 ---
+import Icon from "../Icon.astro";
 // One page per framework. The select navigates between them and keeps the reader's place.
 import { frameworks, langs, stackUrl } from "../../data/stacks";
 
@@ -24,7 +25,7 @@ const { postId, current } = Astro.props;
         ))
       }
     </select>
-    <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    <Icon name="down" size={12} />
   </div>
 </div>
 
