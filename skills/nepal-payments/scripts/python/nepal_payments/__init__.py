@@ -13,18 +13,21 @@ import time
 from typing import Mapping, Optional
 
 from .connectips import ConnectIps
-from .core import (OPEN_STATUSES, FormResult, PaymentError, QrResult, RedirectResult, TransitionDecision, VerifyResult,
-                   decide_transition, paisa_to_rupees, render_auto_submit_form, rupees_to_paisa)
+from .core import (OPEN_STATUSES, FormResult, PaymentError, QrResult, RedirectResult, SdkResult, TransitionDecision,
+                   VerifyResult, decide_transition, paisa_to_rupees, render_auto_submit_form, rupees_to_paisa)
 from .cybersource import CyberSource
 from .esewa import Esewa
 from .fonepay import Fonepay
+from .getpay import GetPay, get_pay_decode_token, get_pay_opr_secret
+from .hamropay import HAMROPAY_MAX_PAISA, HAMROPAY_MIN_PAISA, HamroPay, hamro_pay_sign
 from .imepay import ImePay
 from .khalti import Khalti
 from .nepalpay import NepalPay, nepal_pay_confirmation_string, nepal_pay_token_string
 from .nps import Nps
 
-__all__ = ["Esewa", "Khalti", "Fonepay", "ConnectIps", "CyberSource", "Nps", "ImePay", "NepalPay", "PaymentError",
-           "VerifyResult", "RedirectResult", "FormResult", "QrResult", "nepal_pay_token_string", "nepal_pay_confirmation_string", "render_auto_submit_form", "paisa_to_rupees",
+__all__ = ["Esewa", "Khalti", "Fonepay", "ConnectIps", "CyberSource", "Nps", "ImePay", "NepalPay", "HamroPay", "GetPay",
+           "PaymentError", "VerifyResult", "RedirectResult", "FormResult", "QrResult", "SdkResult", "hamro_pay_sign",
+           "HAMROPAY_MIN_PAISA", "HAMROPAY_MAX_PAISA", "get_pay_opr_secret", "get_pay_decode_token", "nepal_pay_token_string", "nepal_pay_confirmation_string", "render_auto_submit_form", "paisa_to_rupees",
            "rupees_to_paisa", "create_payments", "config_from_env", "new_order_id", "decide_transition",
            "TransitionDecision", "OPEN_STATUSES"]
 
@@ -47,7 +50,8 @@ def _mode(v: Optional[str]) -> str:
 def create_payments(cfg: Mapping[str, dict]) -> dict:
     """cfg: {"esewa": {...Esewa kwargs}, "khalti": {...}, ...} -> {"esewa": Esewa(...), ...}"""
     classes = {"esewa": Esewa, "khalti": Khalti, "fonepay": Fonepay, "connectips": ConnectIps,
-               "cybersource": CyberSource, "nps": Nps, "imepay": ImePay, "nepalpay": NepalPay}
+               "cybersource": CyberSource, "nps": Nps, "imepay": ImePay, "nepalpay": NepalPay,
+               "hamropay": HamroPay, "getpay": GetPay}
     return {name: classes[name](**kwargs) for name, kwargs in cfg.items()}
 
 
@@ -104,4 +108,18 @@ def config_from_env(env: Optional[Mapping[str, str]] = None) -> dict:
         if e.get("NEPALPAY_WS_URL"):
             cfg["nepalpay"].update(ws_url=e["NEPALPAY_WS_URL"], ws_username=e.get("NEPALPAY_WS_USERNAME"),
                                    ws_api_token=e.get("NEPALPAY_WS_API_TOKEN"))
+    if (e.get("HAMROPAY_MERCHANT_ID") and e.get("HAMROPAY_CLIENT_ID") and e.get("HAMROPAY_CLIENT_API_KEY")
+            and e.get("HAMROPAY_CLIENT_SECRET")):
+        cfg["hamropay"] = {"env": _mode(e.get("HAMROPAY_ENV")), "merchant_id": e["HAMROPAY_MERCHANT_ID"],
+                           "client_id": e["HAMROPAY_CLIENT_ID"], "client_api_key": e["HAMROPAY_CLIENT_API_KEY"],
+                           "client_secret": e["HAMROPAY_CLIENT_SECRET"],
+                           "webhook_secret": e.get("HAMROPAY_WEBHOOK_SECRET"),
+                           "api_base_url": e.get("HAMROPAY_API_BASE_URL"), "gateway_url": e.get("HAMROPAY_GATEWAY_URL")}
+    if e.get("GETPAY_PAP_INFO") and e.get("GETPAY_OPR_KEY") and e.get("GETPAY_WEBSITE_DOMAIN"):
+        cfg["getpay"] = {"env": _mode(e.get("GETPAY_ENV")), "pap_info": e["GETPAY_PAP_INFO"],
+                         "opr_key": e["GETPAY_OPR_KEY"], "ins_key": e.get("GETPAY_INS_KEY"),
+                         "website_domain": e["GETPAY_WEBSITE_DOMAIN"],
+                         "business_name": e.get("GETPAY_BUSINESS_NAME", ""), "image_url": e.get("GETPAY_IMAGE_URL", ""),
+                         "currency": e.get("GETPAY_CURRENCY"), "bundle_url": e.get("GETPAY_BUNDLE_URL"),
+                         "base_url": e.get("GETPAY_BASE_URL")}
     return cfg

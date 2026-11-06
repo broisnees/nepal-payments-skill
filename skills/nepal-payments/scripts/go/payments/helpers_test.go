@@ -27,6 +27,7 @@ type call struct {
 	URL    string
 	Header http.Header
 	Body   string
+	Close  bool // req.Close: the transport sends Connection: close
 }
 
 type fakeDoer struct {
@@ -51,7 +52,7 @@ func (f *fakeDoer) Do(req *http.Request) (*http.Response, error) {
 		body, _ = io.ReadAll(req.Body)
 		req.Body.Close()
 	}
-	c := call{Method: req.Method, URL: req.URL.String(), Header: req.Header.Clone(), Body: string(body)}
+	c := call{Method: req.Method, URL: req.URL.String(), Header: req.Header.Clone(), Body: string(body), Close: req.Close}
 	f.mu.Lock()
 	f.calls = append(f.calls, c)
 	f.mu.Unlock()

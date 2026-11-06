@@ -16,6 +16,8 @@ type Config struct {
 	NPS         *NPSConfig
 	IMEPay      *IMEPayConfig
 	NepalPay    *NepalPayConfig
+	HamroPay    *HamroPayConfig
+	GetPay      *GetPayConfig
 	// HTTPClient is used by every provider whose own HTTPClient is nil (default: a client that
 	// follows redirects, with per-request timeouts from each provider config).
 	HTTPClient Doer
@@ -31,6 +33,8 @@ type Payments struct {
 	NPS         *NPS
 	IMEPay      *IMEPay
 	NepalPay    *NepalPay
+	HamroPay    *HamroPay
+	GetPay      *GetPay
 }
 
 // New builds every configured adapter.
@@ -97,6 +101,20 @@ func New(cfg Config) (*Payments, error) {
 			return nil, err
 		}
 	}
+	if c := cfg.HamroPay; c != nil {
+		cc := *c
+		cc.HTTPClient = pick(c.HTTPClient)
+		if p.HamroPay, err = NewHamroPay(cc); err != nil {
+			return nil, err
+		}
+	}
+	if c := cfg.GetPay; c != nil {
+		cc := *c
+		cc.HTTPClient = pick(c.HTTPClient)
+		if p.GetPay, err = NewGetPay(cc); err != nil {
+			return nil, err
+		}
+	}
 	return p, nil
 }
 
@@ -125,6 +143,12 @@ func (p *Payments) all() []Adapter {
 	}
 	if p.NepalPay != nil {
 		out = append(out, p.NepalPay)
+	}
+	if p.HamroPay != nil {
+		out = append(out, p.HamroPay)
+	}
+	if p.GetPay != nil {
+		out = append(out, p.GetPay)
 	}
 	return out
 }
@@ -220,6 +244,20 @@ func ConfigFromLookup(getenv func(string) string) Config {
 		}
 		if getenv("NEPALPAY_CLIENT_ID") != "" {
 			cfg.NepalPay.Auth, cfg.NepalPay.ClientID, cfg.NepalPay.ClientSecret = "oauth", getenv("NEPALPAY_CLIENT_ID"), getenv("NEPALPAY_CLIENT_SECRET")
+		}
+	}
+	if getenv("HAMROPAY_MERCHANT_ID") != "" && getenv("HAMROPAY_CLIENT_ID") != "" && getenv("HAMROPAY_CLIENT_API_KEY") != "" && getenv("HAMROPAY_CLIENT_SECRET") != "" {
+		cfg.HamroPay = &HamroPayConfig{
+			Env: mode("HAMROPAY_ENV"), MerchantID: getenv("HAMROPAY_MERCHANT_ID"), ClientID: getenv("HAMROPAY_CLIENT_ID"),
+			ClientAPIKey: getenv("HAMROPAY_CLIENT_API_KEY"), ClientSecret: getenv("HAMROPAY_CLIENT_SECRET"),
+			WebhookSecret: getenv("HAMROPAY_WEBHOOK_SECRET"), APIBaseURL: getenv("HAMROPAY_API_BASE_URL"), GatewayURL: getenv("HAMROPAY_GATEWAY_URL"),
+		}
+	}
+	if getenv("GETPAY_PAP_INFO") != "" && getenv("GETPAY_OPR_KEY") != "" && getenv("GETPAY_WEBSITE_DOMAIN") != "" {
+		cfg.GetPay = &GetPayConfig{
+			Env: mode("GETPAY_ENV"), PapInfo: getenv("GETPAY_PAP_INFO"), OprKey: getenv("GETPAY_OPR_KEY"), InsKey: getenv("GETPAY_INS_KEY"),
+			WebsiteDomain: getenv("GETPAY_WEBSITE_DOMAIN"), BusinessName: getenv("GETPAY_BUSINESS_NAME"), ImageURL: getenv("GETPAY_IMAGE_URL"),
+			Currency: getenv("GETPAY_CURRENCY"), BundleURL: getenv("GETPAY_BUNDLE_URL"), BaseURL: getenv("GETPAY_BASE_URL"),
 		}
 	}
 	return cfg

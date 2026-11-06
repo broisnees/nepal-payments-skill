@@ -39,6 +39,8 @@ public final class Payments {
         if (cfg.nps() != null) b.put(ProviderId.NPS, new Nps(cfg.nps(), transport));
         if (cfg.imepay() != null) b.put(ProviderId.IMEPAY, new ImePay(cfg.imepay(), transport));
         if (cfg.nepalpay() != null) b.put(ProviderId.NEPALPAY, new NepalPay(cfg.nepalpay(), transport));
+        if (cfg.hamropay() != null) b.put(ProviderId.HAMROPAY, new HamroPay(cfg.hamropay(), transport));
+        if (cfg.getpay() != null) b.put(ProviderId.GETPAY, new GetPay(cfg.getpay(), transport));
         return new Payments(b);
     }
 
@@ -72,6 +74,14 @@ public final class Payments {
 
     public NepalPay nepalpay() {
         return typed(ProviderId.NEPALPAY, NepalPay.class);
+    }
+
+    public HamroPay hamropay() {
+        return typed(ProviderId.HAMROPAY, HamroPay.class);
+    }
+
+    public GetPay getpay() {
+        return typed(ProviderId.GETPAY, GetPay.class);
     }
 
     /** Untyped access for generic handlers keyed by a route param ("esewa", "khalti", ...). */
@@ -149,6 +159,18 @@ public final class Payments {
             if (set(env, "NEPALPAY_NCHL_PUBLIC_KEY_PEM")) c = c.withNchlPublicKeyPem(env.get("NEPALPAY_NCHL_PUBLIC_KEY_PEM").replace("\\n", "\n"));
             if (set(env, "NEPALPAY_WS_URL")) c = c.withWebSocket(env.get("NEPALPAY_WS_URL"), env.get("NEPALPAY_WS_USERNAME"), env.get("NEPALPAY_WS_API_TOKEN"));
             cfg = cfg.withNepalPay(c);
+        }
+        if (set(env, "HAMROPAY_MERCHANT_ID") && set(env, "HAMROPAY_CLIENT_ID") && set(env, "HAMROPAY_CLIENT_API_KEY") && set(env, "HAMROPAY_CLIENT_SECRET")) {
+            cfg = cfg.withHamroPay(HamroPay.Config.of(Environment.parse(env.get("HAMROPAY_ENV")), env.get("HAMROPAY_MERCHANT_ID"), env.get("HAMROPAY_CLIENT_ID"),
+                            env.get("HAMROPAY_CLIENT_API_KEY"), env.get("HAMROPAY_CLIENT_SECRET"))
+                    .withWebhookSecret(env.get("HAMROPAY_WEBHOOK_SECRET")).withApiBaseUrl(env.get("HAMROPAY_API_BASE_URL"))
+                    .withGatewayUrl(env.get("HAMROPAY_GATEWAY_URL")));
+        }
+        if (set(env, "GETPAY_PAP_INFO") && set(env, "GETPAY_OPR_KEY") && set(env, "GETPAY_WEBSITE_DOMAIN")) {
+            cfg = cfg.withGetPay(GetPay.Config.of(Environment.parse(env.get("GETPAY_ENV")), env.get("GETPAY_PAP_INFO"), env.get("GETPAY_OPR_KEY"),
+                            env.get("GETPAY_WEBSITE_DOMAIN"), env.getOrDefault("GETPAY_BUSINESS_NAME", ""), env.getOrDefault("GETPAY_IMAGE_URL", ""))
+                    .withInsKey(env.get("GETPAY_INS_KEY")).withCurrency(env.get("GETPAY_CURRENCY"))
+                    .withBundleUrl(env.get("GETPAY_BUNDLE_URL")).withBaseUrl(env.get("GETPAY_BASE_URL")));
         }
         return cfg;
     }

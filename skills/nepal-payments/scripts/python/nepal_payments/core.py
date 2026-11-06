@@ -15,11 +15,13 @@ import re
 import time
 import urllib.error
 import urllib.request
+from http.client import HTTPException, IncompleteRead
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal, Mapping, Optional, Union
 
-ProviderId = Literal["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay", "nepalpay"]
+ProviderId = Literal["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay", "nepalpay",
+                     "hamropay", "getpay"]
 
 # Normalized payment state. Map every provider status onto exactly one of these.
 PaymentStatus = Literal[
@@ -75,7 +77,17 @@ class QrResult:
     kind: str = "qr"
 
 
-InitiateResult = Union[RedirectResult, FormResult, QrResult]
+@dataclass
+class SdkResult:
+    """Load `script_url` in the browser and start the provider's own checkout with `options` (GetPay). The adapter
+    ships the page helpers (GetPay.checkout_page / payment_page / return_page)."""
+    script_url: str
+    options: dict
+    provider_ref: Optional[str] = None
+    kind: str = "sdk"
+
+
+InitiateResult = Union[RedirectResult, FormResult, QrResult, SdkResult]
 
 
 OPEN_STATUSES = ("initiated", "pending", "unknown")
@@ -255,6 +267,20 @@ class HttpResponse:
     headers: Mapping[str, str] = field(default_factory=dict)
 
 
+def _read_text(res: Any) -> str:
+    """Read the body as text. A body cut off mid-stream is kept only when what arrived is complete JSON:
+    Hamro Pay (grpc-gateway behind Envoy) aborts the chunked stream after its error answers."""
+    try:
+        raw = res.read()
+    except IncompleteRead as e:
+        raw = e.partial
+        try:
+            json.loads(raw.decode("utf-8", "replace"))
+        except ValueError:
+            raise e from None
+    return raw.decode("utf-8", "replace")
+
+
 def http(provider: str, url: str, method: str = "GET", headers: Optional[Mapping[str, str]] = None,
          body: Any = None, timeout: float = 15.0, retries: int = 0) -> HttpResponse:
     hdrs = {"Accept": "application/json", "User-Agent": "nepal-payments/1.0", **(headers or {})}
@@ -273,11 +299,12 @@ def http(provider: str, url: str, method: str = "GET", headers: Optional[Mapping
             time.sleep(0.3 * 2 ** (attempt - 1))
         req = urllib.request.Request(url, data=data, method=method, headers=hdrs)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as res:
-                status, text, rh = res.status, res.read().decode("utf-8", "replace"), dict(res.headers)
-        except urllib.error.HTTPError as e:  # 4xx/5xx still carry a body we want
-            status, text, rh = e.code, e.read().decode("utf-8", "replace"), dict(e.headers or {})
-        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as res:
+                    status, text, rh = res.status, _read_text(res), dict(res.headers)
+            except urllib.error.HTTPError as e:  # 4xx/5xx still carry a body we want
+                status, text, rh = e.code, _read_text(e), dict(e.headers or {})
+        except (urllib.error.URLError, TimeoutError, OSError, HTTPException) as e:
             last_err = e
             continue
         if (status >= 500 or status == 429) and attempt < retries:

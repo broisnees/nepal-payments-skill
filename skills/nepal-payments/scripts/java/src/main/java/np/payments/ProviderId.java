@@ -9,7 +9,9 @@ public enum ProviderId {
     CYBERSOURCE("cybersource"),
     NPS("nps"),
     IMEPAY("imepay"),
-    NEPALPAY("nepalpay");
+    NEPALPAY("nepalpay"),
+    HAMROPAY("hamropay"),
+    GETPAY("getpay");
 
     private final String wire;
 

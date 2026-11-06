@@ -15,4 +15,6 @@ enum ProviderId: string
     case Nps = 'nps';
     case ImePay = 'imepay';
     case NepalPay = 'nepalpay';
+    case HamroPay = 'hamropay';
+    case GetPay = 'getpay';
 }

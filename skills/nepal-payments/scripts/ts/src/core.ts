@@ -13,7 +13,9 @@ export type ProviderId =
   | "cybersource"
   | "nps"
   | "imepay"
-  | "nepalpay";
+  | "nepalpay"
+  | "hamropay"
+  | "getpay";
 
 /** Normalized payment state. Map every provider status onto exactly one of these. */
 export type PaymentStatus =
@@ -60,7 +62,12 @@ export type InitiateResult =
    * Show a QR the payer scans from their own app (NEPALPAY QR). Render `qrString` with any QR library, or
    * `<img src="data:image/png;base64,${qrImage}">` when the provider sent an image. Persist `providerRef`.
    */
-  | { kind: "qr"; qrString: string; qrImage?: string; providerRef: string; raw?: unknown };
+  | { kind: "qr"; qrString: string; qrImage?: string; providerRef: string; raw?: unknown }
+  /**
+   * Load `scriptUrl` in the browser and start the provider's own checkout with `options` (GetPay). The adapter
+   * ships the page helpers (getpay.checkoutPage / paymentPage / returnPage).
+   */
+  | { kind: "sdk"; scriptUrl: string; options: Record<string, unknown>; providerRef?: string };
 
 export interface Customer {
   name?: string;

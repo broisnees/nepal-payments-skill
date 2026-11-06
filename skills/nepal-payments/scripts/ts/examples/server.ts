@@ -100,7 +100,9 @@ async function verifyAndTransition(a: Attempt, callback?: Record<string, string>
 const returnUrlFor = (provider: ProviderId, attemptId: string) =>
   provider === "esewa"
     ? `${PUBLIC_URL}/payments/esewa/return/${attemptId}` // eSewa appends ?data=; keep the id in the path
-    : `${PUBLIC_URL}/payments/${provider}/return`;
+    : provider === "getpay"
+      ? `${PUBLIC_URL}/payments/getpay/landing/${attemptId}` // token may sit in the #hash: a browser page forwards it
+      : `${PUBLIC_URL}/payments/${provider}/return`;
 
 async function createAttempt(orderId: string, provider: ProviderId): Promise<Attempt> {
   const order = orders.get(orderId);
@@ -166,6 +168,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       const img = a.initiate.qrImage ? `<img alt="NEPALPAY QR" width="280" height="280" src="data:image/png;base64,${a.initiate.qrImage}">` : "";
       return send(200, page(`<h1>Scan to pay</h1>${img}<p><code style="word-break:break-all">${escapeHtml(a.initiate.qrString)}</code></p><p><a href="/payments/${a.provider}/return/${a.id}">I've paid</a></p>`));
     }
+    if (a.initiate.kind === "sdk") return send(200, payments.get("getpay").checkoutPage(a.initiate, `/payments/getpay/pay/${a.id}`));
     return a.initiate.kind === "redirect" ? redirect(a.initiate.url) : send(200, renderAutoSubmitForm(a.initiate));
   }
 
@@ -203,6 +206,13 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       console.error(`[return] ${provider} ${a.id}:`, e instanceof PaymentError ? `${e.code} ${e.message}` : e);
     }
     return redirect(`/orders/${a.orderId}?attempt=${a.id}`);
+  }
+
+  // GetPay pages 2-4: card form, then the success/fail landing that forwards the token to the return route
+  m = url.pathname.match(/^\/payments\/getpay\/(pay|landing)\/([A-Z0-9]+)$/);
+  if (req.method === "GET" && m && attempts.get(m[2])?.provider === "getpay") {
+    const g = payments.get("getpay");
+    return send(200, m[1] === "pay" ? g.paymentPage() : g.returnPage(`/payments/getpay/return/${m[2]}`));
   }
 
   // Receipt page (and mobile "done" URL the WebView intercepts)

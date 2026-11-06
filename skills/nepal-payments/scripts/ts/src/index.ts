@@ -13,6 +13,8 @@ export { connectips, connectIpsTokenString, connectIpsDate, type ConnectIpsConfi
 export { cybersource, cybersourceSign, signedDateTime, type CyberSourceConfig, type BillTo } from "./cybersource.ts";
 export { nps, npsSign, type NpsConfig } from "./nps.ts";
 export { imepay, type ImePayConfig } from "./imepay.ts";
+export { hamropay, hamroPaySign, HAMROPAY_MIN_PAISA, HAMROPAY_MAX_PAISA, type HamroPayConfig } from "./hamropay.ts";
+export { getpay, getPayOprSecret, getPayDecodeToken, type GetPayConfig } from "./getpay.ts";
 export { nepalpay, nepalPayTokenString, nepalPayConfirmationString, type NepalPayConfig, type NepalPayTxn } from "./nepalpay.ts";
 
 import type { PaymentAdapter, ProviderId } from "./core.ts";
@@ -24,6 +26,8 @@ import { cybersource, type CyberSourceConfig } from "./cybersource.ts";
 import { nps, type NpsConfig } from "./nps.ts";
 import { imepay, type ImePayConfig } from "./imepay.ts";
 import { nepalpay, type NepalPayConfig } from "./nepalpay.ts";
+import { hamropay, type HamroPayConfig } from "./hamropay.ts";
+import { getpay, type GetPayConfig } from "./getpay.ts";
 
 export interface PaymentsConfig {
   esewa?: EsewaConfig;
@@ -34,6 +38,8 @@ export interface PaymentsConfig {
   nps?: NpsConfig;
   imepay?: ImePayConfig;
   nepalpay?: NepalPayConfig;
+  hamropay?: HamroPayConfig;
+  getpay?: GetPayConfig;
 }
 
 type Adapters = {
@@ -45,6 +51,8 @@ type Adapters = {
   nps: ReturnType<typeof nps>;
   imepay: ReturnType<typeof imepay>;
   nepalpay: ReturnType<typeof nepalpay>;
+  hamropay: ReturnType<typeof hamropay>;
+  getpay: ReturnType<typeof getpay>;
 };
 
 export function createPayments(cfg: PaymentsConfig) {
@@ -57,6 +65,8 @@ export function createPayments(cfg: PaymentsConfig) {
   if (cfg.nps) built.nps = nps(cfg.nps);
   if (cfg.imepay) built.imepay = imepay(cfg.imepay);
   if (cfg.nepalpay) built.nepalpay = nepalpay(cfg.nepalpay);
+  if (cfg.hamropay) built.hamropay = hamropay(cfg.hamropay);
+  if (cfg.getpay) built.getpay = getpay(cfg.getpay);
 
   return {
     /** Typed access to a configured provider (throws if not configured). */
@@ -159,6 +169,32 @@ export function paymentsConfigFromEnv(env: Record<string, string | undefined> = 
       ...(env.NEPALPAY_CLIENT_ID && { auth: "oauth" as const, clientId: env.NEPALPAY_CLIENT_ID, clientSecret: env.NEPALPAY_CLIENT_SECRET ?? "" }),
       ...(env.NEPALPAY_NCHL_PUBLIC_KEY_PEM && { nchlPublicKeyPem: env.NEPALPAY_NCHL_PUBLIC_KEY_PEM.replace(/\\n/g, "\n") }),
       ...(env.NEPALPAY_WS_URL && { wsUrl: env.NEPALPAY_WS_URL, wsUsername: env.NEPALPAY_WS_USERNAME, wsApiToken: env.NEPALPAY_WS_API_TOKEN }),
+    };
+  }
+  if (env.HAMROPAY_MERCHANT_ID && env.HAMROPAY_CLIENT_ID && env.HAMROPAY_CLIENT_API_KEY && env.HAMROPAY_CLIENT_SECRET) {
+    cfg.hamropay = {
+      env: mode(env.HAMROPAY_ENV),
+      merchantId: env.HAMROPAY_MERCHANT_ID,
+      clientId: env.HAMROPAY_CLIENT_ID,
+      clientApiKey: env.HAMROPAY_CLIENT_API_KEY,
+      clientSecret: env.HAMROPAY_CLIENT_SECRET,
+      webhookSecret: env.HAMROPAY_WEBHOOK_SECRET,
+      apiBaseUrl: env.HAMROPAY_API_BASE_URL,
+      gatewayUrl: env.HAMROPAY_GATEWAY_URL,
+    };
+  }
+  if (env.GETPAY_PAP_INFO && env.GETPAY_OPR_KEY && env.GETPAY_WEBSITE_DOMAIN) {
+    cfg.getpay = {
+      env: mode(env.GETPAY_ENV),
+      papInfo: env.GETPAY_PAP_INFO,
+      oprKey: env.GETPAY_OPR_KEY,
+      insKey: env.GETPAY_INS_KEY,
+      websiteDomain: env.GETPAY_WEBSITE_DOMAIN,
+      businessName: env.GETPAY_BUSINESS_NAME ?? "",
+      imageUrl: env.GETPAY_IMAGE_URL ?? "",
+      currency: env.GETPAY_CURRENCY,
+      bundleUrl: env.GETPAY_BUNDLE_URL,
+      baseUrl: env.GETPAY_BASE_URL,
     };
   }
   return cfg;

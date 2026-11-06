@@ -8,6 +8,8 @@ use NepalPayments\ConnectIps\ConnectIpsConfig;
 use NepalPayments\CyberSource\CyberSourceConfig;
 use NepalPayments\Esewa\EsewaConfig;
 use NepalPayments\Fonepay\FonepayConfig;
+use NepalPayments\GetPay\GetPayConfig;
+use NepalPayments\HamroPay\HamroPayConfig;
 use NepalPayments\ImePay\ImePayConfig;
 use NepalPayments\Khalti\KhaltiConfig;
 use NepalPayments\NepalPay\NepalPayConfig;
@@ -25,6 +27,8 @@ final class PaymentsConfig
         public readonly ?NpsConfig $nps = null,
         public readonly ?ImePayConfig $imepay = null,
         public readonly ?NepalPayConfig $nepalpay = null,
+        public readonly ?HamroPayConfig $hamropay = null,
+        public readonly ?GetPayConfig $getpay = null,
     ) {
     }
 }

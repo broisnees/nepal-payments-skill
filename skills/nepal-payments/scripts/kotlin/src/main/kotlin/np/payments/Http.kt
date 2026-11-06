@@ -12,9 +12,12 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.net.http.HttpTimeoutException
+import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
+import java.util.concurrent.CompletionStage
 import java.util.concurrent.ExecutionException
+import java.util.concurrent.Flow
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.coroutines.cancellation.CancellationException
@@ -43,8 +46,10 @@ data class TransportResponse(
 )
 
 /**
- * One HTTP exchange. Throw on network failure / timeout (any exception except CancellationException is treated as a
- * retryable network error); return non-2xx responses normally. Don't follow redirects for POSTs that would drop the body.
+ * One HTTP exchange. Send every header in [TransportRequest.headers]; a client that cannot send `Connection: close`
+ * must at least not reuse that request's connection. Throw on network failure / timeout (any exception except
+ * CancellationException is treated as a retryable network error); return non-2xx responses normally. Don't follow
+ * redirects for POSTs that would drop the body.
  */
 fun interface HttpTransport {
     suspend fun execute(request: TransportRequest): TransportResponse
@@ -60,6 +65,15 @@ fun interface HttpTransport {
  * executor. The deadline is enforced twice (HttpRequest.timeout for the response headers, and an overall
  * CompletableFuture deadline that also covers the body); on timeout or failure the in-flight exchange is cancelled.
  *
+ * HttpClient refuses the "Connection" header ("restricted header name") unless the JVM runs with
+ * `-Djdk.httpclient.allowRestrictedHeaders=connection`. Without that flag, a request that asks for `Connection: close`
+ * (Hamro Pay) is sent without the header on a one-shot client built from this one's settings, so its socket never
+ * returns to the shared keep-alive pool; the one-shot client is released for GC afterwards.
+ *
+ * Hamro Pay's gateway aborts the body stream on error responses (the chunked body never gets its terminating chunk).
+ * When the body read fails after some bytes arrived and those bytes parse as a complete JSON value, the response is
+ * returned with them as the body; anything else still throws.
+ *
  * Note: stdlib-only coroutines can't observe coroutine cancellation, so a cancelled caller stops waiting only when the
  * request finishes or hits its timeout. Use a Ktor-client-based transport if you need prompt cancellation.
  */
@@ -72,10 +86,21 @@ class JdkHttpTransport(private val client: HttpClient = defaultClient) : HttpTra
                 request.method,
                 request.body?.let { HttpRequest.BodyPublishers.ofString(it, Charsets.UTF_8) } ?: HttpRequest.BodyPublishers.noBody(),
             )
-        for ((name, value) in request.headers) builder.header(name, value)
+        var via = client
+        for ((name, value) in request.headers) {
+            if (name.equals("Connection", ignoreCase = true)) {
+                try {
+                    builder.header(name, value)
+                } catch (e: IllegalArgumentException) {
+                    if (value.equals("close", ignoreCase = true)) via = oneShot()
+                }
+            } else {
+                builder.header(name, value)
+            }
+        }
 
         val inFlight: CompletableFuture<HttpResponse<ByteArray>> =
-            client.sendAsync(builder.build(), HttpResponse.BodyHandlers.ofByteArray())
+            via.sendAsync(builder.build()) { LenientBody() }
         val deadline = inFlight.thenApply { it }.orTimeout(timeoutMs, TimeUnit.MILLISECONDS)
         return try {
             suspendCoroutine { cont ->
@@ -88,6 +113,37 @@ class JdkHttpTransport(private val client: HttpClient = defaultClient) : HttpTra
             inFlight.cancel(true) // abort the exchange (no-op if it already finished)
             throw e
         }
+    }
+
+    /** Collects the body; on a read error keeps the bytes already read if they are complete JSON. */
+    private class LenientBody : HttpResponse.BodySubscriber<ByteArray> {
+        private val buf = java.io.ByteArrayOutputStream()
+        private val result = CompletableFuture<ByteArray>()
+
+        override fun getBody(): CompletionStage<ByteArray> = result
+        override fun onSubscribe(subscription: Flow.Subscription) = subscription.request(Long.MAX_VALUE)
+        override fun onNext(item: List<ByteBuffer>) {
+            for (bb in item) ByteArray(bb.remaining()).also { bb.get(it); buf.write(it) }
+        }
+        override fun onComplete() {
+            result.complete(buf.toByteArray())
+        }
+        override fun onError(throwable: Throwable) {
+            val partial = buf.toByteArray()
+            val json = partial.isNotEmpty() && runCatching { Json.parse(decodeUtf8(partial)) }.isSuccess
+            if (json) result.complete(partial) else result.completeExceptionally(throwable)
+        }
+    }
+
+    /** A client with this one's settings and an empty connection pool. */
+    private fun oneShot(): HttpClient {
+        val b = HttpClient.newBuilder().version(client.version()).followRedirects(client.followRedirects())
+        client.proxy().ifPresent { b.proxy(it) }
+        client.authenticator().ifPresent { b.authenticator(it) }
+        client.cookieHandler().ifPresent { b.cookieHandler(it) }
+        client.connectTimeout().ifPresent { b.connectTimeout(it) }
+        client.executor().ifPresent { b.executor(it) }
+        return b.sslContext(client.sslContext()).sslParameters(client.sslParameters()).build()
     }
 
     private fun unwrap(err: Throwable, timeoutMs: Long): Throwable {

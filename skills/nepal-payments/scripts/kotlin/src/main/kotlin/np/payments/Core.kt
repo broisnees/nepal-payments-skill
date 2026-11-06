@@ -17,7 +17,9 @@ enum class ProviderId(val wire: String) {
     CYBERSOURCE("cybersource"),
     NPS("nps"),
     IMEPAY("imepay"),
-    NEPALPAY("nepalpay");
+    NEPALPAY("nepalpay"),
+    HAMROPAY("hamropay"),
+    GETPAY("getpay");
 
     companion object {
         fun fromWire(value: String): ProviderId? = entries.firstOrNull { it.wire == value }
@@ -111,6 +113,17 @@ sealed interface InitiateResult {
         val qrImage: String? = null,
         override val providerRef: String,
         val raw: Any? = null,
+    ) : InitiateResult
+
+    /**
+     * Load [scriptUrl] in the browser and start the provider's own checkout with [options] (GetPay). The adapter
+     * ships the page helpers ([GetPay.checkoutPage] / [GetPay.paymentPage] / [GetPay.returnPage]).
+     */
+    data class Sdk(
+        val scriptUrl: String,
+        /** JSON object for the browser SDK ([Json.stringify]-able). */
+        val options: Map<String, Any?>,
+        override val providerRef: String? = null,
     ) : InitiateResult
 
     companion object {

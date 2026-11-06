@@ -18,6 +18,8 @@ data class PaymentsConfig(
     val nps: NpsConfig? = null,
     val imepay: ImePayConfig? = null,
     val nepalpay: NepalPayConfig? = null,
+    val hamropay: HamroPayConfig? = null,
+    val getpay: GetPayConfig? = null,
 )
 
 class Payments private constructor(private val built: Map<ProviderId, PaymentAdapter>) {
@@ -33,6 +35,8 @@ class Payments private constructor(private val built: Map<ProviderId, PaymentAda
     val nps: Nps get() = typed(ProviderId.NPS)
     val imepay: ImePay get() = typed(ProviderId.IMEPAY)
     val nepalpay: NepalPay get() = typed(ProviderId.NEPALPAY)
+    val hamropay: HamroPay get() = typed(ProviderId.HAMROPAY)
+    val getpay: GetPay get() = typed(ProviderId.GETPAY)
 
     fun adapter(id: ProviderId): PaymentAdapter =
         built[id] ?: throw IllegalStateException("payment provider \"${id.wire}\" is not configured")
@@ -55,6 +59,8 @@ class Payments private constructor(private val built: Map<ProviderId, PaymentAda
             config.nps?.let { built[ProviderId.NPS] = Nps(it, transport) }
             config.imepay?.let { built[ProviderId.IMEPAY] = ImePay(it, transport) }
             config.nepalpay?.let { built[ProviderId.NEPALPAY] = NepalPay(it, transport) }
+            config.hamropay?.let { built[ProviderId.HAMROPAY] = HamroPay(it, transport) }
+            config.getpay?.let { built[ProviderId.GETPAY] = GetPay(it, transport) }
             return Payments(built)
         }
     }
@@ -164,7 +170,37 @@ fun paymentsConfigFromEnv(env: Map<String, String?> = System.getenv()): Payments
         )
     } else null
 
-    return PaymentsConfig(esewa, khalti, fonepay, connectips, cybersource, nps, imepay, nepalpay)
+    val hamropay = if (v("HAMROPAY_MERCHANT_ID") != null && v("HAMROPAY_CLIENT_ID") != null && v("HAMROPAY_CLIENT_API_KEY") != null &&
+        v("HAMROPAY_CLIENT_SECRET") != null
+    ) {
+        HamroPayConfig(
+            env = mode("HAMROPAY_ENV"),
+            merchantId = v("HAMROPAY_MERCHANT_ID")!!,
+            clientId = v("HAMROPAY_CLIENT_ID")!!,
+            clientApiKey = v("HAMROPAY_CLIENT_API_KEY")!!,
+            clientSecret = v("HAMROPAY_CLIENT_SECRET")!!,
+            webhookSecret = env["HAMROPAY_WEBHOOK_SECRET"],
+            apiBaseUrl = env["HAMROPAY_API_BASE_URL"],
+            gatewayUrl = env["HAMROPAY_GATEWAY_URL"],
+        )
+    } else null
+
+    val getpay = if (v("GETPAY_PAP_INFO") != null && v("GETPAY_OPR_KEY") != null && v("GETPAY_WEBSITE_DOMAIN") != null) {
+        GetPayConfig(
+            env = mode("GETPAY_ENV"),
+            papInfo = v("GETPAY_PAP_INFO")!!,
+            oprKey = v("GETPAY_OPR_KEY")!!,
+            insKey = env["GETPAY_INS_KEY"],
+            websiteDomain = v("GETPAY_WEBSITE_DOMAIN")!!,
+            businessName = env["GETPAY_BUSINESS_NAME"] ?: "",
+            imageUrl = env["GETPAY_IMAGE_URL"] ?: "",
+            currency = env["GETPAY_CURRENCY"] ?: "NPR",
+            bundleUrl = env["GETPAY_BUNDLE_URL"],
+            baseUrl = env["GETPAY_BASE_URL"],
+        )
+    } else null
+
+    return PaymentsConfig(esewa, khalti, fonepay, connectips, cybersource, nps, imepay, nepalpay, hamropay, getpay)
 }
 
 private val RANDOM = SecureRandom()

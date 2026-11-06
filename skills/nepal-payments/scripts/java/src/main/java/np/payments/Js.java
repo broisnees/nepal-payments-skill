@@ -112,6 +112,13 @@ final class Js {
         return (d < 0 ? "-" : "") + mantissa + "e" + (exp >= 0 ? "+" : "-") + Math.abs(exp);
     }
 
+    /** Number.prototype.toFixed(digits): the exact binary value rounded, ties away from zero; String(x) from 1e21. */
+    static String toFixed(double d, int digits) {
+        if (!Double.isFinite(d) || Math.abs(d) >= 1e21) return numberToString(d);
+        String s = new BigDecimal(Math.abs(d)).setScale(digits, java.math.RoundingMode.HALF_UP).toPlainString();
+        return d < 0 ? "-" + s : s;
+    }
+
     /** Number(v) for JSON values. */
     static double toNumber(Object v) {
         if (v == null) return 0;

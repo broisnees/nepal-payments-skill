@@ -19,6 +19,8 @@ const (
 	ProviderNPS         ProviderID = "nps"
 	ProviderIMEPay      ProviderID = "imepay"
 	ProviderNepalPay    ProviderID = "nepalpay"
+	ProviderHamroPay    ProviderID = "hamropay"
+	ProviderGetPay      ProviderID = "getpay"
 )
 
 // PaymentStatus is the normalized payment state. Every provider status maps onto exactly one.
@@ -82,6 +84,8 @@ type InitiateInput struct {
 	ConnectIPS  *ConnectIPSInitiateOptions
 	CyberSource *CyberSourceInitiateOptions
 	NPS         *NPSInitiateOptions
+	HamroPay    *HamroPayInitiateOptions
+	GetPay      *GetPayInitiateOptions
 }
 
 // ResultKind says how to send the payer to the provider.
@@ -92,9 +96,10 @@ const (
 	KindRedirect ResultKind = "redirect" // redirect the browser (or open a WebView / Custom Tab) to URL
 	KindForm     ResultKind = "form"     // render an auto-submitting form that POSTs Fields to Action
 	KindQR       ResultKind = "qr"       // show a QR (QRString, or QRImage when sent) the payer scans from their own app
+	KindSDK      ResultKind = "sdk"      // load ScriptURL in the browser and start the provider's checkout with Options
 )
 
-// InitiateResult is a redirect, a form to auto-submit, or a QR to show.
+// InitiateResult is a redirect, a form to auto-submit, a QR to show, or a browser SDK to start.
 // ProviderRef (Khalti pidx, NPS ProcessId, IME Pay TokenId, NEPALPAY validationTraceId) MUST be persisted on the attempt; Verify needs it.
 type InitiateResult struct {
 	Kind ResultKind `json:"kind"`
@@ -117,6 +122,11 @@ type InitiateResult struct {
 	// <img src="data:image/png;base64,{QRImage}"> when the provider sent an image.
 	QRString string `json:"qrString,omitempty"`
 	QRImage  string `json:"qrImage,omitempty"`
+
+	// SDK (GetPay). Load ScriptURL and start the provider's own checkout with Options (a JSON object).
+	// The adapter ships the page helpers (GetPay.CheckoutPage / PaymentPage / ReturnPage).
+	ScriptURL string         `json:"scriptUrl,omitempty"`
+	Options   map[string]any `json:"options,omitempty"`
 
 	ProviderRef string `json:"providerRef,omitempty"`
 }

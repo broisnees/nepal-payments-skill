@@ -4,7 +4,7 @@
  */
 import { test, describe, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import {
   basicAuth,
   createPayments,
@@ -22,6 +22,11 @@ import {
   fromBase64,
   imepay,
   khalti,
+  hamropay,
+  hamroPaySign,
+  getpay,
+  getPayOprSecret,
+  getPayDecodeToken,
   nepalpay,
   nepalPayTokenString,
   nepalPayConfirmationString,
@@ -502,6 +507,162 @@ describe("nepalpay", async () => {
     assert.notEqual((await withNchl.webSocketRequest("X")).body.api_token, (await withNchl.webSocketRequest("X")).body.api_token);
     await assert.rejects(n.webSocketRequest("X"), /wsUrl/);
     await assert.rejects(rsaPkcs1EncryptBase64(spki, "x".repeat(246)), /too long/);
+  });
+});
+
+// ---------------------------------------------------------------- Hamro Pay
+describe("hamropay", () => {
+  const cfg = { env: "sandbox" as const, merchantId: "PN_-Nd99TBnAlBjCgl8ef_b", clientId: "client@123", clientApiKey: "merchant-api-key-test", clientSecret: "abcdefg", webhookSecret: "whsec" };
+  const h = hamropay(cfg);
+  const node = (secret: string, msg: string) => createHmac("sha512", secret).update(msg, "utf8").digest("base64");
+
+  test("signature: base64 HMAC-SHA512 over comma-joined values; commas refused", async () => {
+    assert.equal(await hamroPaySign("abcdefg", ["T1", "1000", "M", "C", "K"]), node("abcdefg", "T1,1000,M,C,K"));
+    await assert.rejects(hamroPaySign("s", ["a,b"]), /commas/);
+  });
+
+  test("initiate: Create Session signed in headers, then a signed gateway form", async () => {
+    mockFetch(() => ({ body: { sessionId: "ca8f7b70-b9c9-11ee-8611-0a73743c8233", merchantId: cfg.merchantId } }));
+    const r = await h.initiate({ orderId: "P1", amountPaisa: 8992, description: "T-shirt", returnUrl: "https://shop.example/ok", failureUrl: "https://shop.example/no" });
+    assert.equal(calls[0].url, "https://uat-payclient.hamropatro.com/v1/checkout/sessionId");
+    assert.equal(header(calls[0], "Client-Id"), "client@123");
+    assert.equal(header(calls[0], "Client-API-Key"), "merchant-api-key-test");
+    assert.equal(header(calls[0], "Connection"), "close");
+    assert.equal(header(calls[0], "Signature"), node("abcdefg", `P1,8992,${cfg.merchantId},client@123,merchant-api-key-test`));
+    const body = JSON.parse(String(calls[0].init.body));
+    assert.deepEqual(
+      [body.merchantTxnId, body.transactionAmount, body.successRedirectionUrl, body.failedRedirectionUrl, body.productList[0].price],
+      ["P1", "8992", "https://shop.example/ok", "https://shop.example/no", 89.92],
+    );
+    assert.equal(r.kind, "form");
+    if (r.kind !== "form") return;
+    assert.equal(r.action, "https://uat-checkout-pay.hamropatro.com/api/checkout");
+    assert.equal(r.providerRef, "ca8f7b70-b9c9-11ee-8611-0a73743c8233");
+    assert.equal(r.fields.token, node("abcdefg", `${cfg.merchantId},P1,ca8f7b70-b9c9-11ee-8611-0a73743c8233,8992,client@123,merchant-api-key-test`));
+    assert.deepEqual(Object.keys(r.fields), ["merchant_id", "session_id", "token", "merchant_transaction_id", "remarks"]);
+  });
+
+  test("initiate: Rs 10..50,000, 25-char id, live gateway required, merchant echo checked", async () => {
+    await assert.rejects(h.initiate({ orderId: "P1", amountPaisa: 999, description: "x", returnUrl: "https://a/" }), /Rs 10/);
+    await assert.rejects(h.initiate({ orderId: "P1", amountPaisa: 5_000_001, description: "x", returnUrl: "https://a/" }), /Rs 10/);
+    await assert.rejects(h.initiate({ orderId: "X".repeat(26), amountPaisa: 1000, description: "x", returnUrl: "https://a/" }), /1–25/);
+    await assert.rejects(hamropay({ ...cfg, env: "production" }).initiate({ orderId: "P1", amountPaisa: 1000, description: "x", returnUrl: "https://a/" }), /gatewayUrl/);
+    mockFetch(() => ({ body: { sessionId: "S", merchantId: "SOMEONE_ELSE" } }));
+    await assert.rejects(h.initiate({ orderId: "P1", amountPaisa: 1000, description: "x", returnUrl: "https://a/" }), (e: PaymentError) => e.code === "merchant_mismatch");
+    mockFetch(() => ({ status: 401, body: { code: 16, message: "Unauthorized Request", details: [] } }));
+    await assert.rejects(h.initiate({ orderId: "P1", amountPaisa: 1000, description: "x", returnUrl: "https://a/" }), (e: PaymentError) => e.code === "unauthorized");
+  });
+
+  test("verify: Get Transaction signed, status mapping, rupees to paisa, id echo checked", async () => {
+    const cases: [Record<string, unknown>, string, number | null][] = [
+      [{ merchantTxnId: "P1", status: "COMPLETED", amount: 89.92, trackingId: "TRK1" }, "paid", 8992],
+      [{ merchantTransactionId: "P1", status: "PROCESSING", amount: 0 }, "pending", null],
+      [{ merchantTxnId: "P1", status: "FAILED", amount: 0 }, "failed", null],
+      [{ merchantTransactionId: "P1", trackingId: "", status: "NOT_INITIATED", amount: 0, message: "TRANSACTION NOT INITIATED YET" }, "not_found", null],
+      [{ merchantTxnId: "P1", status: "SOMETHING_NEW" }, "unknown", null],
+    ];
+    for (const [body, want, amt] of cases) {
+      mockFetch(() => ({ body }));
+      const v = await h.verify({ orderId: "P1", amountPaisa: 8992 });
+      assert.deepEqual([v.status, v.amountPaisa], [want, amt]);
+      assert.equal(calls[0].url, "https://uat-payclient.hamropatro.com/v1/checkout/transaction");
+      assert.equal(header(calls[0], "Signature"), node("abcdefg", `P1,${cfg.merchantId},client@123,merchant-api-key-test`));
+      assert.deepEqual(JSON.parse(String(calls[0].init.body)), { merchantId: cfg.merchantId, merchantTxnId: "P1" });
+    }
+    mockFetch(() => ({ body: { merchantTxnId: "P2", status: "COMPLETED", amount: 89.92 } }));
+    await assert.rejects(h.verify({ orderId: "P1", amountPaisa: 8992 }), (e: PaymentError) => e.code === "id_mismatch");
+    assert.equal(h.orderIdFromCallback({ MerchantTxnId: "P1" }), "P1");
+  });
+
+  test("webhook: signature over merchantTxnId,merchantId,status,amount in any rendering of the amount", async () => {
+    const body = { merchantTxnId: "P1", merchantId: cfg.merchantId, amount: 1200, status: "COMPLETED", metadata: {} };
+    for (const a of ["1200", "1200.0", "1200.00"]) {
+      assert.equal(await h.verifyWebhook(body, node("whsec", `P1,${cfg.merchantId},COMPLETED,${a}`)), true);
+    }
+    assert.equal(await h.verifyWebhook({ ...body, amount: 1.5 }, node("whsec", `P1,${cfg.merchantId},COMPLETED,1.50`)), true);
+    assert.equal(await h.verifyWebhook({ ...body, amount: 1201 }, node("whsec", `P1,${cfg.merchantId},COMPLETED,1200`)), false);
+    assert.equal(await h.verifyWebhook({ ...body, amount: "1200" as unknown as number }, node("whsec", `P1,${cfg.merchantId},COMPLETED,1200`)), false);
+    assert.equal(await h.verifyWebhook(body, null), false);
+    await assert.rejects(hamropay({ ...cfg, webhookSecret: undefined }).verifyWebhook(body, "x"), /webhookSecret/);
+  });
+});
+
+// ---------------------------------------------------------------- GetPay (NCHL cards)
+describe("getpay", () => {
+  const cfg = {
+    env: "sandbox" as const,
+    papInfo: btoa(JSON.stringify({ institutionId: "122", mid: "123123451770986", tid: "12358762" })),
+    oprKey: "4fa4c6b9-3f91-43e5-9b4f-319f68187ba5",
+    websiteDomain: "https://shop.example",
+    businessName: "Shop",
+    imageUrl: "https://shop.example/logo.png",
+  };
+  const g = getpay(cfg);
+  const base = "https://uat-bank-getpay.nchl.com.np/ecom-web-checkout/v1/secure-merchant/transactions";
+  const id = "0cc5b1a39f3c4cad864bc1c6a524534f";
+  const secret = createHash("sha256").update(cfg.oprKey + id).digest("base64");
+  const token = btoa(JSON.stringify({ id, oprSecret: secret }));
+  const ok = (data: Record<string, unknown>) => ({ body: { status: 0, message: "SUCCESS", data } });
+
+  test("oprSecret = base64(SHA-256(oprKey + id)); token decodes from JSON or id:secret", async () => {
+    assert.equal(await getPayOprSecret(cfg.oprKey, id), secret);
+    assert.deepEqual(getPayDecodeToken(token), { id, oprSecret: secret });
+    assert.deepEqual(getPayDecodeToken(btoa(`${id}:${secret}`)), { id, oprSecret: secret });
+    assert.equal(getPayDecodeToken("%%%"), null);
+    assert.equal(getPayDecodeToken(btoa(JSON.stringify({ id }))), null);
+  });
+
+  test("initiate: SDK options with a numeric price, clientRequestId and same-origin callbacks", async () => {
+    const r = await g.initiate({ orderId: "P1", amountPaisa: 120050, description: "Cup <set>", returnUrl: "https://shop.example/ok/P1", failureUrl: "https://shop.example/no/P1" });
+    assert.equal(r.kind, "sdk");
+    if (r.kind !== "sdk") return;
+    assert.equal(r.scriptUrl, "https://minio-getpay.nchl.com.np/getpay-cdn/webcheckout/v5/bundle.js");
+    assert.equal(r.options.price, 1200.5);
+    assert.equal(r.options.clientRequestId, "P1");
+    assert.equal(r.options.baseUrl, base);
+    assert.equal(r.options.insKey, "");
+    assert.deepEqual(r.options.callbackUrl, { successUrl: "https://shop.example/ok/P1", failUrl: "https://shop.example/no/P1" });
+    assert.match(String(r.options.orderInformationUI), /Cup &lt;set&gt;/);
+    await assert.rejects(g.initiate({ orderId: "P1", amountPaisa: 100, description: "x", returnUrl: "https://evil.example/ok" }), (e: PaymentError) => e.code === "invalid_callback_url");
+    const page = g.checkoutPage(r, "/pay/P1</script>");
+    assert.match(page, /new GetPay\(o\)\.initialize\(\)/);
+    assert.ok(!page.includes("</script>\"") && page.includes("\\u003c/script>"));
+    assert.match(g.paymentPage(), /<div id="checkout"><\/div>/);
+    assert.match(g.returnPage("/payments/getpay/return/P1"), /window\.top\.location/);
+  });
+
+  test("verify with token: oprSecret checked, merchant-status, clientId must be this order", async () => {
+    mockFetch(() => ok({ status: "SUCCESS", amount: 1200.0, currency: "NPR", stan: "379832", crrn: "624503379832", clientId: "P1", remarks: "Success" }));
+    const v = await g.verify({ orderId: "P1", amountPaisa: 120000, callback: { token } });
+    assert.deepEqual([v.status, v.amountPaisa, v.transactionId], ["paid", 120000, id]);
+    assert.equal(calls[0].url, `${base}/merchant-status`);
+    assert.deepEqual(JSON.parse(String(calls[0].init.body)), { id, papInfo: cfg.papInfo });
+
+    mockFetch(() => ok({ status: "SUCCESS", amount: 1200.0, clientId: "SOMEONE-ELSES-ORDER" }));
+    await assert.rejects(g.verify({ orderId: "P1", amountPaisa: 120000, callback: { token } }), (e: PaymentError) => e.code === "id_mismatch");
+
+    const forged = btoa(JSON.stringify({ id, oprSecret: btoa("not the hash") }));
+    await assert.rejects(g.verify({ orderId: "P1", amountPaisa: 120000, callback: { token: forged } }), (e: PaymentError) => e.code === "bad_signature");
+    await assert.rejects(g.verify({ orderId: "P1", amountPaisa: 120000, callback: { token: "@@" } }), (e: PaymentError) => e.code === "malformed_callback");
+
+    mockFetch(() => ok({ status: "FAILED", amount: 1200.0, clientId: "P1" }));
+    assert.equal((await g.verify({ orderId: "P1", amountPaisa: 120000, callback: { token } })).status, "failed");
+    mockFetch(() => ({ status: 400, body: { status: -1, message: `Failed to fetch merchant information: Transaction not found for ID: ${id}` } }));
+    assert.equal((await g.verify({ orderId: "P1", amountPaisa: 120000, callback: { token } })).status, "not_found");
+  });
+
+  test("verify without token: statement by clientRequestId; a success there is unknown, never paid", async () => {
+    mockFetch(() => ok({ transactionId: id, clientRequestId: "P1", saleTransactionAmount: 1200.0, status: "SUCCESS", paymentScheme: "MASTERCARD" }));
+    const v = await g.verify({ orderId: "P1", amountPaisa: 120000 });
+    assert.deepEqual([v.status, v.amountPaisa, v.transactionId], ["unknown", 120000, id]);
+    assert.equal(calls[0].url, `${base}/transaction-statement`);
+    assert.deepEqual(JSON.parse(String(calls[0].init.body)), { clientRequestId: "P1" });
+    mockFetch(() => ok({ transactionId: id, clientRequestId: "P1", saleTransactionAmount: 1200.0, status: "FAILED" }));
+    assert.equal((await g.verify({ orderId: "P1", amountPaisa: 120000 })).status, "failed");
+    mockFetch(() => ({ status: 400, body: { status: -1, message: "Failed to fetch transaction statement: Transaction not found for transaction ID: x" } }));
+    assert.equal((await g.verify({ orderId: "P1", amountPaisa: 120000 })).status, "not_found");
+    mockFetch(() => ({ status: 500, body: "oops" }));
+    await assert.rejects(g.verify({ orderId: "P1", amountPaisa: 120000 }), PaymentError);
   });
 });
 
