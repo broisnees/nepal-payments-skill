@@ -2571,3 +2571,18 @@ a.list-row:hover {
 .gw-tile img {
   display: block;
 }
+
+/* "or" between social sign-in and the email form. */
+.divider-text {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.divider-text::before,
+.divider-text::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}

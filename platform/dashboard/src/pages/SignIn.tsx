@@ -6,6 +6,7 @@ import { Icon } from "../components/Icon.tsx";
 import { saveNext } from "../components/Shell.tsx";
 import { forgetSignup } from "../lib/signup.ts";
 import { AuthLayout } from "./AuthLayout.tsx";
+import { SocialSignIn } from "../components/SocialSignIn.tsx";
 
 export default function SignIn() {
   const [params] = useSearchParams();
@@ -46,10 +47,13 @@ export default function SignIn() {
           <span>
             {linkError === "invalid_invite"
               ? "That invite link has expired or was already used. Ask for a new invite, or sign in if you already joined."
-              : "That sign-in link has expired or was already used. Links work once, for 15 minutes. Request a new one below."}
+              : linkError === "invalid_link"
+                ? "That sign-in link has expired or was already used. Links work once, for 15 minutes. Request a new one below."
+                : "Sign-in did not finish. Try again, or use an email link instead."}
           </span>
         </div>
       )}
+      <SocialSignIn next={params.get("next")} />
       <form className="stack" onSubmit={submit} noValidate>
         <label className="field">
           <span className="label">Email</span>
