@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.6.0",
     "@paynp/shared": "0.1.0",
+    "better-auth": "1.7.18",
     "hono": "4.13.16"
   },
   "devDependencies": {

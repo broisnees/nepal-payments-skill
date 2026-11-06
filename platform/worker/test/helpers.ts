@@ -20,7 +20,7 @@ export interface CallOpts {
 export async function call(method: string, path: string, opts: CallOpts = {}): Promise<Response> {
   const headers: Record<string, string> = { ...opts.headers };
   if (opts.body !== undefined || opts.raw !== undefined) headers["content-type"] ??= "application/json";
-  if (opts.cookie) headers.cookie = `paynp_session=${opts.cookie}`;
+  if (opts.cookie) headers.cookie = opts.cookie;
   if (opts.pat) headers.authorization = `Bearer ${opts.pat}`;
   if (opts.key) headers.authorization = `Bearer ${opts.key}`;
   if (opts.cookie && opts.csrf !== false && method !== "GET") headers["x-paynp-csrf"] = "1";
@@ -46,11 +46,14 @@ export function tokenFromMail(email: string, path = "/auth/verify"): string {
   return m[1];
 }
 
+/** The Cookie header a browser would send back after this response (Better Auth's session cookie). */
 export function cookieFrom(res: Response): string {
-  const set = res.headers.get("set-cookie") ?? "";
-  const m = /paynp_session=([^;]+)/.exec(set);
-  if (!m) throw new Error(`no session cookie in: ${set}`);
-  return m[1];
+  const pairs = res.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0])
+    .filter((p) => /^(__Secure-)?paynp\./.test(p) && !p.endsWith("="));
+  if (!pairs.some((p) => p.includes("session_token="))) throw new Error(`no session cookie in: ${res.headers.get("set-cookie")}`);
+  return pairs.join("; ");
 }
 
 let n = 0;
