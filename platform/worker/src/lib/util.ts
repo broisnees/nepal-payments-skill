@@ -54,7 +54,7 @@ export function randomToken(): string {
 
 export class HttpError extends Error {
   constructor(
-    readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 422 | 428 | 429 | 500,
+    readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 422 | 428 | 429 | 500 | 503,
     readonly code: string,
     message: string,
   ) {

@@ -276,13 +276,27 @@ export function buildReport(t: number, recent: readonly MinuteRow[], days: reado
   return { generated_at: t, min_projects: MIN_PROJECTS, gateways };
 }
 
+/**
+ * Where a report's minutes, day rollups and incidents live, and how many sources a minute needs to count.
+ * CROWD is merchant traffic through ingest (a minute counts with 3+ projects); PROBES is the status site's own
+ * once-a-minute calls to each gateway's production API (platform/status).
+ */
+export interface StatusSource {
+  minutes: string;
+  days: string;
+  incidents: string;
+  minProjects: number;
+}
+export const CROWD: StatusSource = { minutes: "status_minutes", days: "status_days", incidents: "status_incidents", minProjects: MIN_PROJECTS };
+export const PROBES: StatusSource = { minutes: "probe_minutes", days: "probe_days", incidents: "probe_incidents", minProjects: 1 };
+
 /** Reads what buildReport needs: 3 queries, bounded by 48 h of minutes per gateway and 90 days of rollups. */
-export async function loadReport(env: Env, t: number): Promise<StatusReport> {
+export async function loadReport(env: Env, t: number, src: StatusSource = CROWD): Promise<StatusReport> {
   const nowMinute = Math.floor(t / MINUTE);
   const [recent, days, incidents] = await env.DB.batch([
-    env.DB.prepare(`SELECT ${MINUTE_COLS} FROM status_minutes WHERE minute > ? AND minute <= ? AND projects >= ?`).bind(nowMinute - 48 * 60, nowMinute, MIN_PROJECTS),
-    env.DB.prepare("SELECT gateway, day, shown_minutes, ok_minutes, hours FROM status_days WHERE day > ?").bind(nptDay(t) - UPTIME_DAYS - 1),
-    env.DB.prepare("SELECT gateway, started_minute, ended_minute, kind, peak_error_rate, peak_p95_ms FROM status_incidents WHERE ended_minute > ? ORDER BY started_minute DESC LIMIT 500").bind(
+    env.DB.prepare(`SELECT ${MINUTE_COLS} FROM ${src.minutes} WHERE minute > ? AND minute <= ? AND projects >= ?`).bind(nowMinute - 48 * 60, nowMinute, src.minProjects),
+    env.DB.prepare(`SELECT gateway, day, shown_minutes, ok_minutes, hours FROM ${src.days} WHERE day > ?`).bind(nptDay(t) - UPTIME_DAYS - 1),
+    env.DB.prepare(`SELECT gateway, started_minute, ended_minute, kind, peak_error_rate, peak_p95_ms FROM ${src.incidents} WHERE ended_minute > ? ORDER BY started_minute DESC LIMIT 500`).bind(
       nowMinute - UPTIME_DAYS * 1440,
     ),
   ]);
@@ -290,12 +304,12 @@ export async function loadReport(env: Env, t: number): Promise<StatusReport> {
 }
 
 /** Daily cron: roll up the last 3 complete Nepal days, store incidents from them, and keep 90 days of minutes. */
-export async function rollupStatus(env: Env, t: number): Promise<{ days: number; incidents: number; minutes_deleted: number }> {
+export async function rollupStatus(env: Env, t: number, src: StatusSource = CROWD): Promise<{ days: number; incidents: number; minutes_deleted: number }> {
   const today = nptDay(t);
   const from = (today - 3) * DAY - NEPAL_OFFSET_MS;
   const to = today * DAY - NEPAL_OFFSET_MS;
-  const rows = await env.DB.prepare(`SELECT ${MINUTE_COLS} FROM status_minutes WHERE minute >= ? AND minute < ? AND projects >= ?`)
-    .bind(from / MINUTE, to / MINUTE, MIN_PROJECTS)
+  const rows = await env.DB.prepare(`SELECT ${MINUTE_COLS} FROM ${src.minutes} WHERE minute >= ? AND minute < ? AND projects >= ?`)
+    .bind(from / MINUTE, to / MINUTE, src.minProjects)
     .all<Record<string, unknown>>();
   const minutes = rows.results.map(toMinute);
   const days = rollupDays(minutes);
@@ -304,7 +318,7 @@ export async function rollupStatus(env: Env, t: number): Promise<{ days: number;
   if (days.length) {
     stmts.push(
       env.DB.prepare(
-        `INSERT INTO status_days (gateway, day, shown_minutes, ok_minutes, hours, computed_at)
+        `INSERT INTO ${src.days} (gateway, day, shown_minutes, ok_minutes, hours, computed_at)
          SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]'), json_extract(value, '$[3]'), json_extract(value, '$[4]'), ?2
          FROM json_each(?1) WHERE true
          ON CONFLICT (gateway, day) DO UPDATE SET shown_minutes = excluded.shown_minutes, ok_minutes = excluded.ok_minutes, hours = excluded.hours, computed_at = excluded.computed_at`,
@@ -314,7 +328,7 @@ export async function rollupStatus(env: Env, t: number): Promise<{ days: number;
   if (incidents.length) {
     stmts.push(
       env.DB.prepare(
-        `INSERT OR REPLACE INTO status_incidents (gateway, started_minute, ended_minute, kind, peak_error_rate, peak_p95_ms)
+        `INSERT OR REPLACE INTO ${src.incidents} (gateway, started_minute, ended_minute, kind, peak_error_rate, peak_p95_ms)
          SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]'), json_extract(value, '$[3]'), json_extract(value, '$[4]'), json_extract(value, '$[5]')
          FROM json_each(?1)`,
       ).bind(JSON.stringify(incidents.map((i) => [i.gateway, i.started_at / MINUTE, i.ended_at / MINUTE, i.kind, i.peak_error_rate, i.peak_p95_ms]))),
@@ -322,9 +336,9 @@ export async function rollupStatus(env: Env, t: number): Promise<{ days: number;
   }
   const cutoff = Math.floor((t - UPTIME_DAYS * DAY) / MINUTE);
   stmts.push(
-    env.DB.prepare("DELETE FROM status_minutes WHERE minute < ?").bind(cutoff),
-    env.DB.prepare("DELETE FROM status_days WHERE day < ?").bind(today - UPTIME_DAYS - 7),
-    env.DB.prepare("DELETE FROM status_incidents WHERE ended_minute < ?").bind(cutoff),
+    env.DB.prepare(`DELETE FROM ${src.minutes} WHERE minute < ?`).bind(cutoff),
+    env.DB.prepare(`DELETE FROM ${src.days} WHERE day < ?`).bind(today - UPTIME_DAYS - 7),
+    env.DB.prepare(`DELETE FROM ${src.incidents} WHERE ended_minute < ?`).bind(cutoff),
   );
   const res = await env.DB.batch(stmts);
   return { days: days.length, incidents: incidents.length, minutes_deleted: res[res.length - 3].meta.changes ?? 0 };

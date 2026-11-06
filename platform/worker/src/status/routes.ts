@@ -1,9 +1,10 @@
-// Public routes: GET /status, /status/:gateway, /status.json. No auth; cached for 60 s at the edge.
+// Public routes: GET /status.json (cached for 60 s at the edge). The status pages moved to their own Worker on
+// STATUS_SITE_URL (platform/status); /status and /status/:gateway redirect there.
 import type { Context, Hono } from "hono";
-import { appOrigin, now } from "../lib/util.ts";
+import { STATUS_SITE_URL } from "@paynp/shared";
+import { now } from "../lib/util.ts";
 import type { AppEnv } from "../types.ts";
-import { STATUS_GATEWAYS, loadReport } from "./aggregate.ts";
-import { renderGateway, renderNotFound, renderOverview } from "./page.ts";
+import { loadReport } from "./aggregate.ts";
 
 export const STATUS_MAX_AGE = 60;
 
@@ -20,9 +21,6 @@ async function cached(c: Context<AppEnv>, build: () => Promise<Response>): Promi
   return res;
 }
 
-const html = (body: string, status = 200) =>
-  new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8", "x-content-type-options": "nosniff", "referrer-policy": "strict-origin-when-cross-origin" } });
-
 export function registerStatus(app: Hono<AppEnv>) {
   app.get("/status.json", (c) =>
     cached(c, async () => {
@@ -30,15 +28,7 @@ export function registerStatus(app: Hono<AppEnv>) {
       return new Response(JSON.stringify(report), { headers: { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*" } });
     }),
   );
-  app.get("/status", (c) => cached(c, async () => html(renderOverview(await loadReport(c.env, now()), appOrigin(c.env, c.req.raw)))));
-  app.get("/status/", (c) => c.redirect("/status", 301));
-  app.get("/status/:gateway", (c) =>
-    cached(c, async () => {
-      const report = await loadReport(c.env, now());
-      const gw = c.req.param("gateway").toLowerCase();
-      const g = report.gateways.find((x) => x.gateway === gw);
-      if (!g || !STATUS_GATEWAYS.includes(gw)) return html(renderNotFound(report, appOrigin(c.env, c.req.raw)), 404);
-      return html(renderGateway(report, g, appOrigin(c.env, c.req.raw)));
-    }),
-  );
+  app.get("/status", (c) => c.redirect(`${STATUS_SITE_URL}/`, 301));
+  app.get("/status/", (c) => c.redirect(`${STATUS_SITE_URL}/`, 301));
+  app.get("/status/:gateway", (c) => c.redirect(`${STATUS_SITE_URL}/${encodeURIComponent(c.req.param("gateway").toLowerCase())}`, 301));
 }

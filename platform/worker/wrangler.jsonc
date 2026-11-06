@@ -11,22 +11,40 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/auth/*", "/v1/*", "/s/*", "/status", "/status/*", "/status.json"]
+    "run_worker_first": ["/api/*", "/auth/*", "/mcp", "/v1/*", "/s/*", "/status", "/status/*", "/status.json"]
   },
+  // Workers AI: Ask paynp and incident summaries when no ANTHROPIC_API_KEY secret is set (src/ai/model.ts).
+  "ai": { "binding": "AI" },
   "d1_databases": [
     { "binding": "DB", "database_name": "paynp", "database_id": "90432197-a1ce-436a-bb1d-24ff35c054df", "migrations_dir": "migrations" }
   ],
-  "durable_objects": { "bindings": [{ "name": "LIVE", "class_name": "ProjectLive" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectLive"] }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "LIVE", "class_name": "ProjectLive" },
+      { "name": "WEBHOOKS", "class_name": "WebhookSender" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ProjectLive"] },
+    { "tag": "v2", "new_sqlite_classes": ["WebhookSender"] }
+  ],
   // 50 requests per second per key, expressed in the 10 s period the binding supports.
-  "ratelimits": [{ "name": "INGEST_LIMITER", "namespace_id": "1001", "simple": { "limit": 500, "period": 10 } }],
+  // Sign-in mail: 5 per minute per address and per IP (src/auth.ts).
+  "ratelimits": [
+    { "name": "INGEST_LIMITER", "namespace_id": "1001", "simple": { "limit": 500, "period": 10 } },
+    { "name": "AUTH_LIMITER", "namespace_id": "1002", "simple": { "limit": 5, "period": 60 } }
+  ],
   // Every minute: alert evaluation and batched notifications. 03:15 UTC is 09:00 Asia/Kathmandu: digest + retention.
   "triggers": { "crons": ["* * * * *", "15 3 * * *"] },
-  // Served at paynp.discerns.app until the product has its own domain.
-  "routes": [{ "pattern": "paynp.discerns.app", "custom_domain": true }],
+  // Served at discerns.app. paynp.discerns.app stays as a second route: SDK and CLI installs from before the move
+  // still send there, and the origin check accepts the request's own host.
+  "routes": [
+    { "pattern": "discerns.app", "custom_domain": true },
+    { "pattern": "paynp.discerns.app", "custom_domain": true }
+  ],
   "vars": {
-    "APP_URL": "https://paynp.discerns.app",
-    "EMAIL_FROM": "paynp <noreply@paynp.discerns.app>",
+    "APP_URL": "https://discerns.app",
+    "EMAIL_FROM": "discerns <noreply@discerns.app>",
     // Free plan: D1 allows 50 queries per invocation. A 15-event batch uses 22 to 45 D1 statements including
     // alert rules and notifications (test/ops-budget.test.ts).
     "INGEST_MAX_EVENTS": "15"
