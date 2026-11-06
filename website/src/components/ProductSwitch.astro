@@ -1,7 +1,7 @@
 ---
-// Skill | Platform: the two products side by side, so either site reaches the other in one click.
+// Skill | Platform | Status: the products side by side, so either site reaches the other in one click.
 // Used in the landing/blog nav (variant "nav", fills nav cells) and the Starlight docs header (variant "header").
-import { PLATFORM_URL, PLATFORM_NAME } from "../data/site";
+import { PLATFORM_URL, PLATFORM_NAME, STATUS_URL } from "../data/site";
 
 interface Props {
   variant?: "nav" | "header";
@@ -12,6 +12,7 @@ const { variant = "nav" } = Astro.props;
 <div class:list={["ps", `ps-${variant}`]} role="group" aria-label="Products">
   <a class="ps-item" href="/" aria-current="true">Skill</a>
   <a class="ps-item" href={PLATFORM_URL} rel="noopener">Platform<span class="ps-name">{PLATFORM_NAME}</span></a>
+  <a class="ps-item" href={STATUS_URL} rel="noopener">Status</a>
 </div>
 
 <style>

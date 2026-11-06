@@ -8,7 +8,8 @@
     "dashboard",
     "sdk-ts",
     "cli",
-    "demo-shop"
+    "demo-shop",
+    "status"
   ],
   "scripts": {
     "dev": "npm run dev --workspace worker",

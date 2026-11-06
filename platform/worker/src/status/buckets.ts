@@ -18,14 +18,17 @@ export function addHist(into: number[], from: readonly number[]): number[] {
   return into;
 }
 
-/** p95 as the upper bound of the bucket that holds the 95th percentile; above 10 s it is the largest sample seen. */
+/**
+ * p95 as the upper bound of the bucket that holds the 95th percentile, capped at the slowest sample seen (the true
+ * p95 can't exceed it), so a few samples read as their real time rather than a bucket edge. Above 10 s it is the max.
+ */
 export function p95(hist: readonly number[], max: number): number | null {
   const n = hist.reduce((s, x) => s + x, 0);
   if (!n) return null;
   let c = 0;
   for (let i = 0; i < BOUNDS.length; i++) {
     c += hist[i];
-    if (100 * c >= 95 * n) return BOUNDS[i];
+    if (100 * c >= 95 * n) return max > 0 ? Math.min(BOUNDS[i], max) : BOUNDS[i];
   }
   return Math.max(max, BOUNDS[BOUNDS.length - 1] + 1);
 }

@@ -42,7 +42,9 @@ describe("latency histogram", () => {
     h[6] = 5; // <= 5 s
     expect(p95(h, 4800)).toBe(500);
     h[6] = 6;
-    expect(p95(h, 4800)).toBe(5000);
+    // The bucket bound is 5 s, but no sample was slower than 4.8 s.
+    expect(p95(h, 4800)).toBe(4800);
+    expect(p95(h, 0)).toBe(5000);
     expect(p95(emptyHist(), 0)).toBeNull();
     const slow = emptyHist();
     slow[8] = 10;
@@ -127,7 +129,7 @@ describe("states and incidents", () => {
       [0, 5, "errors", false],
     ]);
     expect(inc[1].peak_error_rate).toBe(0.5);
-    expect(inc[0].peak_p95_ms).toBe(10_000);
+    expect(inc[0].peak_p95_ms).toBe(8000);
   });
 
   it("builds 24 hourly points, 90 uptime days, peak hours by Nepal hour and merges stored incidents", () => {
@@ -143,7 +145,7 @@ describe("states and incidents", () => {
     const g = r.gateways.find((x) => x.gateway === "esewa")!;
     expect(r.gateways.map((x) => x.gateway)).toEqual(["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay", "nepalpay", "hamropay", "getpay"]);
     expect(g.last_24h).toHaveLength(24);
-    expect(g.last_24h[23]).toMatchObject({ error_rate: 0, p95_ms: 500 });
+    expect(g.last_24h[23]).toMatchObject({ error_rate: 0, p95_ms: 400 });
     expect(g.last_24h[22]).toMatchObject({ error_rate: 0.1 });
     expect(g.uptime_90d).toHaveLength(90);
     expect(g.uptime_90d[89]).toEqual({ date: "2026-11-05", uptime: 1 });
@@ -172,36 +174,20 @@ describe("states and incidents", () => {
     expect(day).toMatchObject({ shown_minutes: 7, ok_minutes: 1 });
     expect(JSON.parse(day!.hours)[12][0]).toBe(70);
     const inc = await env.DB.prepare("SELECT * FROM status_incidents WHERE gateway = 'cybersource'").all<Record<string, any>>();
-    expect(inc.results).toEqual([{ gateway: "cybersource", started_minute: m0, ended_minute: m0 + 6, kind: "errors", peak_error_rate: 0.6, peak_p95_ms: 500 }]);
+    expect(inc.results).toEqual([{ gateway: "cybersource", started_minute: m0, ended_minute: m0 + 6, kind: "errors", peak_error_rate: 0.6, peak_p95_ms: 400 }]);
     // The scheduled handler runs it as part of the daily cron.
     await worker.scheduled(createScheduledController({ cron: DAILY_CRON, scheduledTime: t }), env, {} as ExecutionContext);
   });
 });
 
 describe("status pages", () => {
-  it("serves /status with the SEO title, light and dark styles and a 60 s cache", async () => {
-    const res = await call("GET", "/status");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
-    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
-    const html = await res.text();
-    expect(html).toContain("<title>Is eSewa down? Live status of Nepali payment gateways</title>");
-    expect(html).toContain("prefers-color-scheme:dark");
-    expect(html).toContain('<meta name="color-scheme" content="light dark">');
-    for (const name of ["eSewa", "Khalti", "Fonepay", "connectIPS", "IME Pay"]) expect(html).toContain(name);
-    expect(html).not.toMatch(/<script/);
-    expect(html).not.toMatch(/[\u2013\u2014\u2026]/);
-  });
-
-  it("serves /status/:gateway with its own title, and 404 for unknown gateways", async () => {
-    const html = await (await call("GET", "/status/khalti")).text();
-    expect(html).toContain("<title>Is Khalti down? Live Khalti status</title>");
-    expect(html).toContain("<h1>Is Khalti down?</h1>");
-    expect(html).toContain('<link rel="canonical" href="https://paynp.test/status/khalti">');
-    expect(html).not.toMatch(/[\u2013\u2014\u2026]/);
-    const nf = await call("GET", "/status/paypal");
-    expect(nf.status).toBe(404);
-    expect(await nf.text()).toContain("Is eSewa down?");
+  it("/status and /status/:gateway redirect to the status site", async () => {
+    const all = await call("GET", "/status");
+    expect(all.status).toBe(301);
+    expect(all.headers.get("location")).toBe("https://status.discerns.app/");
+    const one = await call("GET", "/status/Khalti");
+    expect(one.status).toBe(301);
+    expect(one.headers.get("location")).toBe("https://status.discerns.app/khalti");
   });
 
   it("serves /status.json with CORS and the report shape", async () => {
@@ -211,5 +197,23 @@ describe("status pages", () => {
     expect(body.min_projects).toBe(3);
     expect(body.gateways).toHaveLength(10);
     expect(body.gateways[0]).toHaveProperty("uptime_90d");
+  });
+});
+
+describe("gateway probes", () => {
+  it("stores one row per gateway per minute and the probe report turns failures into states", async () => {
+    const { runProbes } = await import("../../status/src/probe.ts");
+    const { PROBES } = await import("../src/status/aggregate.ts");
+    const t0 = Date.now() - 20 * 60_000;
+    // eSewa answers 503 for 15 minutes, everyone else answers 401 quickly.
+    const fetcher = (async (url: string) => new Response("{}", { status: String(url).includes("esewa") ? 503 : 401 })) as unknown as typeof fetch;
+    for (let m = 0; m < 16; m++) await runProbes(env, t0 + m * 60_000 + 5 * 60_000, fetcher);
+    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM probe_minutes").first<{ n: number }>();
+    expect(n!.n).toBe(16 * 9);
+    const r = await loadReport(env, Date.now(), PROBES);
+    const by = Object.fromEntries(r.gateways.map((g) => [g.gateway, g.state]));
+    expect(by.esewa).toBe("down");
+    expect(by.khalti).toBe("operational");
+    expect(by.imepay).toBe("no_data");
   });
 });

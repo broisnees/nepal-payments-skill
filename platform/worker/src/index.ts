@@ -1,12 +1,14 @@
-// paynp Worker: public ingest (/v1), auth (/auth), REST API (/api), live stream (Durable Object), cron alerts,
+// discerns Worker: public ingest (/v1), auth (/auth), REST API (/api), Ask discerns and MCP (/mcp), live stream and webhook sender (Durable Objects), cron alerts,
 // and the dashboard as static assets (everything else).
 import { Hono, type ErrorHandler } from "hono";
+import { registerAiApi, registerMcp } from "./ai/routes.ts";
 import { registerAccount } from "./api/account.ts";
 import { registerAlerts } from "./api/alerts.ts";
 import { registerData } from "./api/data.ts";
 import { registerFinance } from "./api/finance.ts";
 import { registerOps } from "./api/ops.ts";
 import { registerProjects } from "./api/projects.ts";
+import { registerWebhooks } from "./api/webhooks.ts";
 import { registerAuth, requireAuth } from "./auth.ts";
 import { scheduled } from "./cron.ts";
 import { handleIngest } from "./ingest.ts";
@@ -16,6 +18,7 @@ import { registerStatus } from "./status/routes.ts";
 import type { AppEnv } from "./types.ts";
 
 export { ProjectLive } from "./live.ts";
+export { WebhookSender } from "./webhooks/sender.ts";
 
 const app = new Hono<AppEnv>();
 
@@ -30,6 +33,7 @@ app.post("/v1/events", handleIngest);
 app.get("/v1/health", (c) => c.json({ ok: true }));
 
 registerAuth(app);
+registerMcp(app);
 registerStatus(app);
 registerStatusPage(app);
 
@@ -42,6 +46,8 @@ registerData(api);
 registerAlerts(api);
 registerFinance(api);
 registerOps(api);
+registerWebhooks(api);
+registerAiApi(api, app);
 api.all("*", (c) => c.json(errorBody("not_found", `no route for ${c.req.method} ${c.req.path}`), 404));
 app.route("/api", api);
 

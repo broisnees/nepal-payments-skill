@@ -15,6 +15,10 @@ export { SANDBOX_HOSTS, gwEnvOf } from "./env.ts";
 export { reasonOf } from "./reasons.ts";
 export { GATEWAY_HOSTS } from "./trace.ts";
 export { VERSION } from "./version.ts";
+export { STATUS_URL, createStatusClient } from "./status.ts";
+export { WebhookVerificationError, verifyWebhook } from "./webhooks.ts";
+export type { WebhookEvent, WebhookEventType, WebhookPayment } from "./webhooks.ts";
+export type { CheckoutAction, CheckoutPlan, GatewayState, GatewayStatusSummary, StatusClient, StatusClientOptions } from "./status.ts";
 
 /** Any status string the blog store or the skill adapters use; mapped onto PaymentStatus. */
 type StatusLike = PaymentStatus | "not_found" | "partially_refunded" | (string & {});

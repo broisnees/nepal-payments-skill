@@ -1,0 +1,12 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  // status.discerns.app: public gateway status pages and the status API, built from probes of each gateway's production
+  // API (src/probe.ts), which the paynp Worker's minute cron runs. Read-only here.
+  "name": "discerns-status",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-05",
+  "observability": { "enabled": true },
+  "routes": [{ "pattern": "status.discerns.app", "custom_domain": true }],
+  "d1_databases": [{ "binding": "DB", "database_name": "paynp", "database_id": "90432197-a1ce-436a-bb1d-24ff35c054df" }],
+  "vars": { "APP_URL": "https://status.discerns.app", "PLATFORM_URL": "https://discerns.app" }
+}

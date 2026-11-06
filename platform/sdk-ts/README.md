@@ -310,7 +310,7 @@ With a key nothing changes: events go to the endpoint with the key, and the dev 
 ```ts
 createPaynp({
   key,                  // pnp_test_... or pnp_live_...; empty = paynp dev outside production, else no-op
-  endpoint,             // default PAYNP_ENDPOINT, else https://paynp.discerns.app (local worker: http://localhost:8787)
+  endpoint,             // default PAYNP_ENDPOINT, else https://discerns.app (local worker: http://localhost:8787)
   dev,                  // no key only: dev server URL, or false to never look for one
   flushIntervalMs: 2000,
   maxBatch: 15,         // events per request (max 100); a full batch is sent at once

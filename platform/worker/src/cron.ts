@@ -1,14 +1,16 @@
 // Scheduled work: every minute alerts; daily at 09:00 Asia/Kathmandu the digest and retention cleanup.
+import { runProbes } from "../../status/src/probe.ts";
 import { runAlertCron } from "./alerts/engine.ts";
 import { NPT_OFFSET } from "./api/data.ts";
 import { htmlMail, sendMail } from "./email.ts";
 import { DAY, MINUTE, appOrigin, now } from "./lib/util.ts";
 import { financeDaily } from "./finance/daily.ts";
 import { opsCleanup, runDoctorCron } from "./ops/cron-ops.ts";
+import { kickOverdue } from "./webhooks/deliver.ts";
 
 export const DAILY_CRON = "15 3 * * *";
 
-export const RETENTION = { events: 30 * DAY, payments: 400 * DAY, minute_stats: 400 * DAY };
+export const RETENTION = { events: 30 * DAY, payments: 400 * DAY, minute_stats: 400 * DAY, webhook_deliveries: 30 * DAY };
 
 const rs = (paisa: number) => `Rs ${(paisa / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -75,16 +77,16 @@ export async function sendDigests(env: Env, t = now()): Promise<number> {
     const link = appOrigin(env);
     await sendMail(env, {
       to: org.emails,
-      subject: `[paynp] ${title}`,
+      subject: `[discerns] ${title}`,
       text: [title, "", ...lines, "", link, "", "Turn this email off in Settings."].join("\n"),
-      html: htmlMail(title, [...lines, "Turn this email off in Settings."], { href: link, label: "Open paynp" }),
+      html: htmlMail(title, [...lines, "Turn this email off in Settings."], { href: link, label: "Open discerns" }),
     }).catch((e: unknown) => console.error(JSON.stringify({ msg: "digest failed", org: orgId, error: String(e) })));
     sent++;
   }
   return sent;
 }
 
-async function deleteInChunks(env: Env, table: string, where: string, arg: number): Promise<number> {
+async function deleteInChunks(env: Env, table: string, where: string, arg: number | string): Promise<number> {
   let total = 0;
   for (let i = 0; i < 50; i++) {
     const r = await env.DB.prepare(`DELETE FROM ${table} WHERE rowid IN (SELECT rowid FROM ${table} WHERE ${where} LIMIT 5000)`).bind(arg).run();
@@ -100,12 +102,15 @@ export async function cleanup(env: Env, t = now()): Promise<Record<string, numbe
   out.events = await deleteInChunks(env, "events", "received_at < ?", t - RETENTION.events);
   out.payments = await deleteInChunks(env, "payments", "updated_at < ?", t - RETENTION.payments);
   out.minute_stats = await deleteInChunks(env, "minute_stats", "minute < ?", Math.floor((t - RETENTION.minute_stats) / MINUTE));
-  out.login_tokens = await deleteInChunks(env, "login_tokens", "expires_at < ?", t - DAY);
+  // Better Auth stores ISO dates, which compare correctly as text.
+  out.auth_verification = await deleteInChunks(env, "auth_verification", "expiresAt < ?", new Date(t - DAY).toISOString());
   out.device_codes = await deleteInChunks(env, "device_codes", "expires_at < ?", t - DAY);
-  out.sessions = await deleteInChunks(env, "sessions", "expires_at < ?", t - DAY);
+  out.auth_session = await deleteInChunks(env, "auth_session", "expiresAt < ?", new Date(t - DAY).toISOString());
+  out.signup_intents = await deleteInChunks(env, "signup_intents", "expires_at < ?", t - DAY);
   out.invites = await deleteInChunks(env, "invites", "expires_at < ?", t - DAY);
   out.notify_slots = await deleteInChunks(env, "notify_slots", "minute < ?", Math.floor((t - DAY) / MINUTE));
   out.notifications = await deleteInChunks(env, "notifications", "sent_at < ?", t - RETENTION.payments);
+  out.webhook_deliveries = await deleteInChunks(env, "webhook_deliveries", "status != 'pending' AND created_at < ?", t - RETENTION.webhook_deliveries);
   return out;
 }
 
@@ -118,7 +123,11 @@ export async function scheduled(controller: ScheduledController, env: Env, _ctx?
     console.log(JSON.stringify({ msg: "daily cron", digests, removed }));
     return;
   }
+  // Gateway probes for status.discerns.app run here: the free plan's 5 cron triggers are all taken.
+  const probing = (env.GATEWAY_PROBES === "off" ? Promise.resolve() : runProbes(env, t)).catch((e: unknown) => console.error(JSON.stringify({ msg: "gateway probes failed", error: String(e) })));
   const counts = await runAlertCron(env, t);
   Object.assign(counts, await runDoctorCron(env, t).catch((e: unknown) => (console.error(JSON.stringify({ msg: "doctor cron failed", error: String(e) })), {})));
+  counts.webhook_kicks = await kickOverdue(env, t).catch((e: unknown) => (console.error(JSON.stringify({ msg: "webhook kick cron failed", error: String(e) })), 0));
+  await probing;
   if (Object.values(counts).some(Boolean)) console.log(JSON.stringify({ msg: "alert cron", ...counts }));
 }
