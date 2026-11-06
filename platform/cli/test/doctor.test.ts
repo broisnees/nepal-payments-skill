@@ -276,7 +276,7 @@ describe("paynp doctor", () => {
     };
     r.critical = r.local.findings.filter((f) => f.severity === "critical").length + 1;
     r.warnings = r.local.findings.filter((f) => f.severity === "warning").length + 1;
-    const text = renderDoctor(r, { color: false, cwd: "/srv/shop", endpoint: "https://paynp.discerns.app", now: T });
+    const text = renderDoctor(r, { color: false, cwd: "/srv/shop", endpoint: "https://discerns.app", now: T });
     await expect(text + "\n").toMatchFileSnapshot(join(import.meta.dirname, "__snapshots__", "doctor.txt"));
     expect(text).not.toMatch(/[\u2013\u2014\u2026]/);
   });

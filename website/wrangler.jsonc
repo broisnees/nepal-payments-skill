@@ -1,0 +1,8 @@
+{
+  "name": "nepal-payments-skill",
+  "compatibility_date": "2026-11-05",
+  "account_id": "16b2c363a412bfaaec2a5a2572964728",
+  // Static assets only, no Worker code. Build first: SITE_URL=https://skill.discerns.app npm run build
+  "assets": { "directory": "./dist", "html_handling": "auto-trailing-slash", "not_found_handling": "404-page" },
+  "routes": [{ "pattern": "skill.discerns.app", "custom_domain": true }]
+}

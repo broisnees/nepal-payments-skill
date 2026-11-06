@@ -4,7 +4,7 @@ The whole platform is one Cloudflare Worker: ingest (`/v1`), auth (`/auth`), the
 
 ## Limits on the hosted service
 
-The hosted service at `paynp.discerns.app` runs on the Workers free plan. D1 allows 50 queries per invocation there, so:
+The hosted service at `discerns.app` runs on the Workers free plan. D1 allows 50 queries per invocation there, so:
 
 | Limit | Value |
 |---|---|

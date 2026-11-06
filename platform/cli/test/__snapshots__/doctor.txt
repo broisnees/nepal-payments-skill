@@ -13,7 +13,7 @@ Config and code  (.env.production)
   skipped   No blog gateway module or nepal-payments adapter import found.
   skipped   Not a git repository.
 
-Live traffic  (project prj_shop, live env, https://paynp.discerns.app)
+Live traffic  (project prj_shop, live env, https://discerns.app)
   CRITICAL  Live payments are going to a sandbox gateway  sandbox_gateway_in_live
             14 times, last 1h ago, gateway esewa, e.g. attempt att_01
             Sandbox hosts (rc-epay.esewa.com.np, dev.khalti.com, dev-clientapi.fonepay.com, uat connectIPS) never move real money. Buyers see a test page or payments silently never settle.

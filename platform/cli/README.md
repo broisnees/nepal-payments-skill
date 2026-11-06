@@ -123,7 +123,7 @@ PAYNP_KEY=pnp_test_local
 paynp login --endpoint http://localhost:8787
 ```
 
-The endpoint is taken from, in order: `--endpoint`, `PAYNP_ENDPOINT`, `PAYNP_ENDPOINT` in the project's `.env`, the endpoint I last logged in to, then `https://paynp.discerns.app`. Tokens are stored per endpoint, so local and production logins live side by side. `PAYNP_NO_BROWSER=1` (or `CI`) stops it from opening a browser.
+The endpoint is taken from, in order: `--endpoint`, `PAYNP_ENDPOINT`, `PAYNP_ENDPOINT` in the project's `.env`, the endpoint I last logged in to, then `https://discerns.app`. Tokens are stored per endpoint, so local and production logins live side by side. `PAYNP_NO_BROWSER=1` (or `CI`) stops it from opening a browser.
 
 ## Development
 
