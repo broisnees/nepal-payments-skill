@@ -4,6 +4,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } 
 import { ApiFailure, api, errorMessage, items, onUnauthorized } from "../lib/api.ts";
 import { invalidate, useQuery } from "../lib/query.ts";
 import { setChoice, useTheme } from "../lib/theme.ts";
+import { AskPanel } from "./AskPanel.tsx";
 import { Icon, Logo } from "./Icon.tsx";
 import { Dialog, Menu, Seg, toast } from "./ui.tsx";
 
@@ -226,17 +227,36 @@ function ProjectGone() {
 
 function ShellFrame({ env, ctx, children }: { env: Env; ctx?: ProjectCtx; children?: ReactNode }) {
   const local = useLocal();
+  const [askOpen, setAskOpen] = useState(false);
+  // Ctrl+I / Cmd+I opens and closes Ask from any page.
+  useEffect(() => {
+    if (!ctx || local) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        setAskOpen((o) => !o);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [ctx, local]);
   return (
     <div className="shell">
       <header className="topbar">
         {env === "test" && <div className="testbar" aria-hidden="true" />}
         <div className="topbar-row">
-          <Link to="/" className="tb-cell tb-brand" aria-label="paynp home">
+          <Link to="/" className="tb-cell tb-brand" aria-label="discerns home">
             <Logo />
           </Link>
           {local ? <LocalBadge /> : ctx ? <ProjectSwitcher ctx={ctx} /> : <span className="tb-cell" />}
           <div className="tb-spacer" />
           <div className="tb-right">
+            {ctx && !local && (
+              <button type="button" className="btn btn-sm ask-trigger" aria-expanded={askOpen} aria-controls="ask-panel" onClick={() => setAskOpen((o) => !o)} title="Ask AI (Ctrl+I)">
+                <Icon name="sparkles" size={15} />
+                <span className="hide-sm">Ask AI</span>
+              </button>
+            )}
             {ctx && <EnvToggle ctx={ctx} />}
             <Link className="btn btn-ghost btn-sm hide-sm" to="/docs">
               Docs
@@ -256,6 +276,7 @@ function ShellFrame({ env, ctx, children }: { env: Env; ctx?: ProjectCtx; childr
         {ctx && <Tabs ctx={ctx} />}
       </header>
       <main className="main">{children}</main>
+      {ctx && !local && <AskPanel ctx={ctx} open={askOpen} onClose={() => setAskOpen(false)} />}
     </div>
   );
 }

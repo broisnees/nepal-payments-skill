@@ -7,7 +7,7 @@ import { CodeBlock, Command, CopyButton, Dialog, EmptySmall, Seg, Skeleton, Swit
 import { api, errorMessage, items } from "../lib/api.ts";
 import { formatDateTime, formatFull, formatRelative } from "../lib/format.ts";
 import { ApiFailure } from "../lib/api.ts";
-import { invalidate, setData, useQuery } from "../lib/query.ts";
+import { invalidate, optimistic, setData, useQuery, without } from "../lib/query.ts";
 import type { ActionEndpoint, ActionRecord } from "../lib/v2.ts";
 
 interface ActionTest {
@@ -29,7 +29,7 @@ const SECTIONS: [string, string, IconName][] = [
   ["actions", "Action endpoint", "zap"],
   ["members", "Members", "users"],
   ["sessions", "Sessions", "laptop"],
-  ["tokens", "CLI tokens", "terminal"],
+  ["tokens", "Tokens", "terminal"],
 ];
 
 export default function Settings() {
@@ -149,7 +149,7 @@ function General() {
           <Head title="Delete project" />
           <div className="card tone-rose">
             <div className="card-body row between wrap" style={{ gap: 16 }}>
-              <p style={{ maxWidth: 520 }}>Deletes the project, both environments, all keys and all history. Payments themselves are untouched; they never went through paynp.</p>
+              <p style={{ maxWidth: 520 }}>Deletes the project, both environments, all keys and all history. Payments themselves are untouched; they never went through discerns.</p>
               <button className="btn btn-danger" onClick={del}>
                 Delete project
               </button>
@@ -244,8 +244,7 @@ function Keys() {
     });
     if (!ok) return;
     try {
-      await api(`${key}/${k.id}`, { method: "DELETE" });
-      invalidate(key);
+      await optimistic<Page<ApiKey>>(key, without<ApiKey>(k.id), () => api(`${key}/${k.id}`, { method: "DELETE" }));
       toast("Key revoked", { sub: k.prefix });
     } catch (e) {
       toast("Could not revoke", { kind: "error", sub: errorMessage(e) });
@@ -456,12 +455,12 @@ function Members() {
   };
   const changeRole = async (userId: string, r: Role) => {
     try {
-      await api(`${key}/${userId}`, { method: "PATCH", body: { role: r } });
-      refresh();
+      await optimistic<Page<Member>>(key, (pg) => pg && { ...pg, items: pg.items.map((m) => (m.user_id === userId ? { ...m, role: r } : m)) }, () =>
+        api(`${key}/${userId}`, { method: "PATCH", body: { role: r } }),
+      );
       toast("Role updated");
     } catch (e) {
       toast("Could not change the role", { kind: "error", sub: errorMessage(e) });
-      refresh();
     }
   };
   const remove = async (userId: string, label: string) => {
@@ -469,16 +468,14 @@ function Members() {
     const ok = await confirmAction({ title: self ? `Leave ${org.name}?` : `Remove ${label}?`, body: self ? "You lose access to its projects." : "They lose access to every project in the organization.", action: self ? "Leave" : "Remove", danger: true });
     if (!ok) return;
     try {
-      await api(`${key}/${userId}`, { method: "DELETE" });
-      refresh();
+      await optimistic<Page<Member>>(key, (pg) => pg && { ...pg, items: pg.items.filter((m) => m.user_id !== userId) }, () => api(`${key}/${userId}`, { method: "DELETE" }));
     } catch (e) {
       toast("Could not remove", { kind: "error", sub: errorMessage(e) });
     }
   };
   const revokeInvite = async (id: string) => {
     try {
-      await api(`/api/orgs/${org.id}/invites/${id}`, { method: "DELETE" });
-      refresh();
+      await optimistic<Page<Invite>>(`/api/orgs/${org.id}/invites`, without<Invite>(id), () => api(`/api/orgs/${org.id}/invites/${id}`, { method: "DELETE" }));
     } catch (e) {
       toast("Could not revoke the invite", { kind: "error", sub: errorMessage(e) });
     }
@@ -623,12 +620,13 @@ function Sessions() {
       if (!ok) return;
     }
     try {
-      await api(`/api/sessions/${s.id}`, { method: "DELETE" });
-      if (s.current) location.href = "/signin";
-      else {
-        invalidate("/api/sessions");
-        toast("Session revoked", { sub: "That device is signed out." });
+      if (s.current) {
+        await api(`/api/sessions/${s.id}`, { method: "DELETE" });
+        location.href = "/signin";
+        return;
       }
+      await optimistic<Page<Session>>("/api/sessions", without<Session>(s.id), () => api(`/api/sessions/${s.id}`, { method: "DELETE" }));
+      toast("Session revoked", { sub: "That device is signed out." });
     } catch (e) {
       toast("Could not revoke", { kind: "error", sub: errorMessage(e) });
     }
@@ -684,16 +682,29 @@ function Tokens() {
     const ok = await confirmAction({ title: `Revoke ${p.name ?? "this token"}?`, body: "The CLI on that machine is signed out and needs paynp login again.", action: "Revoke token", danger: true });
     if (!ok) return;
     try {
-      await api(`/api/pats/${p.id}`, { method: "DELETE" });
-      invalidate("/api/pats");
+      await optimistic<Page<Pat>>("/api/pats", without<Pat>(p.id), () => api(`/api/pats/${p.id}`, { method: "DELETE" }));
       toast("Token revoked");
     } catch (e) {
       toast("Could not revoke", { kind: "error", sub: errorMessage(e) });
     }
   };
+  const [made, setMade] = useState<string | null>(null);
+  const [making, setMaking] = useState(false);
+  const create = async () => {
+    setMaking(true);
+    try {
+      const r = await api<{ token: string }>("/api/pats", { method: "POST", body: { name: "MCP / API" } });
+      setMade(r.token);
+      invalidate("/api/pats");
+    } catch (e) {
+      toast("Could not create a token", { kind: "error", sub: errorMessage(e) });
+    } finally {
+      setMaking(false);
+    }
+  };
   return (
     <section className="set-section">
-      <Head title="CLI tokens">Created when the CLI signs in through this browser. Each machine gets its own.</Head>
+      <Head title="Tokens">Personal access tokens for the CLI, MCP clients and scripts. They act as me, with my role in each org.</Head>
       <div className="card">
         {!q.data ? (
           <div className="card-body">
@@ -711,7 +722,7 @@ function Tokens() {
                   <Icon name="terminal" size={14} />
                 </span>
                 <div className="grow">
-                  <div className="ink truncate">{p.name ?? "paynp CLI"}</div>
+                  <div className="ink truncate">{p.name ?? "discerns CLI"}</div>
                   <div className="meta">
                     Created <Time t={p.created_at}>{formatDateTime(p.created_at, now)}</Time>, last used {p.last_used_at ? formatRelative(p.last_used_at, now) : "never"}
                   </div>
@@ -727,12 +738,29 @@ function Tokens() {
       <div style={{ maxWidth: 360 }}>
         <Command cmd="npx paynp login" />
       </div>
+      <div className="stack" style={{ gap: 8 }}>
+        <div className="actions">
+          <button className="btn" onClick={() => void create()} disabled={making}>
+            {making ? <span className="spinner" /> : <Icon name="plus" />}
+            Create a token for an MCP client
+          </button>
+        </div>
+        {made && (
+          <div className="card card-body stack" style={{ gap: 8 }}>
+            <p>Copy it now; it is shown once. For Claude Code:</p>
+            <Command cmd={`claude mcp add --transport http discerns ${location.origin}/mcp --header "Authorization: Bearer ${made}"`} />
+            <p className="hint">
+              Other clients take the URL <code>{location.origin}/mcp</code> and the header <code>Authorization: Bearer {made}</code>.
+            </p>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
 
 // ------------------------------------------------------------------ action endpoint
-const ACTION_ROUTE = `// A route on your server. paynp signs every request; the SDK checks the signature.
+const ACTION_ROUTE = `// A route on your server. discerns signs every request; the SDK checks the signature.
 import { paynp } from "./paynp";
 
 export const POST = paynp.actionHandler({
@@ -831,7 +859,7 @@ function Actions() {
   return (
     <section className="set-section">
       <Head title="Action endpoint">
-        A route on your server that paynp calls, signed, to refund a payment when someone presses Send in Refunds. Your server uses its own gateway keys; paynp never sees them. One per environment.
+        A route on your server that discerns calls, signed, to refund a payment when someone presses Send in Refunds. Your server uses its own gateway keys; discerns never sees them. One per environment.
       </Head>
       {!q.data && !q.error ? (
         <Skeleton h={80} />

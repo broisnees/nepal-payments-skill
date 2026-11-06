@@ -88,6 +88,31 @@ export function createServer(db: Db, hub: Hub) {
 
     const seg = path.slice(5).split("/").filter(Boolean);
 
+    // ---------------------------------------------------------------- Ask AI (a canned reading of the mock data)
+    if (seg[0] === "ai") return ok({ enabled: true, provider: "claude", model: "claude-opus-5-5" });
+    if (seg[0] === "projects" && seg[2] === "ask" && method === "POST") {
+      const pd = project(seg[1]);
+      if (!pd) return fail(404, "not_found", "No such project");
+      const env: Env = body.env === "test" ? "test" : "live";
+      const since = Date.now() - 24 * 3600_000;
+      const pays = pd.env[env].payments.filter((p) => p.started_at >= since);
+      const failed = pays.filter((p) => NOT_PAID.has(p.status));
+      const byGw = new Map<string, number>();
+      const reasons = new Map<string, number>();
+      for (const p of failed) {
+        byGw.set(p.gateway, (byGw.get(p.gateway) ?? 0) + 1);
+        if (p.last_reason) reasons.set(p.last_reason, (reasons.get(p.last_reason) ?? 0) + 1);
+      }
+      const top = [...byGw].sort((a, b) => b[1] - a[1]).map(([g, n]) => `- **${g}**: ${n} of ${pays.filter((p) => p.gateway === g).length}`);
+      const why = [...reasons].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([r, n]) => `\`${r}\` (${n})`);
+      const ids = failed.slice(0, 2).map((p) => `\`${p.attempt_id}\``);
+      const answer = failed.length
+        ? `${failed.length} of ${pays.length} payments did not complete in the last 24 hours.\n\n${top.join("\n")}\n\nMost common reasons: ${why.join(", ") || "none recorded"}. Latest: ${ids.join(", ")}.`
+        : `No payments failed in the last 24 hours (${pays.length} started).`;
+      await new Promise((r) => setTimeout(r, 900));
+      return ok({ answer, tool_calls: [{ name: "payment_analytics", ok: true }, { name: "search_payments", ok: true }], provider: "claude", model: "claude-opus-5-5" });
+    }
+
     // ---------------------------------------------------------------- user scope
     if (seg[0] === "me") {
       if (method === "PATCH") {
