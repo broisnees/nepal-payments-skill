@@ -199,6 +199,29 @@ ${transition}`,
         "IME Pay merged into Khalti in July 2025; use this for existing IME Pay merchant accounts.",
       ],
     },
+    nepalpay: {
+      initiate: `val init = payments.nepalpay.initiate(
+    InitiateInput(
+        orderId = attempt.id, // billNumber: 1-25 chars [A-Za-z0-9-]
+        amountPaisa = attempt.amountPaisa, // sent as rupees with two decimals
+        description = "Order #42",
+        returnUrl = "", // unused: no redirect, the payer pays from their own banking app
+    ),
+) as InitiateResult.Qr
+// providerRef is the validationTraceId; verify() looks the payment up by it.
+db.saveProviderRef(attempt.id, init.providerRef)
+// Show <img src="data:image/png;base64,{init.qrImage}">, or render init.qrString,
+// then poll GET /payments/{id}/status from the page every 3-5 s.`,
+      verify: `// GET /payments/{id}/status, polled by the QR page. Also what the reconciliation job runs.
+val result = payments.nepalpay.verify(
+    VerifyInput(orderId = attempt.id, amountPaisa = attempt.amountPaisa, providerRef = attempt.providerRef),
+)
+${transition}`,
+      notes: [
+        "A debited row whose credit isn't confirmed maps to `UNKNOWN`: money left the payer, so a person reviews it.",
+        "`verifyConfirmation` and `confirmationResponse` handle NCHL's confirm-payment callback; `webSocketRequest` builds the STOMP request for live status.",
+      ],
+    },
   },
 };
 

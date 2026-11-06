@@ -167,6 +167,26 @@ ${transition}`,
         "IME Pay merged into Khalti in July 2025; use this for existing IME Pay merchant accounts.",
       ],
     },
+    nepalpay: {
+      initiate: `// returnUrl is unused: no redirect, the payer pays from their own banking app.
+InitiateResult init = payments.nepalpay().initiate(
+        InitiateInput.of(attempt.id(), attempt.amountPaisa(), "Order #42", ""));
+
+// providerRef is the validationTraceId; verify() looks the payment up by it.
+db.saveProviderRef(attempt.id(), init.providerRef());
+
+InitiateResult.Qr qr = (InitiateResult.Qr) init;
+// Show <img src="data:image/png;base64,{qr.qrImage()}">, or render qr.qrString(),
+// then poll GET /payments/{id}/status from the page every 3-5 s.`,
+      verify: `// GET /payments/{id}/status, polled by the QR page. Also what the reconciliation job runs.
+VerifyResult result = payments.nepalpay().verify(
+        VerifyInput.of(attempt.id(), attempt.amountPaisa()).withProviderRef(attempt.providerRef()));
+${transition}`,
+      notes: [
+        "The amount goes out as rupees with two decimals; `billNumber` (the order id) is at most 25 chars.",
+        "`verifyConfirmation` and `confirmationResponse` handle NCHL's confirm-payment callback; `webSocketRequest` builds the STOMP request for live status.",
+      ],
+    },
   },
 };
 

@@ -41,7 +41,7 @@ KHALTI_WEBSITE_URL=https://shop.example.com
   ))}
 </Tabs>
 
-`initiate()` returns either a **redirect** (send the browser to `url`) or a **form** (render an auto-submitting POST; every port has a `renderAutoSubmitForm` helper). Store the `providerRef` it returns on the attempt: Khalti's `pidx`, NPS's `ProcessId` and IME Pay's token are needed by `verify()`.
+`initiate()` returns a **redirect** (send the browser to `url`), a **form** (render an auto-submitting POST; every port has a `renderAutoSubmitForm` helper) or, for NEPALPAY QR only, a **qr** (show `qrImage` or render `qrString`, then poll `verify()`; there is no return URL). Store the `providerRef` it returns on the attempt: Khalti's `pidx`, NPS's `ProcessId`, IME Pay's token and NEPALPAY QR's `validationTraceId` are needed by `verify()`.
 
 <Aside type="danger" title="Never fulfil from the callback alone">
   Pass the amount and ids from your database into `verify()`, then apply the result with `decideTransition` and a guarded `UPDATE`. Fulfil only when the new status is `paid`. [Production architecture](/docs/guides/architecture/) has the table schema, the return handler and the reconciliation job.

@@ -209,6 +209,32 @@ ${verifyTail}`,
         "Non-zero Recheck codes map to pending, never failed; reconciliation escalates them at its cutoff.",
       ],
     },
+    nepalpay: {
+      initiate: `res, err := p.NepalPay.Initiate(ctx, payments.InitiateInput{
+	OrderID:     attempt.ID, // billNumber: 1 to 25 chars [A-Za-z0-9-]
+	AmountPaisa: attempt.AmountPaisa, // sent as rupees with two decimals ("100.00")
+	Description: "Order #42", // purposeOfTransaction, 25 chars max
+	// no ReturnURL: the payer pays from their own banking app
+})
+if err != nil {
+	return err
+}
+// validationTraceId: Verify looks the payment up by it
+${saveRef}
+// res.Kind == payments.KindQR: show <img src="data:image/png;base64,{res.QRImage}">, or render res.QRString,
+// then poll GET /payments/{id}/status from the page every 3-5 s.`,
+      verify: `// GET /payments/{id}/status, polled by the QR page. Also what the reconciliation job runs.
+v, err := p.NepalPay.Verify(ctx, payments.VerifyInput{
+	OrderID:     attempt.ID,
+	AmountPaisa: attempt.AmountPaisa,
+	ProviderRef: attempt.ProviderRef, // the stored validationTraceId; required
+})
+${verifyTail}`,
+      notes: [
+        "A debited row whose credit isn't confirmed maps to `unknown`: money left the payer, so a person reviews it.",
+        "`VerifyConfirmation` and `ConfirmationResponse` handle NCHL's confirm-payment callback; `WebSocketRequest` builds the STOMP request for live status.",
+      ],
+    },
   },
 };
 

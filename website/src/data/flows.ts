@@ -171,4 +171,22 @@ export const providerFlows: Record<ProviderKey, Flow> = {
       { from: "backend", to: "browser", text: "receipt", reply: true },
     ],
   },
+  nepalpay: {
+    title: "NEPALPAY QR dynamic QR flow",
+    actors,
+    steps: [
+      { from: "browser", to: "backend", text: "Pay with NEPALPAY QR" },
+      { note: "backend", text: "insert attempt, sign `token` (RSA-SHA256)" },
+      { from: "backend", to: "provider", text: "`generateQR`" },
+      { from: "provider", to: "backend", text: "`qrString`, `qrImage`, `validationTraceId`", reply: true },
+      { note: "backend", text: "store `validationTraceId` on the attempt" },
+      { from: "backend", to: "browser", text: "page with the QR", reply: true },
+      { note: "provider", text: "payer scans and pays in their bank app" },
+      { from: "browser", to: "backend", text: "poll the status route every few seconds" },
+      { from: "backend", to: "provider", text: "`merchanttxnreport` by `validationTraceId`" },
+      { from: "provider", to: "backend", text: "`debitStatus` + `creditStatus` rows", reply: true },
+      { note: "backend", text: "`decideTransition()`, fulfil once" },
+      { from: "backend", to: "browser", text: "paid: show the receipt", reply: true },
+    ],
+  },
 };

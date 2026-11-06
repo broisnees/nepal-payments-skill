@@ -12,15 +12,16 @@ export const providers = [
   { name: "CyberSource", slug: "cybersource", blog: "cybersource-payment-gateway-nepal", flows: "Secure Acceptance cards via Nepali banks", kind: "Cards" },
   { name: "NPS OnePG", slug: "nps", blog: "nps-onepg-payment-gateway-integration", flows: "About 29 banks, wallets and cards in one API", kind: "Aggregator" },
   { name: "IME Pay", slug: "imepay", blog: "imepay-payment-gateway-integration", flows: "Wallet checkout for existing merchants", kind: "Wallet" },
+  { name: "NEPALPAY QR", slug: "nepalpay", blog: "nepalpay-qr-payment-integration", flows: "NCHL dynamic QR any bank app can scan", kind: "Bank QR" },
 ] as const;
 
 export const languages = [
-  { name: "TypeScript", runtime: "Node 22.18+, Bun, Deno, Workers, Next.js edge", deps: "Zero dependencies", tests: 49, path: "scripts/ts/src/", test: "npm test" },
-  { name: "Python", runtime: "Python 3.10+", deps: "Stdlib (cryptography for connectIPS)", tests: 33, path: "scripts/python/nepal_payments/", test: "python -m unittest discover -s tests" },
-  { name: "Java", runtime: "JDK 17+ (Spring Boot, Quarkus)", deps: "No dependencies", tests: 111, path: "scripts/java/src/main/java/np/payments/", test: "./gradlew test" },
-  { name: "Kotlin", runtime: "JDK 17+ (Ktor, Spring), suspend API", deps: "kotlin-stdlib only", tests: 84, path: "scripts/kotlin/src/main/kotlin/np/payments/", test: "./gradlew test" },
-  { name: "PHP", runtime: "PHP 8.1+ (Laravel, Symfony)", deps: "ext-curl and ext-openssl, no Composer deps", tests: 69, path: "scripts/php/src/", test: "vendor/bin/phpunit" },
-  { name: "Go", runtime: "Go 1.22+", deps: "Stdlib only", tests: 68, path: "scripts/go/payments/", test: "go test -race ./..." },
+  { name: "TypeScript", runtime: "Node 22.18+, Bun, Deno, Workers, Next.js edge", deps: "Zero dependencies", tests: 58, path: "scripts/ts/src/", test: "npm test" },
+  { name: "Python", runtime: "Python 3.10+", deps: "Stdlib (cryptography for connectIPS)", tests: 42, path: "scripts/python/nepal_payments/", test: "python -m unittest discover -s tests" },
+  { name: "Java", runtime: "JDK 17+ (Spring Boot, Quarkus)", deps: "No dependencies", tests: 120, path: "scripts/java/src/main/java/np/payments/", test: "./gradlew test" },
+  { name: "Kotlin", runtime: "JDK 17+ (Ktor, Spring), suspend API", deps: "kotlin-stdlib only", tests: 94, path: "scripts/kotlin/src/main/kotlin/np/payments/", test: "./gradlew test" },
+  { name: "PHP", runtime: "PHP 8.1+ (Laravel, Symfony)", deps: "ext-curl and ext-openssl, no Composer deps", tests: 78, path: "scripts/php/src/", test: "vendor/bin/phpunit" },
+  { name: "Go", runtime: "Go 1.22+", deps: "Stdlib only", tests: 77, path: "scripts/go/payments/", test: "go test -race ./..." },
 ] as const;
 
 export const totalTests = languages.reduce((n, l) => n + l.tests, 0);
@@ -34,6 +35,7 @@ export const signing = [
   { provider: "CyberSource", scheme: "HMAC-SHA256", encoding: "base64" },
   { provider: "NPS OnePG", scheme: "HMAC-SHA512", encoding: "hex" },
   { provider: "IME Pay", scheme: "Basic auth", encoding: "base64" },
+  { provider: "NEPALPAY QR", scheme: "RSA-SHA256", encoding: "base64" },
 ] as const;
 
 /** Cases from the decideTransition tests (stored amount Rs 10). */
@@ -171,7 +173,7 @@ export const faqs = [
   },
   {
     q: "Which provider should I start with?",
-    a: "eSewa and Khalti cover the largest wallets. Add NPS or Fonepay to reach most banks through one integration, connectIPS for direct bank debit, and CyberSource only if a bank is acquiring cards for you.",
+    a: "eSewa and Khalti cover the largest wallets. Add NPS or Fonepay to reach most banks through one integration, NEPALPAY QR for a QR any NEPALPAY QR enabled bank app can scan, connectIPS for direct bank debit, and CyberSource only if a bank is acquiring cards for you.",
   },
   {
     q: "Is it affiliated with eSewa, Khalti or the other providers?",
@@ -196,4 +198,5 @@ export const gatewayLogos: Record<string, { light: string; dark?: string; ratio:
   cybersource: { light: "/logos/cybersource.png", ratio: 177 / 44, chip: true, scale: 1.2 },
   nps: { light: "/logos/nps.png", dark: "/logos/nps-white.png", ratio: 1200 / 527 },
   imepay: { light: "/logos/khalti-by-ime.png", ratio: 1028 / 569, chip: true, scale: 1.45 },
+  nepalpay: { light: "/logos/nepalpay.png", ratio: 169 / 92, chip: true },
 };

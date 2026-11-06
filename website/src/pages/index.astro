@@ -25,7 +25,7 @@ import {
 } from "../data/site";
 
 const title = "Nepal Payments: eSewa, Khalti and Fonepay for coding agents";
-const description = `An Agent Skill with tested adapters for eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS and IME Pay in six languages. ${totalTests} tests, zero runtime dependencies.`;
+const description = `An Agent Skill with tested adapters for eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay and NEPALPAY QR in six languages. ${totalTests} tests, zero runtime dependencies.`;
 
 const site = new URL("/", Astro.site).href;
 const jsonLd = [
@@ -38,7 +38,7 @@ const jsonLd = [
     codeRepository: REPO,
     license: "https://opensource.org/licenses/MIT",
     programmingLanguage: languages.map((l) => l.name),
-    keywords: ["Nepal payments", "eSewa", "Khalti", "Fonepay", "connectIPS", "CyberSource", "NPS", "IME Pay", "Agent Skill", "payment gateway"],
+    keywords: ["Nepal payments", "eSewa", "Khalti", "Fonepay", "connectIPS", "CyberSource", "NPS", "IME Pay", "NEPALPAY QR", "Agent Skill", "payment gateway"],
     author: { "@type": "Person", name: "Nischal Dahal" },
   },
   {
@@ -107,7 +107,7 @@ const posts = await getPosts();
         <h1>Nepali payments for coding agents</h1>
         <p class="lede">
           One Agent Skill teaches Claude Code, Codex and Cursor to integrate eSewa, Khalti, Fonepay, connectIPS, CyberSource,
-          NPS and IME Pay. It ships tested adapters in six languages, so the agent copies working code instead of guessing.
+          NPS, IME Pay and NEPALPAY QR. It ships tested adapters in six languages, so the agent copies working code instead of guessing.
         </p>
       </div>
 

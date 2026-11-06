@@ -19,6 +19,8 @@ export interface ProviderGuide {
   gotchas: string[];
   goLive: string[];
   extraSetup?: { title: string; body: string; code?: { lang: string; text: string } };
+  /** Heading for step 4 when the provider has no return URL. Default "Verify on return". */
+  verifyTitle?: string;
 }
 
 export const providerGuides: ProviderGuide[] = [
@@ -257,6 +259,65 @@ export const providerGuides: ProviderGuide[] = [
     goLive: [
       "Get your server IP whitelisted for port 7979.",
       "Confirm with the merchant team that web checkout is still offered after the merger.",
+    ],
+  },
+  {
+    key: "nepalpay",
+    name: "NEPALPAY QR",
+    description: "Integrate NEPALPAY QR (NCHL) dynamic QR step by step in TypeScript, Python, Java, Kotlin, PHP or Go: RSA token, generateQR and the transaction report.",
+    kind: "Bank QR",
+    summary:
+      "NEPALPAY QR is NCHL's national merchant QR. Your server signs a token with the key from your NPI `.pfx`, asks NCHL for a dynamic QR, and shows it. The payer scans it with any NEPALPAY QR enabled bank or wallet app, and the transaction report confirms the payment. There is no redirect and no return URL.",
+    flow: [
+      "Your server signs the token (RSA-SHA256) and calls `generateQR` with the amount in rupees and the attempt id as `billNumber`.",
+      "Store the `validationTraceId` it returns on the attempt, then show `qrImage` (a base64 PNG) or render `qrString`.",
+      "The payer scans the QR and pays from their own banking app. Your page polls a status route on your server every few seconds.",
+      "That route calls the transaction report (`merchanttxnreport`) by `validationTraceId`. That response decides.",
+    ],
+    callback:
+      "Nothing comes back to the browser: the payer is in their own app. Poll `verify()` from the QR page (every 3 to 5 seconds), and let the reconciliation job settle anyone who closes the page. Merchants that registered a callback with NCHL also get a confirm-payment POST; treat it as a hint, load the attempt by `merchantBillNo` and run the same `verify()`.",
+    verifyTitle: "Verify by polling",
+    env: {
+      required: ["NEPALPAY_ACQUIRER_ID", "NEPALPAY_MERCHANT_ID", "NEPALPAY_USERNAME", "NEPALPAY_PRIVATE_KEY_PEM"],
+      optional: [
+        "NEPALPAY_ENV",
+        "NEPALPAY_PASSWORD",
+        "NEPALPAY_MERCHANT_NAME",
+        "NEPALPAY_MCC",
+        "NEPALPAY_MERCHANT_CITY",
+        "NEPALPAY_MERCHANT_POSTAL_CODE",
+        "NEPALPAY_STORE_LABEL",
+        "NEPALPAY_TERMINAL_LABEL",
+        "NEPALPAY_CLIENT_ID",
+        "NEPALPAY_CLIENT_SECRET",
+        "NEPALPAY_NCHL_PUBLIC_KEY_PEM",
+        "NEPALPAY_WS_URL",
+        "NEPALPAY_WS_USERNAME",
+        "NEPALPAY_WS_API_TOKEN",
+      ],
+    },
+    sandbox: [
+      "There are no public sandbox credentials. Enrol through your bank, or email businesssupport@nchl.com.np for dynamic QR integration, and NCHL issues the UAT acquirer id, merchant id, NPI user and `NPI.pfx`.",
+      "The UAT host is `https://devopennpi.connectips.com`. It answers `E401 UNAUTHORIZED` until the credentials are right.",
+    ],
+    extraSetup: {
+      title: "Convert the .pfx once",
+      body: "The token is signed with the private key from the NPI `.pfx`. Convert it to PKCS#8 PEM exactly like connectIPS, and add `-legacy` on OpenSSL 3 if the `.pfx` uses RC2 or 3DES.",
+      code: {
+        lang: "bash",
+        text: "openssl pkcs12 -in NPI.pfx -nocerts -nodes | openssl pkcs8 -topk8 -nocrypt -out nepalpay.key.pem",
+      },
+    },
+    gotchas: [
+      "Persist `validationTraceId` (the `providerRef`). Without it only a date-wise report can find the payment.",
+      "Amounts go out in rupees with two decimals (`\"10.50\"`), unlike connectIPS, which takes paisa. Sign the exact string you send.",
+      "The token string joins `acquirerId,merchantId,merchantCategoryCode,transactionCurrency,transactionAmount,billNumber,userId` with bare commas. The docs print a space after each comma, but that is a typesetting artifact: every other NPI token and the working C# client use a bare comma.",
+      "One QR can have several report rows: a failed scan can be paid again on the same QR. The adapter reports `paid` when any row has `debitStatus` `000` and `creditStatus` `000`, `999` or `DEFER`.",
+      "`merchantName` must match the enrolled name, and `billNumber` is at most 25 characters. `newOrderId()` fits.",
+    ],
+    goLive: [
+      "Get the live acquirer id, merchant id, NPI user and `.pfx` from NCHL through your bank, and set `NEPALPAY_ENV=production` (`opennpi.connectips.com`).",
+      "Keep the reconciliation job running: payers who close the QR page never hit your status route.",
     ],
   },
 ];

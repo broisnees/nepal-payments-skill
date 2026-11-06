@@ -197,6 +197,37 @@ if (d.next === "paid") {
         "The API runs on port 7979; outbound traffic to it must be allowed.",
       ],
     },
+    nepalpay: {
+      initiate: `const init = await payments.get("nepalpay").initiate({
+  orderId: attempt.id, // billNumber: 1-25 chars [A-Za-z0-9-]
+  amountPaisa: attempt.amountPaisa, // sent as rupees with two decimals ("100.00")
+  description: "Order #42", // purposeOfTransaction, 25 chars max
+  returnUrl: "", // unused: no redirect, the payer pays from their own banking app
+});
+if (init.kind !== "qr") throw new Error("expected a QR");
+// validationTraceId: verify() looks the payment up by it
+await db.saveProviderRef(attempt.id, init.providerRef);
+// Show <img src="data:image/png;base64,\${init.qrImage}">, or render init.qrString with any QR library,
+// then poll GET /payments/:id/status from the page every 3-5 s.`,
+      verify: `// GET /payments/:id/status, polled by the QR page. Also what the reconciliation job runs.
+const result = await payments.get("nepalpay").verify({
+  orderId: attempt.id,
+  amountPaisa: attempt.amountPaisa,
+  providerRef: attempt.providerRef, // the stored validationTraceId; required
+});
+const d = decideTransition(attempt.status, result, attempt.amountPaisa, Date.now() - attempt.createdAt.getTime());
+// Write d.next with UPDATE ... WHERE id = attempt.id AND status = attempt.status.
+// d.reviewRequired or d.latePaid: alert a human.
+if (d.next === "paid") {
+  // fulfil the order here, only when that UPDATE changed a row
+}
+// Answer the page with the stored status: { status: d.next ?? attempt.status }`,
+      notes: [
+        "`initiate()` returns `{ kind: \"qr\", qrString, qrImage?, providerRef }`. A route that handled only `redirect` and `form` needs a third branch.",
+        "`verify()` maps a debited row whose credit isn't confirmed to `unknown`: money left the payer, so a person reviews it.",
+        "`verifyConfirmation()` and `confirmationResponse()` handle NCHL's confirm-payment callback; `webSocketRequest()` builds the STOMP request for live status.",
+      ],
+    },
   },
 };
 

@@ -199,6 +199,35 @@ if d.next == "paid":
         "The API runs on port 7979; outbound traffic to it must be allowed.",
       ],
     },
+    nepalpay: {
+      initiate: `init = payments["nepalpay"].initiate(
+    order_id=attempt.id,  # billNumber: 1-25 chars [A-Za-z0-9-]
+    amount_paisa=attempt.amount_paisa,  # sent as rupees with two decimals ("100.00")
+    description="Order #42",  # purposeOfTransaction, 25 chars max
+    return_url="",  # unused: no redirect, the payer pays from their own banking app
+)
+# validationTraceId: verify() looks the payment up by it
+db.save_provider_ref(attempt.id, init.provider_ref)
+# init.kind == "qr": show <img src="data:image/png;base64,{init.qr_image}">, or render init.qr_string,
+# then poll GET /payments/{id}/status from the page every 3-5 s.`,
+      verify: `# GET /payments/{id}/status, polled by the QR page. Also what the reconciliation job runs.
+result = payments["nepalpay"].verify(
+    order_id=attempt.id,
+    amount_paisa=attempt.amount_paisa,
+    provider_ref=attempt.provider_ref,  # the stored validationTraceId; required
+)
+d = decide_transition(attempt.status, result.status, result.amount_paisa, attempt.amount_paisa,
+                      time.time() - attempt.created_at.timestamp())
+# Write d.next with UPDATE ... WHERE id = attempt.id AND status = attempt.status.
+# d.review_required or d.late_paid: alert a human.
+if d.next == "paid":
+    pass  # fulfil the order here, only when that UPDATE changed a row`,
+      notes: [
+        "Signing needs the `cryptography` package, as connectIPS does.",
+        "`initiate()` returns a `QrResult` (`kind == \"qr\"`) with `qr_string`, optional `qr_image` and `provider_ref`.",
+        "`verify_confirmation()` and `confirmation_response()` handle NCHL's confirm-payment callback; `web_socket_request()` builds the STOMP request for live status.",
+      ],
+    },
   },
 };
 

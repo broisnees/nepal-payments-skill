@@ -36,6 +36,7 @@ const REFERENCES = {
   "cybersource.md": { path: "providers/cybersource/reference", title: "CyberSource reference" },
   "nps.md": { path: "providers/nps/reference", title: "NPS OnePG reference" },
   "imepay.md": { path: "providers/imepay/reference", title: "IME Pay reference" },
+  "nepalpay.md": { path: "providers/nepalpay/reference", title: "NEPALPAY QR reference" },
   "others.md": {
     path: "providers/others",
     title: "Other gateways",
@@ -108,6 +109,7 @@ const proof = {
   cybersource: "Signed response POST",
   nps: "`CheckTransactionStatus`",
   imepay: "`Recheck`",
+  nepalpay: "`merchanttxnreport`",
 };
 
 function guidePage(g) {
@@ -168,7 +170,7 @@ function guidePage(g) {
       return fence(s.lang, p.initiate) + (notes ? `\n\n${notes}` : "");
     }),
     "",
-    "## 4. Verify on return",
+    `## 4. ${g.verifyTitle ?? "Verify on return"}`,
     "",
     prose(g.callback),
     "",
@@ -209,7 +211,7 @@ function overviewPage() {
   return [
     frontmatter({
       title: q("Providers"),
-      description: q("Compare eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS and IME Pay, then follow the step-by-step guide for each."),
+      description: q("Compare eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay and NEPALPAY QR, then follow the step-by-step guide for each."),
       sidebar: '{ label: "Overview", order: 0 }',
     }),
     'import GatewayLogo from "../../../../components/GatewayLogo.astro";',
@@ -231,6 +233,7 @@ function overviewPage() {
     "",
     "- **eSewa and Khalti** cover the largest wallets.",
     "- **NPS or Fonepay** reach most banks through one integration.",
+    "- **NEPALPAY QR** for an NCHL dynamic QR that any NEPALPAY QR enabled bank or wallet app can scan, at a counter, a kiosk or a desktop checkout.",
     "- **connectIPS** debits bank accounts directly.",
     "- **CyberSource** only if a bank is acquiring cards for you.",
     "- **IME Pay** only for existing IME Pay merchants; new builds use Khalti.",

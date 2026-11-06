@@ -1,6 +1,6 @@
 ---
 title: "Payment Gateway in Nepal: eSewa vs Khalti, Fonepay, connectIPS and More"
-description: "Every payment gateway in Nepal compared for developers: eSewa vs Khalti, Fonepay, connectIPS, cards and NPS, with sandboxes and how to choose."
+description: "Every payment gateway in Nepal compared for developers: eSewa vs Khalti, Fonepay, NEPALPAY QR, connectIPS, cards and NPS, with sandboxes and how to choose."
 label: Nepal gateways compared
 published: 2026-11-05
 order: 1
@@ -12,11 +12,11 @@ faq:
   - q: "How do I accept online payments in Nepal?"
     a: "Get a merchant account with a gateway (eSewa, Khalti, Fonepay, connectIPS, NPS or a bank for cards). Your server signs the request, sends the buyer to the gateway, then calls the gateway's status API to confirm the payment before it marks the order paid. A scheduled job re-checks payments whose buyer never came back."
   - q: "Which Nepali payment gateways have a public sandbox?"
-    a: "eSewa publishes test merchant credentials (product code EPAYTEST). Khalti lets anyone sign up at test-admin.khalti.com. Fonepay's public dev sample (PID NBQM) covers the redirect only. connectIPS test accounts come from its support team, and NPS, IME Pay and CyberSource credentials come through onboarding or your bank. CyberSource test cards are public."
+    a: "eSewa publishes test merchant credentials (product code EPAYTEST). Khalti lets anyone sign up at test-admin.khalti.com. Fonepay's public dev sample (PID NBQM) covers the redirect only. connectIPS test accounts come from its support team, and NPS, IME Pay, NEPALPAY QR and CyberSource credentials come through onboarding or your bank. CyberSource test cards are public."
   - q: "How do I accept card payments in Nepal?"
     a: "Through a Nepali acquiring bank. Some banks, NIC Asia among them, issue CyberSource Secure Acceptance credentials, which CyberSource is sunsetting in favour of Unified Checkout. Himalayan Bank runs on 2C2P PACO. NPS OnePG routes to bank card checkouts such as HBL Card Checkout without a separate card contract."
   - q: "Do Nepali payment gateways send webhooks?"
-    a: "Mostly no. eSewa ePay v2, Khalti KPG-2, connectIPS and IME Pay have none. NPS calls an unsigned Notification URL, CyberSource posts a signed result to a Merchant POST URL, and Fonepay Dynamic QR pushes over a WebSocket. Run a reconciliation job either way."
+    a: "Mostly no. eSewa ePay v2, Khalti KPG-2, connectIPS and IME Pay have none. NPS calls an unsigned Notification URL, CyberSource posts a signed result to a Merchant POST URL, Fonepay Dynamic QR pushes over a WebSocket, and NEPALPAY QR offers a WebSocket plus a confirm-payment POST for merchants that register one. Run a reconciliation job either way."
   - q: "Can I still integrate IME Pay?"
     a: "IME Pay merged with Khalti in July 2025 and its docs moved to github.com/khalti/imepay-dev-docs. For new builds use Khalti. Existing IME Pay merchants can keep the web checkout after confirming with the Khalti by IME merchant team that it is still open to them."
 ---
@@ -25,7 +25,7 @@ import Note from "../../components/blog/Note.astro";
 
 For most websites in Nepal the answer is **eSewa and Khalti first**, then NPS OnePG or Fonepay when you need bank customers too. Both wallets have a fully public sandbox, and the server code for both follows one pattern: sign on the server, let the gateway's status API decide, and fulfil each order exactly once.
 
-There are seven gateways a developer can integrate today: the eSewa and Khalti wallets, Fonepay for bank QR, connectIPS for direct bank debit, CyberSource for cards through a Nepali bank, NPS OnePG as an aggregator over about 29 banks plus wallets, and IME Pay for existing merchants. This page compares them, explains how to choose, and links to a step-by-step guide for each.
+There are eight gateways a developer can integrate today: the eSewa and Khalti wallets, Fonepay and NEPALPAY QR for bank QR, connectIPS for direct bank debit, CyberSource for cards through a Nepali bank, NPS OnePG as an aggregator over about 29 banks plus wallets, and IME Pay for existing merchants. This page compares them, explains how to choose, and links to a step-by-step guide for each.
 
 The facts here come from the provider references in my open source [Nepal Payments](/docs/) project, which I checked in November 2026 against provider docs, official plugins and SDKs, and sandbox calls wherever a public sandbox exists.
 
@@ -36,6 +36,7 @@ The facts here come from the provider references in my open source [Nepal Paymen
 | **eSewa** | Wallet | HMAC-SHA256, base64 | Status API, called with the total you stored | Yes: `EPAYTEST` credentials are published | Intent app-to-app (eSewa's recommendation; its SDKs are deprecated) or ePay in a WebView |
 | **Khalti** | Wallet | `Authorization: Key <secret>` header | Lookup by the `pidx` you stored | Yes: self signup at test-admin.khalti.com, wallet payments only | Native SDKs (Flutter, Android, iOS) or WebView |
 | **Fonepay** | Bank QR | HMAC-SHA512 `DV`, hex | txnVerification (or the legacy verification) | Partial: dev sample `NBQM` covers the redirect only | WebView; Dynamic QR pushes status over a WebSocket |
+| **NEPALPAY QR** | Bank QR (NCHL) | RSA-SHA256 `token` with your NPI `.pfx`, plus Basic auth | Transaction report by the `validationTraceId` you stored | No: credentials through your bank or NCHL | No SDK: the app shows `qrImage` or renders `qrString`, and the payer scans it with a bank app |
 | **connectIPS** | Bank debit (NCHL) | RSA-SHA256 `TOKEN` with your creditor `.pfx` | `validatetxn` with Basic auth | No: test accounts from connectIPS support | WebView (with cookies enabled) |
 | **CyberSource** | Cards via Nepali banks | HMAC-SHA256 over every signed field, base64 | Signed response POST (no simple status API) | No: credentials come from your bank; test cards are public | WebView, or the system browser for 3-D Secure |
 | **NPS OnePG** | Aggregator | HMAC-SHA512, hex, plus Basic auth | `CheckTransactionStatus` | No: credentials from NPS onboarding | WebView |
@@ -74,7 +75,7 @@ NPS already routes to HBL Card Checkout, Khalti, MORU, MyPay, Hamro Pay and abou
 Pick by who your customers are and what they pay with.
 
 - **Wallets (eSewa, Khalti).** Start here for a consumer website or app. Both have a public sandbox and a mobile path that switches to the wallet app. Integrate both: the server side is the same, so the second one is one new module.
-- **Bank QR (Fonepay).** Payers scan with their bank app. It fits shops and restaurants too, since Dynamic QR shows a code on a screen and pushes the result over a WebSocket.
+- **Bank QR (Fonepay, NEPALPAY QR).** Payers scan with their bank app. It fits shops and restaurants too, since a dynamic QR shows a code on a screen. Fonepay pushes the result over a WebSocket. NEPALPAY QR is NCHL's national scheme: any NEPALPAY QR enabled bank or wallet can pay it, and your server polls the transaction report (or listens on NCHL's WebSocket) until the payment shows up.
 - **Direct bank debit (connectIPS).** The payer logs in through NCHL, picks a bank account and approves the debit with an OTP. It reaches customers who have a bank account but no wallet. Onboarding runs through your bank and NCHL, so plan for the wait.
 - **Cards (CyberSource, HBL).** Only through a Nepali acquiring bank. Secure Acceptance credentials a bank already issued still work, but CyberSource is sunsetting Secure Acceptance and REST HTTP Signature auth must move to JWT by March 2027. For a new build, ask the bank for Unified Checkout and REST credentials.
 - **Aggregator (NPS OnePG).** One integration reaches about 29 banks' mobile and e-banking, bank card checkouts and several wallets. Choose it when "every bank" matters more than a native wallet experience.
@@ -90,6 +91,7 @@ Every gateway needs merchant onboarding before it issues live keys.
 | eSewa | Merchant onboarding at [merchant.esewa.com.np](https://merchant.esewa.com.np). eSewa issues a live `product_code` and secret key, plus an Intent access key and production host for mobile. |
 | Khalti | Live keys from admin.khalti.com. Complete KYC and the contract, otherwise live payments are capped at NPR 200. |
 | Fonepay | Your acquiring bank and Fonepay onboarding: the PID (merchant code), secret key and a merchant panel login, which txnVerification and Dynamic QR need. |
+| NEPALPAY QR | Enrol through your acquiring bank, or email businesssupport@nchl.com.np for dynamic QR integration. NCHL issues the acquirer id, merchant id, merchant category code, an NPI user and a signing `.pfx`. |
 | connectIPS | Enrol through your bank (KYC, creditor account). The bank lists you with NCHL, and NCHL emails `MERCHANTID`, `APPID`, `APPNAME`, an app password and the creditor `.pfx`. Success and failure URLs are registered with NCHL. |
 | CyberSource | Your acquiring bank issues the Secure Acceptance profile ID, access key and secret key. Keys expire after two years. |
 | NPS OnePG | NPS onboarding gives a developer guidelines PDF, `MerchantId`, `MerchantName`, API username and password, and `SecretKey`. The Notification URL is configured with NPS at onboarding. |
@@ -104,7 +106,7 @@ Every gateway needs merchant onboarding before it issues live keys.
 The wire formats differ. Everything around them is the same, and that is where most production bugs live: duplicate callbacks, buyers closing the tab mid-payment, flaky provider APIs and tampered redirect URLs. Every integration needs the same five parts.
 
 <ol class="steps">
-  <li><strong>Sign on the server.</strong> eSewa, Fonepay, connectIPS, CyberSource and NPS sign requests; Khalti and IME Pay use API keys. All of them stay in backend env vars or a secret manager, never in a web bundle or mobile app. The browser or app sends only an order id and a gateway name, and the server reads the amount from the database.</li>
+  <li><strong>Sign on the server.</strong> eSewa, Fonepay, NEPALPAY QR, connectIPS, CyberSource and NPS sign requests; Khalti and IME Pay use API keys. All of them stay in backend env vars or a secret manager, never in a web bundle or mobile app. The browser or app sends only an order id and a gateway name, and the server reads the amount from the database.</li>
   <li><strong>Create a payment attempt per click.</strong> Every Pay click gets its own row with a fresh id, the amount in integer paisa, and a status that starts at <code>initiated</code>. Gateways reject or misreport reused ids, and one order can have several attempts when the buyer cancels and tries again.</li>
   <li><strong>Let the status API decide.</strong> A redirect to your return URL, or a "success" from a mobile SDK, can be forged, replayed or reversed later. Only a server-to-server status call (or, for CyberSource, a valid HMAC on the response) proves payment, and only when its amount and order id match what you stored.</li>
   <li><strong>Fulfil exactly once.</strong> The return URL, a webhook and the reconcile job can all report the same payment at the same moment. Each one moves the attempt only if its status is still the one it read, so exactly one wins, and only that one ships the order.</li>
@@ -128,7 +130,7 @@ If it returns no row, another handler already moved the attempt and its write st
 
 ### Same routes for every gateway
 
-Each guide below builds the same app: `POST /pay/{orderId}` starts a payment, `/pay/return/{attemptId}` confirms it, and the reconcile job re-checks open attempts. The routes never name a gateway. They call `startPayment` and `confirmPayment` on a gateway module, so adding Khalti to an eSewa checkout, or Fonepay to both, means writing one new module and keeping the routes.
+Each guide below builds the same app: `POST /pay/{orderId}` starts a payment, `/pay/return/{attemptId}` confirms it, and the reconcile job re-checks open attempts. The routes never name a gateway. They call `startPayment` and `confirmPayment` on a gateway module, so adding Khalti to an eSewa checkout, or Fonepay to both, means writing one new module and keeping the routes. NEPALPAY QR is the one exception: it has no redirect, so its guide swaps the return route for a status route that the QR page polls.
 
 ### Webhooks and refunds by gateway
 
@@ -137,6 +139,7 @@ Each guide below builds the same app: `POST /pay/{orderId}` starts a payment, `/
 | eSewa | ePay v2: none. Intent: signed JSON POST to `callback_url` | No refund API; refunds show up in the status API |
 | Khalti | None in KPG-2 | Merchant refund API, or the dashboard |
 | Fonepay | Web: none. Dynamic QR: WebSocket push | No public refund API; merchant panel or your bank |
+| NEPALPAY QR | Confirm-payment POST (signed, Basic auth) if you register one with NCHL; WebSocket for live status | Through your acquiring bank |
 | connectIPS | None | Not in the gateway API |
 | CyberSource | Signed POST to the Merchant POST URL for every decision | REST API |
 | NPS OnePG | Unsigned GET to the Notification URL | Not covered by my reference |
@@ -151,6 +154,7 @@ Each guide takes one gateway from an empty project to a sandbox payment: the end
 - **[eSewa payment gateway integration](/blog/esewa-payment-gateway-integration/)**: ePay v2 signed form, success callback, status API and Intent for mobile.
 - **[Khalti payment gateway integration](/blog/khalti-payment-gateway-integration/)**: KPG-2 initiate, return URL, lookup by `pidx` and refunds.
 - **[Fonepay payment gateway integration](/blog/fonepay-payment-gateway-integration/)**: `DV` signing, callback check, txnVerification and Dynamic QR.
+- **[NEPALPAY QR payment integration](/blog/nepalpay-qr-payment-integration/)**: RSA token signing, `generateQR`, a QR page that polls, and the transaction report.
 - **[connectIPS payment gateway integration](/blog/connectips-payment-gateway-integration/)**: converting the `.pfx`, RSA `TOKEN` signing and `validatetxn`.
 - **[CyberSource payment gateway in Nepal](/blog/cybersource-payment-gateway-nepal/)**: Secure Acceptance cards through Nepali banks and response signature checks.
 - **[NPS OnePG payment gateway integration](/blog/nps-onepg-payment-gateway-integration/)**: `GetProcessId`, the multipart gateway form, the Notification URL and `CheckTransactionStatus`.
@@ -160,7 +164,7 @@ Every guide also has a page per framework, with all of its code in that stack: E
 
 ## Skip the boilerplate
 
-My open source [Nepal Payments](/docs/) project ships adapters for all seven gateways in TypeScript, Python, Go, Java, Kotlin and PHP, each tested against the providers' own signature test vectors. It includes the payment attempt state machine, the return route, reconciliation and the mobile patterns above. With a coding agent, one command adds it to your app:
+My open source [Nepal Payments](/docs/) project ships adapters for all eight gateways in TypeScript, Python, Go, Java, Kotlin and PHP, each tested against the providers' own signature test vectors. It includes the payment attempt state machine, the return route, reconciliation and the mobile patterns above. With a coding agent, one command adds it to your app:
 
 ```bash
 npx skills add broisnees/nepal-payments-skill

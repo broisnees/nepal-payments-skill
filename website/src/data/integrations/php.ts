@@ -231,6 +231,38 @@ if ($d->next !== null) {
         "Non-zero Recheck codes map to pending, never failed; reconciliation escalates them at its cutoff.",
       ],
     },
+    nepalpay: {
+      initiate: String.raw`$init = $payments->nepalPay()->initiate(
+    new InitiateInput(
+        orderId: $attempt->id, // billNumber: 1 to 25 chars [A-Za-z0-9-]
+        amountPaisa: $attempt->amountPaisa, // sent as rupees with two decimals ("100.00")
+        description: 'Order #42', // purposeOfTransaction, 25 chars max
+        returnUrl: '', // unused: no redirect, the payer pays from their own banking app
+    ),
+);
+// validationTraceId: verify() looks the payment up by it
+$db->saveProviderRef($attempt->id, $init->providerRef);
+// QrResult: show <img src="data:image/png;base64,{$init->qrImage}">, or render $init->qrString,
+// then poll GET /payments/{id}/status from the page every 3-5 s.`,
+      verify: String.raw`// GET /payments/{id}/status, polled by the QR page. Also what the reconciliation job runs.
+$result = $payments->nepalPay()->verify(new VerifyInput(
+    orderId: $attempt->id,
+    amountPaisa: $attempt->amountPaisa,
+    providerRef: $attempt->providerRef, // the stored validationTraceId; required
+));
+$ageMs = (time() - $attempt->createdAt->getTimestamp()) * 1000;
+$d = StateMachine::decideFor(AttemptStatus::from($attempt->status), $result, $attempt->amountPaisa, $ageMs);
+if ($d->next !== null) {
+    // UPDATE payment_attempts SET status = $d->next->value WHERE id = ? AND status = $attempt->status
+    if ($d->next === AttemptStatus::Paid) {
+        // fulfil the order here, only if that UPDATE touched one row
+    }
+}`,
+      notes: [
+        "A debited row whose credit isn't confirmed maps to `unknown`: money left the payer, so a person reviews it.",
+        "`verifyConfirmation()` and `confirmationResponse()` handle NCHL's confirm-payment callback; `webSocketRequest()` builds the STOMP request for live status.",
+      ],
+    },
   },
 };
 
