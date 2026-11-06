@@ -15,6 +15,7 @@ import { openPaidNotFulfilled } from "../ops/cron-ops.ts";
 import type { DuplicateHit } from "../ops/ingest-ops.ts";
 import type { PaymentRow } from "../types.ts";
 import { deliverWithRetry, loadChannels, projectLink, sendToChannel, type ChannelRow, type Message } from "./notify.ts";
+import { incidentSummary } from "../ai/summary.ts";
 
 export interface RuleRow {
   id: string;
@@ -272,7 +273,14 @@ export async function applyEvaluation(env: Env, rule: RuleRow, ev: Evaluation, t
         .bind(inc.id, rule.id, rule.project_id, t, t, ev.summary, ctx, rule.env, rule.id)
         .run();
       if (!r.meta.changes) return "firing";
-      await notifyRule(env, rule, incidentMessage(env, "incident.firing", rule, inc, await projectInfo(env, rule.project_id)), [inc.id], t);
+      const msg = incidentMessage(env, "incident.firing", rule, inc, await projectInfo(env, rule.project_id));
+      // Only a new incident gets the AI read; renotifications stay as they were.
+      const ai = await incidentSummary(env, inc, RULE_LABEL[rule.type]).catch(() => null);
+      if (ai) {
+        msg.lines.push(ai);
+        msg.payload.ai_summary = ai;
+      }
+      await notifyRule(env, rule, msg, [inc.id], t);
       return "opened";
     }
     const due = t - open.last_notified_at >= rule.cooldown_min * MINUTE && ev.summary !== open.summary;
