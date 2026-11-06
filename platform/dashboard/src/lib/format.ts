@@ -177,6 +177,8 @@ const GATEWAY_NAMES: Record<string, string> = {
   nps: "NPS",
   imepay: "IME Pay",
   nepalpay: "NEPALPAY QR",
+  hamropay: "Hamro Pay",
+  getpay: "GetPay (cards)",
 };
 
 export function statusLabel(s: string): string {

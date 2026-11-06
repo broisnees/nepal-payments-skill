@@ -20,7 +20,7 @@ export type PaymentStatus = (typeof STATUSES)[number];
 export const FINAL_STATUSES: readonly PaymentStatus[] = ["paid", "failed", "canceled", "expired", "refunded"];
 export const OPEN_STATUSES: readonly PaymentStatus[] = ["initiated", "pending", "unknown"];
 
-export const GATEWAYS = ["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay", "nepalpay"] as const;
+export const GATEWAYS = ["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay", "nepalpay", "hamropay", "getpay"] as const;
 export type KnownGateway = (typeof GATEWAYS)[number];
 
 export interface EventData {

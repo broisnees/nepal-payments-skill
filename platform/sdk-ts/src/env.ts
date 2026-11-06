@@ -15,6 +15,8 @@ export const SANDBOX_HOSTS: Record<string, readonly string[]> = {
   // IME Pay runs both on port 7979; the test one is stg.
   imepay: ["stg.imepay.com.np"],
   nepalpay: ["devopennpi.connectips.com"],
+  hamropay: ["uat-payclient.hamropatro.com", "uat-checkout-pay.hamropatro.com"],
+  getpay: ["uat-bank-getpay.nchl.com.np"],
 };
 
 const SANDBOX = new Set(Object.values(SANDBOX_HOSTS).flat());

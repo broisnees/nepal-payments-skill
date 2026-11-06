@@ -166,6 +166,50 @@ const ENTRIES: Entry[] = [
     docs_url: doc("nepalpay", "#2-auth"),
   },
 
+  // Hamro Pay (hamropay.md)
+  {
+    gateway: "hamropay",
+    match: ["unauthorized", "code_16"],
+    title: "Hamro Pay: unauthenticated (code 16)",
+    cause: "The Signature header did not match, or Client-Id / Client-API-Key belong to another merchant or environment.",
+    fix: "Sign merchantTxnId,transactionAmount,merchantId,clientId,clientApiKey with the client secret (HMAC-SHA512, base64) and use UAT credentials with the UAT host.",
+    docs_url: doc("hamropay", "#2-signatures"),
+  },
+  {
+    gateway: "hamropay",
+    match: ["code_11", "invalid_amount"],
+    title: "Hamro Pay: amount out of range",
+    cause: "Hamro Pay accepts Rs 10 to Rs 50,000 per transaction; transactionAmount is paisa, so Rs 10 is 1000.",
+    fix: "Send the amount in paisa as a string, between 1000 and 5000000.",
+    docs_url: doc("hamropay", "#3-create-session"),
+  },
+  {
+    gateway: "hamropay",
+    match: ["code_6"],
+    title: "Hamro Pay: merchantTxnId already used",
+    cause: "ALREADY_EXISTS: a session was created earlier for this merchantTxnId, possibly by a request that timed out.",
+    fix: "Generate a new merchantTxnId (25 chars max) for every attempt, including retries after a timeout.",
+    docs_url: doc("hamropay", "#8-gotchas"),
+  },
+
+  // GetPay (getpay.md)
+  {
+    gateway: "getpay",
+    match: ["bad_signature"],
+    title: "GetPay: oprSecret does not match",
+    cause: "The return token's oprSecret is not base64(SHA-256(oprKey + id)) for this merchant's oprKey: wrong environment key, or a token from another merchant.",
+    fix: "Check GETPAY_OPR_KEY for this environment. Do not fulfil on this token.",
+    docs_url: doc("getpay", "#4-return-token-and-oprsecret"),
+  },
+  {
+    gateway: "getpay",
+    match: ["id_mismatch"],
+    title: "GetPay: transaction belongs to another order",
+    cause: "merchant-status answers for any transaction id, and this one carries a different clientRequestId than the attempt being verified.",
+    fix: "Treat it as a replayed or foreign token. Keep the attempt open and review.",
+    docs_url: doc("getpay", "#6-security-what-the-status-api-does-not-check"),
+  },
+
   // NPS (nps.md)
   {
     gateway: "nps",
