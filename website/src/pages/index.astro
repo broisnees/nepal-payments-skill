@@ -22,9 +22,18 @@ import {
   workflow,
   snippets,
   faqs,
+  checkoutKinds,
+  PLATFORM_URL,
+  PLATFORM_NAME,
+  platformFacts,
 } from "../data/site";
 
-const title = "Nepal Payments: eSewa, Khalti and Fonepay for coding agents";
+const title = `Nepal Payments: eSewa, Khalti and ${providers.length - 2} more gateways for coding agents`;
+const words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const langCount = words[languages.length] ?? String(languages.length);
+const tsTests = languages.find((l) => l.name === "TypeScript")!.tests;
+const kindName = Object.fromEntries(checkoutKinds.map((k) => [k.kind, k.title]));
+const byKind = checkoutKinds.map((k) => ({ ...k, providers: providers.filter((p) => p.checkout === k.kind) }));
 const description = `An Agent Skill with tested adapters for eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay, NEPALPAY QR, Hamro Pay and GetPay in six languages. ${totalTests} tests, zero runtime dependencies.`;
 
 const site = new URL("/", Astro.site).href;
@@ -52,7 +61,7 @@ const jsonLd = [
 const trace = [
   { step: "esewa.initiate()", note: "signed form · total_amount=1000", from: 0, to: 14, kind: "server" },
   { step: "payer on eSewa", note: "rc-epay.esewa.com.np", from: 14, to: 62, kind: "provider" },
-  { step: "return ?data=…", note: "untrusted hint", from: 62, to: 66, kind: "browser" },
+  { step: "return ?data=...", note: "untrusted hint", from: 62, to: 66, kind: "browser" },
   { step: "parseSuccess()", note: "HMAC-SHA256 · valid", from: 66, to: 70, kind: "server" },
   { step: "status API", note: "COMPLETE · ref 0001TS9", from: 70, to: 88, kind: "provider" },
   { step: "decideTransition()", note: "initiated → paid", from: 88, to: 91, kind: "server" },
@@ -81,13 +90,39 @@ const secrets = [
 ];
 
 const posts = await getPosts();
+
+// Sample rows for the platform panel. Event types come from platform/shared/src/events.ts.
+const watchKpis = [
+  { label: "Payments", value: "1,284" },
+  { label: "Success rate", value: "94.1%" },
+  { label: "Revenue", value: "Rs 18.6L" },
+  { label: "Time to pay p50", value: "41s" },
+];
+const watchRows = [
+  { t: "14:32:08", gw: "esewa", order: "ORD-1191", amount: "Rs 1,200", status: "paid", tone: "ok" },
+  { t: "14:31:52", gw: "nepalpay", order: "ORD-1190", amount: "Rs 450", status: "pending", tone: "muted" },
+  { t: "14:31:40", gw: "fonepay", order: "ORD-1189", amount: "Rs 3,000", status: "paid", tone: "ok" },
+  { t: "14:31:17", gw: "connectips", order: "ORD-1188", amount: "Rs 15,000", status: "paid", tone: "ok" },
+  { t: "14:30:59", gw: "khalti", order: "ORD-1187", amount: "Rs 2,500", status: "failed", tone: "bad", sel: true },
+  { t: "14:30:41", gw: "hamropay", order: "ORD-1186", amount: "Rs 800", status: "paid", tone: "ok" },
+  { t: "14:30:22", gw: "nps", order: "ORD-1185", amount: "Rs 6,400", status: "paid", tone: "ok" },
+  { t: "14:29:58", gw: "getpay", order: "ORD-1184", amount: "Rs 9,999", status: "paid", tone: "ok" },
+  { t: "14:29:31", gw: "khalti", order: "ORD-1183", amount: "Rs 1,750", status: "failed", tone: "bad" },
+];
+const watchTimeline = [
+  { type: "payment.started", note: "+0 ms" },
+  { type: "payment.redirected", note: "+212 ms" },
+  { type: "callback.received", note: "+38.4 s" },
+  { type: "gateway.request", note: "lookup · 200 · 640 ms" },
+  { type: "status.changed", note: "pending → failed", tone: "bad" },
+];
 ---
 
 <Landing title={title} description={description} jsonLd={jsonLd}>
   <a class="skip" href="#main">Skip to content</a>
 
   <div class="announce">
-    <a href={REPO} rel="noopener">Nepal Payments is open source under MIT. <span class="u">Star it on GitHub</span><Icon name="external" size={13} /></a>
+    <a href={REPO} rel="noopener"><span class="hide-sm">Nepal Payments is open source under MIT.</span><span class="show-sm">Open source, MIT.</span> <span class="u">Star it on GitHub</span><Icon name="external" size={13} /></a>
   </div>
 
   <SiteNav />
@@ -98,7 +133,7 @@ const posts = await getPosts();
       <div class="badge">
         <span class="badge-mark">{totalTests}</span>
         <span class="badge-text">
-          <span>Tests across six languages</span>
+          <span>Tests across {langCount} languages</span>
           <span class="mono">PROVIDER VECTORS · SANDBOX CHECKED</span>
         </span>
       </div>
@@ -106,8 +141,8 @@ const posts = await getPosts();
       <div class="split hero-split">
         <h1>Nepali payments for coding agents</h1>
         <p class="lede">
-          One Agent Skill teaches Claude Code, Codex and Cursor to integrate eSewa, Khalti, Fonepay, connectIPS, CyberSource,
-          NPS, IME Pay, NEPALPAY QR, Hamro Pay and GetPay. It ships tested adapters in six languages, so the agent copies working code instead of guessing.
+          One Agent Skill teaches Claude Code, Codex and Cursor to integrate {providers.length} Nepali gateways, from eSewa and Khalti
+          to NEPALPAY QR and GetPay. It ships tested adapters in {langCount} languages, so the agent copies working code instead of guessing.
         </p>
       </div>
 
@@ -135,7 +170,7 @@ const posts = await getPosts();
           ))}
           <div class="app-item"><Icon name="file" size={15} />routes/payments.ts</div>
           <div class="app-item"><Icon name="file" size={15} />0003_payment_attempts.sql</div>
-          <div class="app-foot"><Icon name="terminal" size={14} />49 passed · tsc clean</div>
+          <div class="app-foot"><Icon name="terminal" size={14} />{tsTests} passed · tsc clean</div>
         </aside>
 
         <div class="app-main">
@@ -188,9 +223,18 @@ const posts = await getPosts();
     </section>
 
     <!-- Gateways -->
-    <section class="container gw-strip" aria-label="Supported gateways">
-      <p class="gw-strip-title">Works with every major Nepali gateway</p>
-      <ul>{providers.map((p) => <li><a href={`/docs/providers/${p.slug}/`} title={p.name}><GatewayLogo slug={p.slug} name={p.name} height={26} /></a></li>)}</ul>
+    <section class="container gw-strip" id="gateways" aria-labelledby="gw-title">
+      <p class="gw-strip-title" id="gw-title">{providers.length} gateways, one interface</p>
+      <ul>
+        {providers.map((p) => (
+          <li>
+            <a href={`/docs/providers/${p.slug}/`}>
+              <span class="gw-logo"><GatewayLogo slug={p.slug} name="" height={26} eager /></span>
+              <span class="gw-meta"><span class="gw-name">{p.name}</span><span class="gw-kind mono">{p.kind}</span></span>
+            </a>
+          </li>
+        ))}
+      </ul>
     </section>
 
     <!-- Features -->
@@ -213,7 +257,7 @@ const posts = await getPosts();
             <div class="panel-bar"><span class="muted">Verify</span><Icon name="chevron" size={13} class="muted" /><span>ORD-2</span><span class="mono muted push">esewa · sandbox</span></div>
             <div class="ptable cols-3">
               <div class="row head"><span>Check</span><span>Source</span><span class="end">Result</span></div>
-              <div class="row"><span>Callback data</span><span class="mono muted">?data=eyJ0cmFu…</span><span class="end mono">decoded</span></div>
+              <div class="row"><span>Callback data</span><span class="mono muted">?data=eyJ0cmFu...</span><span class="end mono">decoded</span></div>
               <div class="row"><span>Signature</span><span class="mono muted">HMAC-SHA256</span><span class="end mono ok-t">valid</span></div>
               <div class="row sel"><span>Status API</span><span class="mono muted">transaction/status</span><span class="end mono ok-t">COMPLETE</span></div>
               <div class="row"><span>Amount</span><span class="mono muted">stored 100000</span><span class="end mono ok-t">match</span></div>
@@ -331,14 +375,39 @@ const posts = await getPosts();
             <div class="ptable cols-2">
               <div class="row head"><span>Agent</span><span class="end">Command</span></div>
               <div class="row"><span>Claude Code</span><span class="end mono trunc">/plugin install nepal-payments</span></div>
-              <div class="row"><span>Codex, Cursor</span><span class="end mono trunc">npx skills add …</span></div>
-              <div class="row"><span>Gemini CLI, Copilot</span><span class="end mono trunc">npx skills add …</span></div>
+              <div class="row"><span>Codex, Cursor</span><span class="end mono trunc">npx skills add ...</span></div>
+              <div class="row"><span>Gemini CLI, Copilot</span><span class="end mono trunc">npx skills add ...</span></div>
               <div class="row sel"><span>Manual</span><span class="end mono trunc">cp -r skills/nepal-payments</span></div>
             </div>
             <div class="panel-foot"><div><span class="muted">Format</span><span class="mono">Agent Skills</span></div><div><span class="muted">License</span><span class="mono">MIT</span></div></div>
           </div>
         </Feature>
       </div>
+    </section>
+
+    <!-- Checkout kinds -->
+    <section class="section container" id="checkout" aria-labelledby="checkout-title">
+      <div class="split section-head">
+        <h2 id="checkout-title">{words[checkoutKinds.length].replace(/^./, (c) => c.toUpperCase())} checkout shapes, one return type</h2>
+        <p><code>initiate()</code> returns one of {words[checkoutKinds.length]} kinds. The adapter picks it per gateway, so the frontend handles each shape once.</p>
+      </div>
+      <ol class="cks">
+        {byKind.map((k) => (
+          <li class="ck">
+            <p class="ck-tag mono"><span class="muted">kind:</span> "{k.kind}"</p>
+            <h3>{k.title}</h3>
+            <p class="ck-body">{k.body}</p>
+            <div class="ck-foot">
+              <ul class="ck-gws" aria-label={`Gateways that return ${k.kind}`}>
+                {k.providers.map((p) => (
+                  <li><a href={`/docs/providers/${p.slug}/`}><span class="ck-logo"><GatewayLogo slug={p.slug} name="" height={16} /></span>{p.name}</a></li>
+                ))}
+              </ul>
+              {k.kind === "qr" && <p class="ck-note">Fonepay also issues dynamic QR through <code>fonepay.qrCreate()</code>.</p>}
+            </div>
+          </li>
+        ))}
+      </ol>
     </section>
 
     <!-- Integration guides -->
@@ -433,6 +502,72 @@ const posts = await getPosts();
         Already integrated? Paste the failing callback or error code, and the agent checks it against the provider's reference.{" "}
         <a href="/docs/usage/#debugging-with-the-skill">Debug a payment</a>.
       </p>
+    </section>
+
+    <!-- Sister product: the platform -->
+    <section class="section container" id="platform" aria-labelledby="platform-title">
+      <div class="split section-head">
+        <div>
+          <span class="eyebrow">Platform · {PLATFORM_NAME}</span>
+          <h2 id="platform-title">Then watch every payment</h2>
+        </div>
+        <p>
+          {PLATFORM_NAME} shows every payment from every app and every Nepali gateway in one place: a live feed, a timeline per
+          payment, failures with their cause, and alerts. The server sends events through a small SDK. No money passes through it,
+          so an outage on its side never breaks a checkout.
+        </p>
+      </div>
+
+      <div class="watch" role="img" aria-label={`Example ${PLATFORM_NAME} dashboard: a payments feed with one failed Khalti payment and an open failure rate alert`}>
+        <div class="watch-bar">
+          <span>shop-api</span><Icon name="chevron" size={13} class="muted" /><span>Payments</span>
+          <span class="watch-env mono"><span>test</span><span class="on">live</span></span>
+          <span class="mono muted push hide-sm"><span class="live-dot"></span>live feed</span>
+        </div>
+        <div class="watch-kpis">
+          {watchKpis.map((k) => <div><span class="muted">{k.label}</span><span class="mono">{k.value}</span></div>)}
+        </div>
+        <div class="watch-body">
+          <div class="ptable watch-table">
+            <div class="row head"><span class="hide-sm">Time</span><span>Gateway</span><span class="hide-sm">Order</span><span class="end">Amount</span><span class="end">Status</span></div>
+            {watchRows.map((r) => (
+              <div class:list={["row", { sel: r.sel }]}>
+                <span class="mono muted hide-sm">{r.t}</span>
+                <span class="mono">{r.gw}</span>
+                <span class="mono muted hide-sm">{r.order}</span>
+                <span class="end mono">{r.amount}</span>
+                <span class="end"><span class:list={["pill", r.tone]}>{r.status}</span></span>
+              </div>
+            ))}
+          </div>
+          <aside class="watch-detail">
+            <p class="kv-title">ORD-1187 timeline</p>
+            <ol class="tl">
+              {watchTimeline.map((e) => (
+                <li class:list={[e.tone]}>
+                  <span class="mono">{e.type}</span>
+                  <span class="mono muted">{e.note}</span>
+                </li>
+              ))}
+            </ol>
+            <div class="watch-alert">
+              <span class="pill warn">firing</span>
+              <span><strong class="mono">failure_rate</strong><span class="muted"> · khalti · 24% failed in 15 min, threshold 20%</span></span>
+            </div>
+          </aside>
+        </div>
+        <p class="panel-note muted">Sample data. Event types and rule names are the ones the platform uses.</p>
+      </div>
+
+      <ul class="watch-facts">
+        {platformFacts.map((f) => <li><span class="mono">{f.value}</span>{f.label}</li>)}
+      </ul>
+
+      <div class="hero-actions">
+        <a class="btn btn-primary btn-lg" href={PLATFORM_URL} rel="noopener">See {PLATFORM_NAME}</a>
+        <a class="btn btn-secondary btn-lg" href={`${PLATFORM_URL}/docs`} rel="noopener">Read the platform docs</a>
+      </div>
+      <p class="fineprint">Already using the skill's adapters? <a href={`${PLATFORM_URL}/signup`} rel="noopener">Create an account</a> and wrap them with the SDK.</p>
     </section>
 
     <!-- FAQ -->

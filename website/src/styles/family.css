@@ -1,0 +1,132 @@
+/* Shared by the skill site's landing page, blog and docs (Starlight customCss). Each token falls back to its
+   Starlight equivalent, since docs pages load docs.css instead of landing.css. */
+.footer {
+  margin-block-start: var(--section);
+  padding-block: 64px 40px;
+  border-block-start: 1px solid var(--line, var(--sl-color-gray-5));
+}
+
+.footer-top {
+  display: grid;
+  gap: 48px;
+}
+
+@media (min-width: 900px) {
+  .footer-top {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.footer-title {
+  font-size: 1.6rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-block-start: 24px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding-inline: 14px;
+  border: 1px solid var(--line, var(--sl-color-gray-5));
+  background: var(--surface-2, var(--sl-color-gray-6));
+  font-size: 14.5px;
+  text-decoration: none;
+  transition-property: border-color, background-color;
+  transition-duration: 150ms;
+}
+
+.chip:hover {
+  border-color: var(--line-strong, var(--sl-color-gray-4));
+  background: var(--bg, var(--sl-color-black));
+}
+
+.footer-cols {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 32px 24px;
+}
+
+@media (min-width: 640px) {
+  .footer-cols {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.footer-cols div {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  font-size: 14.5px;
+}
+
+.footer-cols p {
+  font: 12px var(--mono, var(--sl-font-mono));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--subtle, var(--sl-color-gray-4));
+  margin-block-end: 4px;
+}
+
+.footer-cols a {
+  text-decoration: none;
+  color: var(--muted, var(--sl-color-gray-3));
+}
+
+.footer-cols a:hover {
+  color: var(--ink, var(--sl-color-white));
+}
+
+.footer-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px 32px;
+  margin-block-start: 64px;
+  padding-block-start: 24px;
+  border-block-start: 1px solid var(--line, var(--sl-color-gray-5));
+  font-size: 13.5px;
+  color: var(--muted, var(--sl-color-gray-3));
+}
+
+.brand-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink, var(--sl-color-white));
+  font-weight: 500;
+}
+
+
+/* Docs: the footer sits under the page content, inside Starlight's content column. */
+.footer-docs {
+  margin-block-start: 4rem;
+  padding-block: 2.5rem 1rem;
+}
+
+.footer-docs .footer-cols a,
+.footer-docs .footer-bottom {
+  font-size: var(--sl-text-sm, 14px);
+}
+
+.footer-docs .footer-bottom {
+  margin-block-start: 2.5rem;
+}
+
+.footer-docs .brand-sm img {
+  margin: 0;
+}
+
+.footer-docs .footer-cols p {
+  margin: 0 0 4px;
+}
+
+.footer-docs .footer-top {
+  grid-template-columns: minmax(0, 1fr);
+}

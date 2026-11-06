@@ -1,0 +1,103 @@
+---
+// Skill | Platform: the two products side by side, so either site reaches the other in one click.
+// Used in the landing/blog nav (variant "nav", fills nav cells) and the Starlight docs header (variant "header").
+import { PLATFORM_URL, PLATFORM_NAME } from "../data/site";
+
+interface Props {
+  variant?: "nav" | "header";
+}
+const { variant = "nav" } = Astro.props;
+---
+
+<div class:list={["ps", `ps-${variant}`]} role="group" aria-label="Products">
+  <a class="ps-item" href="/" aria-current="true">Skill</a>
+  <a class="ps-item" href={PLATFORM_URL} rel="noopener">Platform<span class="ps-name">{PLATFORM_NAME}</span></a>
+</div>
+
+<style>
+  .ps {
+    --ps-line: var(--line, var(--sl-color-gray-5));
+    --ps-ink: var(--ink, var(--sl-color-white));
+    --ps-muted: var(--muted, var(--sl-color-gray-3));
+    --ps-hover: var(--hover, var(--sl-color-gray-6));
+    --ps-bg: var(--bg, var(--sl-color-black));
+    display: flex;
+    align-items: stretch;
+  }
+
+  .ps-item {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding-inline: 18px;
+    font-size: 15px;
+    color: var(--ps-muted);
+    text-decoration: none;
+    white-space: nowrap;
+    background: var(--ps-bg);
+    transition-property: background-color, color;
+    transition-duration: 150ms;
+  }
+
+  .ps-item:hover {
+    color: var(--ps-ink);
+    background: var(--ps-hover);
+  }
+
+  .ps-item[aria-current] {
+    color: var(--ps-ink);
+    font-weight: 500;
+  }
+
+  /* A 2px bar marks the product this page belongs to. */
+  .ps-item[aria-current]::after {
+    content: "";
+    position: absolute;
+    inset-inline: 18px;
+    bottom: -1px;
+    height: 2px;
+    background: var(--brand, #c8102e);
+  }
+
+  .ps-name {
+    font: 12px var(--mono, var(--sl-font-mono));
+    color: var(--subtle, var(--sl-color-gray-4));
+  }
+
+  .ps-item + .ps-item {
+    border-inline-start: 1px solid var(--ps-line);
+  }
+
+  /* Landing and blog nav: the group is one bordered nav cell. */
+  .ps-nav {
+    border: 1px solid var(--ps-line);
+  }
+
+  /* Docs header: a compact segmented control next to the social icons. */
+  .ps-header {
+    height: 2.25rem;
+    border: 1px solid var(--ps-line);
+  }
+
+  .ps-header .ps-item {
+    padding-inline: 12px;
+    font-size: var(--sl-text-sm, 14px);
+  }
+
+  .ps-header .ps-item[aria-current]::after {
+    inset-inline: 12px;
+  }
+
+  @media (max-width: 639px) {
+    .ps-item {
+      padding-inline: 12px;
+    }
+    .ps-item[aria-current]::after {
+      inset-inline: 12px;
+    }
+    .ps-name {
+      display: none;
+    }
+  }
+</style>

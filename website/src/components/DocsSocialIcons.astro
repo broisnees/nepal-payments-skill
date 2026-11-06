@@ -1,0 +1,21 @@
+---
+// Starlight's social icons, led by the Skill | Platform switch and a Blog link so the docs header carries the
+// same family links as the landing page nav. Also renders in the mobile menu footer.
+import Default from "@astrojs/starlight/components/SocialIcons.astro";
+import ProductSwitch from "./ProductSwitch.astro";
+---
+
+<ProductSwitch variant="header" />
+<a class="docs-blog" href="/blog/">Blog</a>
+<Default />
+
+<style>
+  .docs-blog {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+    text-decoration: none;
+  }
+  .docs-blog:hover {
+    color: var(--sl-color-white);
+  }
+</style>

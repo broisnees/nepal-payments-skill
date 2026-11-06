@@ -41,11 +41,14 @@ export default defineConfig({
         "@fontsource-variable/jetbrains-mono",
         "./src/styles/docs.css",
         "./src/styles/logos.css",
+        "./src/styles/family.css",
       ],
       components: {
         Head: "./src/components/DocsHead.astro",
         ThemeProvider: "./src/components/ThemeProvider.astro",
         ThemeSelect: "./src/components/SettingsMenu.astro",
+        SocialIcons: "./src/components/DocsSocialIcons.astro",
+        Footer: "./src/components/DocsFooter.astro",
       },
       head: [
         { tag: "meta", attrs: { name: "theme-color", content: "#ffffff" } },
