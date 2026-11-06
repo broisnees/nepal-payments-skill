@@ -1,6 +1,6 @@
 // The public face: the same top bar and footer as the skill site (bordered segmented bar, product switch, shared
 // footer columns), on the dashboard's tokens. Used by the landing page, the docs and the sign-in/sign-up pages.
-import { DISPLAY_NAME, REPO_URL, SKILL_SITE_NAME, SKILL_SITE_URL, type Me } from "@paynp/shared";
+import { DISPLAY_NAME, REPO_URL, SKILL_SITE_NAME, SKILL_SITE_URL, STATUS_SITE_URL, type Me } from "@paynp/shared";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Icon, Logo } from "../components/Icon.tsx";
@@ -42,13 +42,13 @@ function PublicNav({ current }: { current?: Current }) {
           <Link className="pub-cell pub-product" to="/" aria-current={current === "home" ? "page" : "true"}>
             {DISPLAY_NAME}
           </Link>
+          <a className="pub-cell pub-product" href={STATUS_SITE_URL} title="Live status of every Nepali gateway, with an API for checkouts">
+            Status
+          </a>
         </div>
         <Link className="pub-cell" to="/docs" aria-current={current === "docs" ? "page" : undefined}>
           Docs
         </Link>
-        <a className="pub-cell hide-md" href="/status">
-          Status
-        </a>
         <span className="pub-spacer" />
         <a className="pub-cell hide-md" href={REPO_URL} rel="noopener">
           <Icon name="code" />
@@ -96,6 +96,7 @@ export function PublicFooter() {
             <p>Products</p>
             <a href={SKILL_SITE_URL}>Skill</a>
             <Link to="/">{DISPLAY_NAME}</Link>
+            <a href={STATUS_SITE_URL}>Status</a>
           </div>
           <div>
             <p>Developers</p>
@@ -104,7 +105,7 @@ export function PublicFooter() {
             <a href={REPO_URL} rel="noopener">
               GitHub
             </a>
-            <a href="/status">Status</a>
+            <a href={`${STATUS_SITE_URL}/developers`}>Status API</a>
           </div>
         </nav>
       </div>
