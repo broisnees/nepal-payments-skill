@@ -14,4 +14,5 @@ enum ProviderId: string
     case CyberSource = 'cybersource';
     case Nps = 'nps';
     case ImePay = 'imepay';
+    case NepalPay = 'nepalpay';
 }

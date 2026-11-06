@@ -8,7 +8,8 @@ public enum ProviderId {
     CONNECTIPS("connectips"),
     CYBERSOURCE("cybersource"),
     NPS("nps"),
-    IMEPAY("imepay");
+    IMEPAY("imepay"),
+    NEPALPAY("nepalpay");
 
     private final String wire;
 

@@ -1,6 +1,6 @@
 """Shared primitives for every provider adapter.
 
-Standard library only (Python >= 3.10). RSA-signing providers (connectIPS)
+Standard library only (Python >= 3.10). RSA-signing providers (connectIPS, NEPALPAY QR)
 additionally need `cryptography` (pip install cryptography).
 """
 
@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal, Mapping, Optional, Union
 
-ProviderId = Literal["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay"]
+ProviderId = Literal["esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay", "nepalpay"]
 
 # Normalized payment state. Map every provider status onto exactly one of these.
 PaymentStatus = Literal[
@@ -64,7 +64,18 @@ class FormResult:
     kind: str = "form"
 
 
-InitiateResult = Union[RedirectResult, FormResult]
+@dataclass
+class QrResult:
+    """Show a QR the payer scans from their own app (NEPALPAY QR). Render `qr_string` with any QR library, or
+    `<img src="data:image/png;base64,{qr_image}">` when the provider sent an image. Persist `provider_ref`."""
+    qr_string: str
+    provider_ref: str
+    qr_image: Optional[str] = None
+    raw: Any = None
+    kind: str = "qr"
+
+
+InitiateResult = Union[RedirectResult, FormResult, QrResult]
 
 
 OPEN_STATUSES = ("initiated", "pending", "unknown")
@@ -177,6 +188,44 @@ def rsa_sha256_sign_b64(private_key_pem: bytes, message: str, password: Optional
     key = serialization.load_pem_private_key(private_key_pem, password=password)
     sig = key.sign(message.encode(), padding.PKCS1v15(), hashes.SHA256())
     return b64encode(sig)
+
+
+def _load_spki(public_key_pem: Union[str, bytes]):
+    """SPKI "-----BEGIN PUBLIC KEY-----". From a certificate (.cer/.crt):
+    openssl x509 -in NPI.cer [-inform der] -pubkey -noout > npi.pub.pem"""
+    try:
+        from cryptography.hazmat.primitives import serialization
+    except ImportError as e:  # pragma: no cover
+        raise RuntimeError("pip install cryptography  (needed for RSA-signed providers)") from e
+    pem = public_key_pem.encode() if isinstance(public_key_pem, str) else public_key_pem
+    if b"BEGIN PUBLIC KEY" not in pem:
+        raise ValueError("expected a PUBLIC KEY PEM; extract it from the certificate with: "
+                         "openssl x509 -in NPI.cer -pubkey -noout")
+    return serialization.load_pem_public_key(pem)
+
+
+def rsa_sha256_verify_b64(public_key_pem: Union[str, bytes], message: str, signature_b64: str) -> bool:
+    """Verify an RSA PKCS#1 v1.5 + SHA-256 signature (base64). False on any malformed input."""
+    try:
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+        key = _load_spki(public_key_pem)
+        key.verify(base64.b64decode(signature_b64, validate=True), message.encode(), padding.PKCS1v15(),  # type: ignore[union-attr,call-arg]
+                   hashes.SHA256())
+        return True
+    except Exception:
+        return False
+
+
+def rsa_pkcs1_encrypt_b64(public_key_pem: Union[str, bytes], plaintext: str) -> str:
+    """RSA PKCS#1 v1.5 encryption ("RSA/ECB/PKCS1Padding"), base64 output."""
+    from cryptography.hazmat.primitives.asymmetric import padding
+    key = _load_spki(public_key_pem)
+    m = plaintext.encode()
+    k = (key.key_size + 7) // 8  # type: ignore[union-attr]
+    if len(m) > k - 11:
+        raise ValueError(f"plaintext too long for a {k * 8}-bit RSA key (max {k - 11} bytes)")
+    return b64encode(key.encrypt(m, padding.PKCS1v15()))  # type: ignore[union-attr,call-arg]
 
 
 def load_pfx_private_key_pem(pfx_bytes: bytes, password: str) -> bytes:

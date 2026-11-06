@@ -13,6 +13,7 @@ export { connectips, connectIpsTokenString, connectIpsDate, type ConnectIpsConfi
 export { cybersource, cybersourceSign, signedDateTime, type CyberSourceConfig, type BillTo } from "./cybersource.ts";
 export { nps, npsSign, type NpsConfig } from "./nps.ts";
 export { imepay, type ImePayConfig } from "./imepay.ts";
+export { nepalpay, nepalPayTokenString, nepalPayConfirmationString, type NepalPayConfig, type NepalPayTxn } from "./nepalpay.ts";
 
 import type { PaymentAdapter, ProviderId } from "./core.ts";
 import { esewa, type EsewaConfig } from "./esewa.ts";
@@ -22,6 +23,7 @@ import { connectips, type ConnectIpsConfig } from "./connectips.ts";
 import { cybersource, type CyberSourceConfig } from "./cybersource.ts";
 import { nps, type NpsConfig } from "./nps.ts";
 import { imepay, type ImePayConfig } from "./imepay.ts";
+import { nepalpay, type NepalPayConfig } from "./nepalpay.ts";
 
 export interface PaymentsConfig {
   esewa?: EsewaConfig;
@@ -31,6 +33,7 @@ export interface PaymentsConfig {
   cybersource?: CyberSourceConfig;
   nps?: NpsConfig;
   imepay?: ImePayConfig;
+  nepalpay?: NepalPayConfig;
 }
 
 type Adapters = {
@@ -41,6 +44,7 @@ type Adapters = {
   cybersource: ReturnType<typeof cybersource>;
   nps: ReturnType<typeof nps>;
   imepay: ReturnType<typeof imepay>;
+  nepalpay: ReturnType<typeof nepalpay>;
 };
 
 export function createPayments(cfg: PaymentsConfig) {
@@ -52,6 +56,7 @@ export function createPayments(cfg: PaymentsConfig) {
   if (cfg.cybersource) built.cybersource = cybersource(cfg.cybersource);
   if (cfg.nps) built.nps = nps(cfg.nps);
   if (cfg.imepay) built.imepay = imepay(cfg.imepay);
+  if (cfg.nepalpay) built.nepalpay = nepalpay(cfg.nepalpay);
 
   return {
     /** Typed access to a configured provider (throws if not configured). */
@@ -135,6 +140,25 @@ export function paymentsConfigFromEnv(env: Record<string, string | undefined> = 
       username: env.IMEPAY_USERNAME,
       password: env.IMEPAY_PASSWORD ?? "",
       module: env.IMEPAY_MODULE ?? "",
+    };
+  }
+  if (env.NEPALPAY_ACQUIRER_ID && env.NEPALPAY_MERCHANT_ID && env.NEPALPAY_USERNAME && env.NEPALPAY_PRIVATE_KEY_PEM) {
+    cfg.nepalpay = {
+      env: mode(env.NEPALPAY_ENV),
+      acquirerId: env.NEPALPAY_ACQUIRER_ID,
+      merchantId: env.NEPALPAY_MERCHANT_ID,
+      merchantName: env.NEPALPAY_MERCHANT_NAME ?? "",
+      merchantCategoryCode: env.NEPALPAY_MCC ?? "",
+      merchantCity: env.NEPALPAY_MERCHANT_CITY ?? "Kathmandu",
+      merchantPostalCode: env.NEPALPAY_MERCHANT_POSTAL_CODE ?? "44600",
+      storeLabel: env.NEPALPAY_STORE_LABEL ?? "Store1",
+      terminalLabel: env.NEPALPAY_TERMINAL_LABEL,
+      username: env.NEPALPAY_USERNAME,
+      password: env.NEPALPAY_PASSWORD ?? "",
+      privateKeyPem: env.NEPALPAY_PRIVATE_KEY_PEM.replace(/\\n/g, "\n"),
+      ...(env.NEPALPAY_CLIENT_ID && { auth: "oauth" as const, clientId: env.NEPALPAY_CLIENT_ID, clientSecret: env.NEPALPAY_CLIENT_SECRET ?? "" }),
+      ...(env.NEPALPAY_NCHL_PUBLIC_KEY_PEM && { nchlPublicKeyPem: env.NEPALPAY_NCHL_PUBLIC_KEY_PEM.replace(/\\n/g, "\n") }),
+      ...(env.NEPALPAY_WS_URL && { wsUrl: env.NEPALPAY_WS_URL, wsUsername: env.NEPALPAY_WS_USERNAME, wsApiToken: env.NEPALPAY_WS_API_TOKEN }),
     };
   }
   return cfg;

@@ -16,7 +16,8 @@ enum class ProviderId(val wire: String) {
     CONNECTIPS("connectips"),
     CYBERSOURCE("cybersource"),
     NPS("nps"),
-    IMEPAY("imepay");
+    IMEPAY("imepay"),
+    NEPALPAY("nepalpay");
 
     companion object {
         fun fromWire(value: String): ProviderId? = entries.firstOrNull { it.wire == value }
@@ -98,6 +99,18 @@ sealed interface InitiateResult {
         /** null = application/x-www-form-urlencoded. NPS requires [MULTIPART]. */
         val enctype: String? = null,
         override val providerRef: String? = null,
+    ) : InitiateResult
+
+    /**
+     * Show a QR the payer scans from their own app (NEPALPAY QR). Render [qrString] with any QR library, or
+     * `<img src="data:image/png;base64,$qrImage">` when the provider sent an image. Persist [providerRef].
+     */
+    data class Qr(
+        val qrString: String,
+        /** Base64 PNG, when the provider sent one. */
+        val qrImage: String? = null,
+        override val providerRef: String,
+        val raw: Any? = null,
     ) : InitiateResult
 
     companion object {

@@ -11,13 +11,17 @@ import java.security.KeyFactory;
 import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.Signature;
+import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Enumeration;
+import javax.crypto.Cipher;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
-/** HMAC, SHA-256, RSA-SHA256 and constant-time comparison (JDK only). */
+/** HMAC, SHA-256, RSA-SHA256 sign/verify, RSA PKCS#1 v1.5 encryption and constant-time comparison (JDK only). */
 public final class Crypto {
 
     public enum Hash {
@@ -141,5 +145,65 @@ public final class Crypto {
     /** Same, from a PKCS#8 PEM (parsed on every call; prefer parsing once with {@link #privateKeyFromPem}). */
     public static String rsaSha256SignBase64(String pkcs8Pem, String message) {
         return rsaSha256SignBase64(privateKeyFromPem(pkcs8Pem), message);
+    }
+
+    /**
+     * Parses an SPKI PEM ("-----BEGIN PUBLIC KEY-----"). From a certificate (.cer/.crt):
+     * {@code openssl x509 -in NPI.cer [-inform der] -pubkey -noout > npi.pub.pem}
+     */
+    public static PublicKey publicKeyFromPem(String spkiPem) {
+        if (!spkiPem.contains("BEGIN PUBLIC KEY")) {
+            throw new IllegalArgumentException("expected a PUBLIC KEY PEM; extract it from the certificate with: openssl x509 -in NPI.cer -pubkey -noout");
+        }
+        String b64 = spkiPem.replaceAll("-----(BEGIN|END) PUBLIC KEY-----", "").replaceAll(Js.WS + "+", "");
+        try {
+            return KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Codec.fromBase64(b64)));
+        } catch (GeneralSecurityException | RuntimeException e) {
+            throw new IllegalArgumentException("not an SPKI RSA public key", e);
+        }
+    }
+
+    /** Verify an RSA PKCS#1 v1.5 + SHA-256 signature (base64). False on any malformed input. */
+    public static boolean rsaSha256VerifyBase64(PublicKey key, String message, String signatureB64) {
+        try {
+            Signature s = Signature.getInstance("SHA256withRSA");
+            s.initVerify(key);
+            s.update(Codec.utf8(message));
+            return s.verify(Codec.fromBase64(signatureB64));
+        } catch (GeneralSecurityException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Same, from an SPKI PEM. False on any malformed input, the PEM included. */
+    public static boolean rsaSha256VerifyBase64(String spkiPem, String message, String signatureB64) {
+        try {
+            return rsaSha256VerifyBase64(publicKeyFromPem(spkiPem), message, signatureB64);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /** RSA PKCS#1 v1.5 encryption ("RSA/ECB/PKCS1Padding") of the UTF-8 plaintext, base64 output. Random padding each call. */
+    public static String rsaPkcs1EncryptBase64(PublicKey key, String plaintext) {
+        byte[] m = Codec.utf8(plaintext);
+        if (key instanceof RSAPublicKey rsa) {
+            int k = (rsa.getModulus().bitLength() + 7) / 8;
+            if (m.length > k - 11) {
+                throw new IllegalArgumentException("plaintext too long for a " + k * 8 + "-bit RSA key (max " + (k - 11) + " bytes)");
+            }
+        }
+        try {
+            Cipher c = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            c.init(Cipher.ENCRYPT_MODE, key);
+            return Codec.toBase64(c.doFinal(m));
+        } catch (GeneralSecurityException e) {
+            throw new IllegalArgumentException("RSA PKCS#1 v1.5 encryption failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** Same, from an SPKI PEM. */
+    public static String rsaPkcs1EncryptBase64(String spkiPem, String plaintext) {
+        return rsaPkcs1EncryptBase64(publicKeyFromPem(spkiPem), plaintext);
     }
 }

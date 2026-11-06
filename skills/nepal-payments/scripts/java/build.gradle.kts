@@ -7,7 +7,7 @@ plugins {
 
 group = "np.payments"
 version = "1.0.0"
-description = "Adapters for Nepali payment providers (eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay). JDK only."
+description = "Adapters for Nepali payment providers (eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay, NEPALPAY QR). JDK only."
 
 repositories {
     mavenCentral()

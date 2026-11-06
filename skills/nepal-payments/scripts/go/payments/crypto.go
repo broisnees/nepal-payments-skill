@@ -164,3 +164,65 @@ func rsaSign(key *rsa.PrivateKey, message string) (string, error) {
 	}
 	return ToBase64(sig), nil
 }
+
+// parseRSAPublicKeyPEM parses an SPKI "BEGIN PUBLIC KEY" PEM. From a certificate (.cer/.crt):
+//
+//	openssl x509 -in NPI.cer [-inform der] -pubkey -noout > npi.pub.pem
+func parseRSAPublicKeyPEM(spkiPEM string) (*rsa.PublicKey, error) {
+	if !strings.Contains(spkiPEM, "BEGIN PUBLIC KEY") {
+		return nil, errors.New("expected a PUBLIC KEY PEM; extract it from the certificate with: openssl x509 -in NPI.cer -pubkey -noout")
+	}
+	rest := []byte(spkiPEM)
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			return nil, errors.New("no PUBLIC KEY block found in PEM")
+		}
+		if block.Type != "PUBLIC KEY" {
+			continue
+		}
+		k, err := x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		rk, ok := k.(*rsa.PublicKey)
+		if !ok {
+			return nil, fmt.Errorf("public key is %T, want RSA", k)
+		}
+		return rk, nil
+	}
+}
+
+// RSASHA256VerifyBase64 verifies a base64 RSA PKCS#1 v1.5 + SHA-256 signature with an SPKI PEM.
+// False on any malformed input.
+func RSASHA256VerifyBase64(spkiPEM, message, signatureB64 string) bool {
+	key, err := parseRSAPublicKeyPEM(spkiPEM)
+	if err != nil {
+		return false
+	}
+	sig, err := FromBase64(signatureB64)
+	if err != nil {
+		return false
+	}
+	digest := sha256.Sum256([]byte(message))
+	return rsa.VerifyPKCS1v15(key, crypto.SHA256, digest[:], sig) == nil
+}
+
+// RSAPKCS1EncryptBase64 encrypts plaintext with RSA PKCS#1 v1.5 padding ("RSA/ECB/PKCS1Padding") under an
+// SPKI PEM and returns base64. The plaintext may be at most k-11 bytes (245 for a 2048-bit key).
+func RSAPKCS1EncryptBase64(spkiPEM, plaintext string) (string, error) {
+	key, err := parseRSAPublicKeyPEM(spkiPEM)
+	if err != nil {
+		return "", err
+	}
+	ct, err := rsa.EncryptPKCS1v15(rand.Reader, key, []byte(plaintext))
+	if errors.Is(err, rsa.ErrMessageTooLong) {
+		k := key.Size()
+		return "", fmt.Errorf("plaintext too long for a %d-bit RSA key (max %d bytes)", k*8, k-11)
+	}
+	if err != nil {
+		return "", err
+	}
+	return ToBase64(ct), nil
+}

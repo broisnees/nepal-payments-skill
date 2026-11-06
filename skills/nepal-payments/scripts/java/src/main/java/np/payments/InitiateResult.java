@@ -7,13 +7,14 @@ import java.util.Objects;
 
 /**
  * What to do with the payer after {@link PaymentAdapter#initiate(InitiateInput)}:
- * {@link Redirect} the browser, or render an auto-submitting {@link Form} ({@link Html#renderAutoSubmitForm(Form)}).
- * When {@code providerRef()} is non-null (Khalti pidx, NPS ProcessId, IME Pay TokenId) persist it on the attempt;
+ * {@link Redirect} the browser, render an auto-submitting {@link Form} ({@link Html#renderAutoSubmitForm(Form)}), or
+ * show a {@link Qr} the payer scans. When {@code providerRef()} is non-null (Khalti pidx, NPS ProcessId, IME Pay
+ * TokenId, NEPALPAY validationTraceId) persist it on the attempt;
  * verify() needs it.
  */
-public sealed interface InitiateResult permits InitiateResult.Redirect, InitiateResult.Form {
+public sealed interface InitiateResult permits InitiateResult.Redirect, InitiateResult.Form, InitiateResult.Qr {
 
-    /** "redirect" or "form", as in the TS port. */
+    /** "redirect", "form" or "qr", as in the TS port. */
     String kind();
 
     /** Provider reference to persist, or null. */
@@ -62,6 +63,25 @@ public sealed interface InitiateResult permits InitiateResult.Redirect, Initiate
         @Override
         public String kind() {
             return "form";
+        }
+    }
+
+    /**
+     * Show a QR the payer scans from their own app (NEPALPAY QR). Render {@code qrString} with any QR library, or
+     * {@code <img src="data:image/png;base64,...">} when the provider sent {@code qrImage}. Persist {@code providerRef}.
+     *
+     * @param qrImage base64 PNG, or null
+     * @param raw     provider response, or null
+     */
+    record Qr(String qrString, String qrImage, String providerRef, Object raw) implements InitiateResult {
+        public Qr {
+            Objects.requireNonNull(qrString, "qrString");
+            Objects.requireNonNull(providerRef, "providerRef");
+        }
+
+        @Override
+        public String kind() {
+            return "qr";
         }
     }
 }

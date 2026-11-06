@@ -10,6 +10,7 @@ use NepalPayments\Esewa\EsewaConfig;
 use NepalPayments\Fonepay\FonepayConfig;
 use NepalPayments\ImePay\ImePayConfig;
 use NepalPayments\Khalti\KhaltiConfig;
+use NepalPayments\NepalPay\NepalPayConfig;
 use NepalPayments\Nps\NpsConfig;
 
 /** One optional config per provider; a provider is enabled when its config is set. */
@@ -23,6 +24,7 @@ final class PaymentsConfig
         public readonly ?CyberSourceConfig $cybersource = null,
         public readonly ?NpsConfig $nps = null,
         public readonly ?ImePayConfig $imepay = null,
+        public readonly ?NepalPayConfig $nepalpay = null,
     ) {
     }
 }

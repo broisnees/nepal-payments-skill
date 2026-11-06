@@ -1,6 +1,6 @@
 // Package payments is one interface over Nepali payment gateways: eSewa (ePay v2 + Intent),
 // Khalti (KPG-2), Fonepay (web redirect + Dynamic QR), connectIPS, CyberSource Secure Acceptance,
-// NPS OnePG and IME Pay.
+// NPS OnePG, IME Pay and NEPALPAY QR.
 //
 // It is a port of the TypeScript reference adapters in scripts/ts/src, uses only the Go standard
 // library, and works on Go 1.22+.

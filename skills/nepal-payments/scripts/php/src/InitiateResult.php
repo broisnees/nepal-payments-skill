@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace NepalPayments;
 
-/** Either a {@see RedirectResult} or a {@see FormResult}. `$kind` is "redirect" or "form". */
+/** A {@see RedirectResult}, {@see FormResult} or {@see QrResult}. `$kind` is "redirect", "form" or "qr". */
 interface InitiateResult
 {
 }

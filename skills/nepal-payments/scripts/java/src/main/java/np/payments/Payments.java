@@ -38,6 +38,7 @@ public final class Payments {
         if (cfg.cybersource() != null) b.put(ProviderId.CYBERSOURCE, new CyberSource(cfg.cybersource()));
         if (cfg.nps() != null) b.put(ProviderId.NPS, new Nps(cfg.nps(), transport));
         if (cfg.imepay() != null) b.put(ProviderId.IMEPAY, new ImePay(cfg.imepay(), transport));
+        if (cfg.nepalpay() != null) b.put(ProviderId.NEPALPAY, new NepalPay(cfg.nepalpay(), transport));
         return new Payments(b);
     }
 
@@ -67,6 +68,10 @@ public final class Payments {
 
     public ImePay imepay() {
         return typed(ProviderId.IMEPAY, ImePay.class);
+    }
+
+    public NepalPay nepalpay() {
+        return typed(ProviderId.NEPALPAY, NepalPay.class);
     }
 
     /** Untyped access for generic handlers keyed by a route param ("esewa", "khalti", ...). */
@@ -133,6 +138,17 @@ public final class Payments {
         if (set(env, "IMEPAY_MERCHANT_CODE") && set(env, "IMEPAY_USERNAME")) {
             cfg = cfg.withImePay(ImePay.Config.of(Environment.parse(env.get("IMEPAY_ENV")), env.get("IMEPAY_MERCHANT_CODE"), env.get("IMEPAY_USERNAME"),
                     env.getOrDefault("IMEPAY_PASSWORD", ""), env.getOrDefault("IMEPAY_MODULE", "")));
+        }
+        if (set(env, "NEPALPAY_ACQUIRER_ID") && set(env, "NEPALPAY_MERCHANT_ID") && set(env, "NEPALPAY_USERNAME") && set(env, "NEPALPAY_PRIVATE_KEY_PEM")) {
+            NepalPay.Config c = NepalPay.Config.withPem(Environment.parse(env.get("NEPALPAY_ENV")), env.get("NEPALPAY_ACQUIRER_ID"),
+                    env.get("NEPALPAY_MERCHANT_ID"), env.getOrDefault("NEPALPAY_MERCHANT_NAME", ""), env.getOrDefault("NEPALPAY_MCC", ""),
+                    env.getOrDefault("NEPALPAY_MERCHANT_CITY", "Kathmandu"), env.getOrDefault("NEPALPAY_MERCHANT_POSTAL_CODE", "44600"),
+                    env.getOrDefault("NEPALPAY_STORE_LABEL", "Store1"), env.get("NEPALPAY_USERNAME"), env.getOrDefault("NEPALPAY_PASSWORD", ""),
+                    env.get("NEPALPAY_PRIVATE_KEY_PEM").replace("\\n", "\n")).withTerminalLabel(env.get("NEPALPAY_TERMINAL_LABEL"));
+            if (set(env, "NEPALPAY_CLIENT_ID")) c = c.withOAuth(env.get("NEPALPAY_CLIENT_ID"), env.getOrDefault("NEPALPAY_CLIENT_SECRET", ""));
+            if (set(env, "NEPALPAY_NCHL_PUBLIC_KEY_PEM")) c = c.withNchlPublicKeyPem(env.get("NEPALPAY_NCHL_PUBLIC_KEY_PEM").replace("\\n", "\n"));
+            if (set(env, "NEPALPAY_WS_URL")) c = c.withWebSocket(env.get("NEPALPAY_WS_URL"), env.get("NEPALPAY_WS_USERNAME"), env.get("NEPALPAY_WS_API_TOKEN"));
+            cfg = cfg.withNepalPay(c);
         }
         return cfg;
     }

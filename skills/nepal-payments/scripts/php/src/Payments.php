@@ -20,6 +20,8 @@ use NepalPayments\ImePay\ImePayAdapter;
 use NepalPayments\ImePay\ImePayConfig;
 use NepalPayments\Khalti\KhaltiAdapter;
 use NepalPayments\Khalti\KhaltiConfig;
+use NepalPayments\NepalPay\NepalPayAdapter;
+use NepalPayments\NepalPay\NepalPayConfig;
 use NepalPayments\Nps\NpsAdapter;
 use NepalPayments\Nps\NpsConfig;
 
@@ -61,6 +63,9 @@ final class Payments
         }
         if ($cfg->imepay !== null) {
             $built['imepay'] = new ImePayAdapter($cfg->imepay, $http);
+        }
+        if ($cfg->nepalpay !== null) {
+            $built['nepalpay'] = new NepalPayAdapter($cfg->nepalpay, $http);
         }
 
         return new self($built);
@@ -149,6 +154,14 @@ final class Payments
         return $a;
     }
 
+    public function nepalPay(): NepalPayAdapter
+    {
+        $a = $this->get(ProviderId::NepalPay);
+        assert($a instanceof NepalPayAdapter);
+
+        return $a;
+    }
+
     /**
      * Build config from environment variables (same names as the TS paymentsConfigFromEnv / references/env.md).
      * A provider is enabled when its required vars are non-empty. Default source: $_ENV, then getenv().
@@ -174,7 +187,7 @@ final class Payments
         $set = static fn (string $k): bool => ($get($k) ?? '') !== '';
         $mode = static fn (string $k): Environment => Environment::fromMode($get($k));
 
-        $esewa = $khalti = $fonepay = $connectips = $cybersource = $nps = $imepay = null;
+        $esewa = $khalti = $fonepay = $connectips = $cybersource = $nps = $imepay = $nepalpay = null;
         if ($set('ESEWA_PRODUCT_CODE') && $set('ESEWA_SECRET_KEY')) {
             $esewa = new EsewaConfig(
                 $mode('ESEWA_ENV'),
@@ -236,7 +249,33 @@ final class Payments
             );
         }
 
-        return new PaymentsConfig($esewa, $khalti, $fonepay, $connectips, $cybersource, $nps, $imepay);
+        if ($set('NEPALPAY_ACQUIRER_ID') && $set('NEPALPAY_MERCHANT_ID') && $set('NEPALPAY_USERNAME') && $set('NEPALPAY_PRIVATE_KEY_PEM')) {
+            $oauth = $set('NEPALPAY_CLIENT_ID');
+            $ws = $set('NEPALPAY_WS_URL');
+            $nepalpay = new NepalPayConfig(
+                $mode('NEPALPAY_ENV'),
+                (string) $get('NEPALPAY_ACQUIRER_ID'),
+                (string) $get('NEPALPAY_MERCHANT_ID'),
+                $get('NEPALPAY_MERCHANT_NAME') ?? '',
+                $get('NEPALPAY_MCC') ?? '',
+                $get('NEPALPAY_MERCHANT_CITY') ?? 'Kathmandu',
+                $get('NEPALPAY_MERCHANT_POSTAL_CODE') ?? '44600',
+                $get('NEPALPAY_STORE_LABEL') ?? 'Store1',
+                (string) $get('NEPALPAY_USERNAME'),
+                $get('NEPALPAY_PASSWORD') ?? '',
+                str_replace('\n', "\n", (string) $get('NEPALPAY_PRIVATE_KEY_PEM')),
+                $get('NEPALPAY_TERMINAL_LABEL'),
+                $oauth ? 'oauth' : 'basic',
+                $oauth ? $get('NEPALPAY_CLIENT_ID') : null,
+                $oauth ? ($get('NEPALPAY_CLIENT_SECRET') ?? '') : null,
+                nchlPublicKeyPem: $set('NEPALPAY_NCHL_PUBLIC_KEY_PEM') ? str_replace('\n', "\n", (string) $get('NEPALPAY_NCHL_PUBLIC_KEY_PEM')) : null,
+                wsUrl: $ws ? $get('NEPALPAY_WS_URL') : null,
+                wsUsername: $ws ? $get('NEPALPAY_WS_USERNAME') : null,
+                wsApiToken: $ws ? $get('NEPALPAY_WS_API_TOKEN') : null,
+            );
+        }
+
+        return new PaymentsConfig($esewa, $khalti, $fonepay, $connectips, $cybersource, $nps, $imepay, $nepalpay);
     }
 
     /**

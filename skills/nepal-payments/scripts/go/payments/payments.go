@@ -15,6 +15,7 @@ type Config struct {
 	CyberSource *CyberSourceConfig
 	NPS         *NPSConfig
 	IMEPay      *IMEPayConfig
+	NepalPay    *NepalPayConfig
 	// HTTPClient is used by every provider whose own HTTPClient is nil (default: a client that
 	// follows redirects, with per-request timeouts from each provider config).
 	HTTPClient Doer
@@ -29,6 +30,7 @@ type Payments struct {
 	CyberSource *CyberSource
 	NPS         *NPS
 	IMEPay      *IMEPay
+	NepalPay    *NepalPay
 }
 
 // New builds every configured adapter.
@@ -88,6 +90,13 @@ func New(cfg Config) (*Payments, error) {
 			return nil, err
 		}
 	}
+	if c := cfg.NepalPay; c != nil {
+		cc := *c
+		cc.HTTPClient = pick(c.HTTPClient)
+		if p.NepalPay, err = NewNepalPay(cc); err != nil {
+			return nil, err
+		}
+	}
 	return p, nil
 }
 
@@ -113,6 +122,9 @@ func (p *Payments) all() []Adapter {
 	}
 	if p.IMEPay != nil {
 		out = append(out, p.IMEPay)
+	}
+	if p.NepalPay != nil {
+		out = append(out, p.NepalPay)
 	}
 	return out
 }
@@ -191,6 +203,23 @@ func ConfigFromLookup(getenv func(string) string) Config {
 		cfg.IMEPay = &IMEPayConfig{
 			Env: mode("IMEPAY_ENV"), MerchantCode: getenv("IMEPAY_MERCHANT_CODE"), Username: getenv("IMEPAY_USERNAME"),
 			Password: getenv("IMEPAY_PASSWORD"), Module: getenv("IMEPAY_MODULE"),
+		}
+	}
+	if getenv("NEPALPAY_ACQUIRER_ID") != "" && getenv("NEPALPAY_MERCHANT_ID") != "" && getenv("NEPALPAY_USERNAME") != "" && getenv("NEPALPAY_PRIVATE_KEY_PEM") != "" {
+		cfg.NepalPay = &NepalPayConfig{
+			Env: mode("NEPALPAY_ENV"), AcquirerID: getenv("NEPALPAY_ACQUIRER_ID"), MerchantID: getenv("NEPALPAY_MERCHANT_ID"),
+			MerchantName: getenv("NEPALPAY_MERCHANT_NAME"), MerchantCategoryCode: getenv("NEPALPAY_MCC"),
+			MerchantCity: orDefault(getenv("NEPALPAY_MERCHANT_CITY"), "Kathmandu"), MerchantPostalCode: orDefault(getenv("NEPALPAY_MERCHANT_POSTAL_CODE"), "44600"),
+			StoreLabel: orDefault(getenv("NEPALPAY_STORE_LABEL"), "Store1"), TerminalLabel: getenv("NEPALPAY_TERMINAL_LABEL"),
+			Username: getenv("NEPALPAY_USERNAME"), Password: getenv("NEPALPAY_PASSWORD"),
+			PrivateKeyPEM:    strings.ReplaceAll(getenv("NEPALPAY_PRIVATE_KEY_PEM"), `\n`, "\n"),
+			NCHLPublicKeyPEM: strings.ReplaceAll(getenv("NEPALPAY_NCHL_PUBLIC_KEY_PEM"), `\n`, "\n"),
+		}
+		if getenv("NEPALPAY_WS_URL") != "" {
+			cfg.NepalPay.WSURL, cfg.NepalPay.WSUsername, cfg.NepalPay.WSAPIToken = getenv("NEPALPAY_WS_URL"), getenv("NEPALPAY_WS_USERNAME"), getenv("NEPALPAY_WS_API_TOKEN")
+		}
+		if getenv("NEPALPAY_CLIENT_ID") != "" {
+			cfg.NepalPay.Auth, cfg.NepalPay.ClientID, cfg.NepalPay.ClientSecret = "oauth", getenv("NEPALPAY_CLIENT_ID"), getenv("NEPALPAY_CLIENT_SECRET")
 		}
 	}
 	return cfg

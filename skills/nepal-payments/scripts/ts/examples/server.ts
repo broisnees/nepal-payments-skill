@@ -13,6 +13,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import {
   createPayments,
   decideTransition,
+  escapeHtml,
   OPEN_STATUSES,
   type AttemptStatus,
   ESEWA_SANDBOX,
@@ -160,6 +161,11 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if (!a?.initiate) return send(404, "unknown attempt");
     // Never replay a stale or closed attempt's signed form: the user must start a new attempt.
     if (!OPEN.includes(a.status) || Date.now() - a.createdAt > SESSION_WINDOW_MS) return redirect(`/orders/${a.orderId}?attempt=${a.id}`);
+    if (a.initiate.kind === "qr") {
+      // NEPALPAY QR: the payer scans from their own app; "I've paid" runs the same verify as a return URL.
+      const img = a.initiate.qrImage ? `<img alt="NEPALPAY QR" width="280" height="280" src="data:image/png;base64,${a.initiate.qrImage}">` : "";
+      return send(200, page(`<h1>Scan to pay</h1>${img}<p><code style="word-break:break-all">${escapeHtml(a.initiate.qrString)}</code></p><p><a href="/payments/${a.provider}/return/${a.id}">I've paid</a></p>`));
+    }
     return a.initiate.kind === "redirect" ? redirect(a.initiate.url) : send(200, renderAutoSubmitForm(a.initiate));
   }
 
