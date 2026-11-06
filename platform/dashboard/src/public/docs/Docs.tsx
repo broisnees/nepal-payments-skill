@@ -5,6 +5,7 @@ import { Link, Navigate, NavLink, useLocation, useParams } from "react-router";
 import { Icon } from "../../components/Icon.tsx";
 import { Markdown, headings } from "../../lib/markdown.tsx";
 import { PublicLayout } from "../PublicLayout.tsx";
+import { CopyPage } from "./CopyPage.tsx";
 
 const files = import.meta.glob("./content/*.md", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 const source = (slug: string) => files[`./content/${slug}.md`];
@@ -34,6 +35,7 @@ export const DOCS: { group: string; pages: { slug: string; title: string }[] }[]
       { slug: "operations", title: "Reconcile, refunds and exports" },
       { slug: "go-live", title: "Go-live checklist" },
       { slug: "status-page", title: "Status page" },
+      { slug: "ai", title: "AI and agents" },
     ],
   },
   {
@@ -91,7 +93,10 @@ export default function Docs() {
         </aside>
         <main className="docs-main">
           <article className="md" key={page.slug}>
-            <p className="docs-eyebrow">{group.group}</p>
+            <div className="docs-head">
+              <p className="docs-eyebrow">{group.group}</p>
+              <CopyPage slug={page.slug} markdown={md} />
+            </div>
             <Markdown source={md} />
           </article>
           <nav className="docs-pager" aria-label="Previous and next">

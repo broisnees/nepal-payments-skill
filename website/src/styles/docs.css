@@ -50,6 +50,11 @@ h4 {
   font-weight: 500;
 }
 
+.site-title img {
+  width: 28px;
+  height: 28px;
+}
+
 .site-title {
   color: var(--sl-color-white);
   font-weight: 500;
