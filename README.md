@@ -4,7 +4,7 @@
 [![Agent Skills](https://img.shields.io/badge/Agent%20Skills-spec%20compliant-blue)](https://agentskills.io/specification)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An [Agent Skill](https://agentskills.io) that integrates Nepali payment gateways into any backend, web app or mobile app: **eSewa, Khalti, Fonepay, connectIPS, CyberSource (via Nepali banks), NPS OnePG and IME Pay**.
+An [Agent Skill](https://agentskills.io) that integrates Nepali payment gateways into any backend, web app or mobile app: **eSewa, Khalti, Fonepay, connectIPS, CyberSource (via Nepali banks), NPS OnePG, IME Pay and NEPALPAY QR**.
 
 Ask your coding agent to "add eSewa and Khalti checkout to this app" and it follows a tested recipe instead of guessing: server-side signing, server-to-server verification, exactly-once fulfilment and reconciliation. The skill ships working adapters in **TypeScript, Python, Java, Kotlin, PHP and Go**, each tested against the providers' own signature test vectors.
 
@@ -49,6 +49,7 @@ Talk to your agent normally. The skill loads when you mention a provider or Nepa
 | CyberSource | Secure Acceptance (cards via Nepali banks) | all 6 | Published signature vector; needs a bank-issued profile |
 | NPS OnePG | ~29 banks, wallets, cards in one | all 6 | Offline; needs NPS credentials |
 | IME Pay | Wallet (merged into Khalti, 2025) | all 6 | Offline; needs IME credentials |
+| NEPALPAY QR | NCHL dynamic QR (any NEPALPAY QR bank app) | all 6 | Offline; UAT host answers, needs NCHL credentials |
 | HBL 2C2P, Moru, Prabhu Pay, CellPay, Namaste Pay | | Docs only | |
 
 ## What's inside

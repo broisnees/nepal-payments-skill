@@ -19,6 +19,7 @@
 | CyberSource | Business Center test account (from your bank) | Visa `4111111111111111`, MC `5555555555554444`, any future expiry; 3DS cards in `cybersource.md` §6 |
 | NPS | from NPS onboarding | provided by NPS |
 | IME Pay | from IME / Khalti-by-IME merchant team | provided by IME |
+| NEPALPAY QR | UAT NPI user, `NPI.pfx` and merchant ids from your bank or businesssupport@nchl.com.np | scan with a NEPALPAY QR enabled UAT bank app (from your bank) |
 
 The eSewa sandbox login has a reCAPTCHA, so completing a payment is manual (browser), but the form POST, status API and Intent book/status/cancel can be automated.
 
@@ -26,13 +27,13 @@ The eSewa sandbox login has a reCAPTCHA, so completing a payment is manual (brow
 
 ```bash
 # TypeScript (Node >= 22.18 runs .ts directly)
-cd scripts/ts && npm install && npm test        # 49 offline tests: vectors, mocked HTTP, state machine
+cd scripts/ts && npm install && npm test        # 58 offline tests: vectors, mocked HTTP, state machine
 npm run typecheck                               # strict tsc
 node test/sandbox.ts                            # live: eSewa (form, status, Intent) + Fonepay dev redirect
 KHALTI_SECRET_KEY=... node test/sandbox.ts      # + Khalti initiate/lookup
 
 # Python (stdlib; connectIPS tests need `pip install cryptography`)
-cd scripts/python && python -m unittest discover -s tests -v   # 33 tests
+cd scripts/python && python -m unittest discover -s tests -v   # 42 tests
 
 # Java / Kotlin (JDK 17+; the Gradle wrapper downloads Gradle on first run)
 cd scripts/java && ./gradlew test               # offline tests
@@ -95,3 +96,4 @@ Common items: the architecture checklist (`architecture.md` §10), live keys in 
 | CyberSource | Live SA profile keys (2-year expiry: put renewal in the calendar); Merchant POST URL configured; 3DS enabled; NPR enabled per card type. Agree an SA → Unified Checkout migration date with the bank. |
 | NPS | Live API host and credentials from the onboarding PDF; Notification URL registered. |
 | IME Pay | Server IP whitelisted for port 7979; confirm web checkout is still offered post-merger. |
+| NEPALPAY QR | Live NPI user, `.pfx` and merchant enrollment from the bank; `merchantName` exactly as enrolled; confirm-payment URL registered with NCHL if you use it. |
