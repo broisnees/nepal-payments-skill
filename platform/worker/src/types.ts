@@ -42,6 +42,8 @@ export interface PaymentRow {
   refunded_paisa: number;
   gw_env: string | null;
   fulfilled_at: number | null;
+  // migrations/0010_inbound.sql
+  currency: string;
 }
 
 export interface EventRow {
@@ -59,6 +61,7 @@ export interface EventRow {
   order_id: string | null;
   amount_paisa: number | null;
   sdk: string | null;
+  currency: string;
 }
 
 export interface AppVars {

@@ -120,11 +120,11 @@ export function registerData(api: Hono<AppEnv>) {
     const gw = q.gateway ? " AND gateway = ?" : "";
     const base = [project.id, envName, Math.floor(from / MINUTE), Math.ceil(to / MINUTE), ...(q.gateway ? [q.gateway] : [])];
     const pBase = [project.id, envName, from, to, ...(q.gateway ? [q.gateway] : [])];
-    const sums = "SUM(started) AS started, SUM(paid) AS paid, SUM(failed) AS failed, SUM(paid_amount_paisa) AS revenue, SUM(gw_requests) AS req, SUM(gw_errors) AS err, SUM(gw_ms_total) AS ms";
+    const sums = "SUM(started) AS started, SUM(paid) AS paid, SUM(failed) AS failed, SUM(CASE WHEN currency = 'NPR' THEN paid_amount_paisa ELSE 0 END) AS revenue, SUM(gw_requests) AS req, SUM(gw_errors) AS err, SUM(gw_ms_total) AS ms";
     const ms = `FROM minute_stats WHERE project_id = ? AND env = ? AND minute >= ? AND minute < ?${gw}`;
     const ps = `FROM payments WHERE project_id = ? AND env = ? AND started_at >= ? AND started_at < ?${gw}`;
     type Sum = { started: number | null; paid: number | null; failed: number | null; revenue: number | null; req: number | null; err: number | null; ms: number | null };
-    const [series, totals, byGw, reasons, ttp, funnel] = await c.env.DB.batch([
+    const [series, totals, byGw, reasons, ttp, funnel, revs] = await c.env.DB.batch([
       c.env.DB.prepare(`SELECT (minute * 60000 + ${NPT_OFFSET}) / ${size} AS b, ${sums} ${ms} GROUP BY b`).bind(...base),
       c.env.DB.prepare(`SELECT ${sums} ${ms}`).bind(...base),
       c.env.DB.prepare(`SELECT gateway, ${sums} ${ms} GROUP BY gateway ORDER BY started DESC`).bind(...base),
@@ -136,9 +136,22 @@ export function registerData(api: Hono<AppEnv>) {
           SUM(EXISTS (SELECT 1 FROM events e WHERE e.project_id = payments.project_id AND e.env = payments.env AND e.attempt_id = payments.attempt_id AND e.type = 'callback.received')) AS callback,
           SUM(status = 'paid') AS paid ${ps}`,
       ).bind(...pBase),
+      c.env.DB.prepare(
+        `SELECT (minute * 60000 + ${NPT_OFFSET}) / ${size} AS b, gateway, currency, SUM(paid_amount_paisa) AS amount ${ms} GROUP BY b, gateway, currency HAVING amount != 0`,
+      ).bind(...base),
     ]);
+    // Revenue per currency: per bucket, per gateway and in total, from one grouped read.
+    const byCurrency = { bucket: new Map<number, Record<string, number>>(), gateway: new Map<string, Record<string, number>>(), total: {} as Record<string, number> };
+    const addTo = (m: Record<string, number>, cur: string, n: number) => void (m[cur] = (m[cur] ?? 0) + n);
+    for (const r of revs.results as { b: number; gateway: string; currency: string; amount: number }[]) {
+      if (!byCurrency.bucket.has(r.b)) byCurrency.bucket.set(r.b, {});
+      if (!byCurrency.gateway.has(r.gateway)) byCurrency.gateway.set(r.gateway, {});
+      addTo(byCurrency.bucket.get(r.b)!, r.currency, r.amount);
+      addTo(byCurrency.gateway.get(r.gateway)!, r.currency, r.amount);
+      addTo(byCurrency.total, r.currency, r.amount);
+    }
     const byBucket = new Map((series.results as (Sum & { b: number })[]).map((r) => [r.b, r]));
-    const point = (tStart: number, r: Sum | undefined): SeriesPoint => {
+    const point = (tStart: number, r: Sum | undefined, revenue_by_currency: Record<string, number> = {}): SeriesPoint => {
       const paid = r?.paid ?? 0;
       const failed = r?.failed ?? 0;
       return {
@@ -147,23 +160,24 @@ export function registerData(api: Hono<AppEnv>) {
         paid,
         failed,
         revenue_paisa: r?.revenue ?? 0,
+        revenue_by_currency,
         success_rate: rate(paid, paid + failed),
         gw_latency_avg: rate(r?.ms ?? 0, r?.req ?? 0),
         gw_error_rate: rate(r?.err ?? 0, r?.req ?? 0),
       };
     };
     const out: SeriesPoint[] = [];
-    for (let b = first; b <= last; b++) out.push(point(b * size - NPT_OFFSET, byBucket.get(b)));
+    for (let b = first; b <= last; b++) out.push(point(b * size - NPT_OFFSET, byBucket.get(b), byCurrency.bucket.get(b)));
     const tot = totals.results[0] as Sum | undefined;
-    const tp = point(from, tot);
+    const tp = point(from, tot, byCurrency.total);
     const durations = (ttp.results as { d: number }[]).map((r) => r.d);
     const f = (funnel.results[0] ?? {}) as Record<string, number | null>;
     const analytics: Analytics = {
       series: out,
-      totals: { started: tp.started, paid: tp.paid, failed: tp.failed, revenue_paisa: tp.revenue_paisa, success_rate: tp.success_rate },
+      totals: { started: tp.started, paid: tp.paid, failed: tp.failed, revenue_paisa: tp.revenue_paisa, revenue_by_currency: tp.revenue_by_currency, success_rate: tp.success_rate },
       by_gateway: (byGw.results as (Sum & { gateway: string })[]).map((r) => {
-        const p = point(from, r);
-        return { gateway: r.gateway, started: p.started, paid: p.paid, failed: p.failed, revenue_paisa: p.revenue_paisa, success_rate: p.success_rate };
+        const p = point(from, r, byCurrency.gateway.get(r.gateway));
+        return { gateway: r.gateway, started: p.started, paid: p.paid, failed: p.failed, revenue_paisa: p.revenue_paisa, revenue_by_currency: p.revenue_by_currency, success_rate: p.success_rate };
       }),
       failure_reasons: reasons.results as { reason: string; count: number }[],
       time_to_pay_ms: { p50: percentile(durations, 50), p95: percentile(durations, 95) },

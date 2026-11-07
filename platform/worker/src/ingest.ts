@@ -9,7 +9,7 @@
 // The upsert is written so the result does not depend on arrival order; see APPLY below.
 // minute_stats are then updated from the status transitions the batch produced.
 // Statement budget (Workers free plan: 50 D1 queries per invocation): see test/ops-budget.test.ts.
-import { FINAL_STATUSES, KEY_PREFIX, MAX_BATCH_BYTES, MAX_BATCH_EVENTS, impliedStatus, validateEvent, type PaymentEvent } from "@paynp/shared";
+import { DEFAULT_CURRENCY, FINAL_STATUSES, KEY_PREFIX, MAX_BATCH_BYTES, MAX_BATCH_EVENTS, impliedStatus, validateEvent, type PaymentEvent } from "@paynp/shared";
 import type { Context } from "hono";
 import { onIngest, type IngestTransition } from "./alerts/engine.ts";
 import { toEvent, toPayment } from "./lib/rows.ts";
@@ -29,7 +29,7 @@ const F = `(${FINAL_STATUSES.map((s) => `'${s}'`).join(",")})`;
 //
 // v2 (SPEC-v2 section 1): ?16 is the refunded amount of a payment.refunded event. Its status is `refunded` once the
 // cumulative refunded_paisa reaches the payment amount, otherwise it leaves the status alone. ?17 to ?20 are the
-// customer hash, mask and name and the gateway environment.
+// customer hash, mask and name and the gateway environment. ?21 is the currency; a payment keeps its first one.
 const ST = `(CASE WHEN ?16 IS NULL THEN ?7 WHEN payments.amount_paisa IS NULL OR payments.refunded_paisa + ?16 >= payments.amount_paisa THEN 'refunded' END)`;
 const INS_ST = `COALESCE(CASE WHEN ?16 IS NOT NULL THEN 'refunded' END, ?7)`;
 const APPLY = `(${ST} IS NOT NULL AND ((payments.status NOT IN ${F} AND ${ST} IN ${F}) OR (?8 >= payments.status_at AND NOT (payments.status IN ${F} AND ${ST} NOT IN ${F}))))`;
@@ -38,10 +38,10 @@ const HAS_REASON = `(?15 = 1 AND ?8 >= payments.reason_at)`;
 const UPSERT_PAYMENT = `
 INSERT INTO payments (project_id, env, attempt_id, order_id, gateway, amount_paisa, status, started_at, updated_at, finished_at,
   provider_ref, last_reason, last_message, event_count, error_count, fulfil_count, status_at, reason_at,
-  refunded_paisa, customer_hash, customer_mask, customer_name, gw_env, fulfilled_at)
+  refunded_paisa, customer_hash, customer_mask, customer_name, gw_env, fulfilled_at, currency)
 SELECT ?1, ?2, ?3, ?4, ?5, ?6, COALESCE(${INS_ST}, 'initiated'), ?8, ?8, CASE WHEN ${INS_ST} IN ${F} THEN ?8 END,
   ?9, ?10, ?11, 1, ?12, ?13, CASE WHEN ${INS_ST} IS NULL THEN 0 ELSE ?8 END, CASE WHEN ?15 = 1 THEN ?8 ELSE 0 END,
-  COALESCE(?16, 0), ?17, ?18, ?19, ?20, CASE WHEN ?13 = 1 THEN ?8 END
+  COALESCE(?16, 0), ?17, ?18, ?19, ?20, CASE WHEN ?13 = 1 THEN ?8 END, ?21
 WHERE NOT EXISTS (SELECT 1 FROM events WHERE project_id = ?1 AND env = ?2 AND id = ?14)
 ON CONFLICT (project_id, env, attempt_id) DO UPDATE SET
   order_id = COALESCE(payments.order_id, excluded.order_id),
@@ -69,26 +69,27 @@ ON CONFLICT (project_id, env, attempt_id) DO UPDATE SET
   fulfil_count = payments.fulfil_count + ?13
 RETURNING *`;
 
-// ?1 project, ?2 env, ?3 received_at shared; 11 values per event, so 8 events per statement.
-const EVENT_COLS = 11;
+// ?1 project, ?2 env, ?3 received_at shared; 12 values per event, so 8 events per statement.
+const EVENT_COLS = 12;
 const EVENTS_PER_INSERT = Math.floor((MAX_PARAMS - 3) / EVENT_COLS);
 const insertEvents = (n: number) =>
-  `INSERT OR IGNORE INTO events (project_id, env, id, attempt_id, type, ts, received_at, gateway, status, duration_ms, data, order_id, amount_paisa, sdk) VALUES ` +
+  `INSERT OR IGNORE INTO events (project_id, env, id, attempt_id, type, ts, received_at, gateway, status, duration_ms, data, order_id, amount_paisa, sdk, currency) VALUES ` +
   Array.from({ length: n }, (_, k) => {
     const p = (i: number) => `?${4 + k * EVENT_COLS + i}`;
-    return `(?1, ?2, ${p(0)}, ${p(1)}, ${p(2)}, ${p(3)}, ?3, ${p(4)}, ${p(5)}, ${p(6)}, ${p(7)}, ${p(8)}, ${p(9)}, ${p(10)})`;
+    return `(?1, ?2, ${p(0)}, ${p(1)}, ${p(2)}, ${p(3)}, ?3, ${p(4)}, ${p(5)}, ${p(6)}, ${p(7)}, ${p(8)}, ${p(9)}, ${p(10)}, ${p(11)})`;
   }).join(", ");
 const ATTEMPTS_PER_READ = MAX_PARAMS - 2;
 
-const UPSERT_STATS = `INSERT INTO minute_stats (project_id, env, gateway, minute, started, paid, failed, paid_amount_paisa, gw_requests, gw_errors, gw_ms_total, gw_ms_max)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
-ON CONFLICT (project_id, env, gateway, minute) DO UPDATE SET
+const UPSERT_STATS = `INSERT INTO minute_stats (project_id, env, gateway, minute, started, paid, failed, paid_amount_paisa, gw_requests, gw_errors, gw_ms_total, gw_ms_max, currency)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+ON CONFLICT (project_id, env, gateway, minute, currency) DO UPDATE SET
   started = started + excluded.started, paid = paid + excluded.paid, failed = failed + excluded.failed,
   paid_amount_paisa = paid_amount_paisa + excluded.paid_amount_paisa, gw_requests = gw_requests + excluded.gw_requests,
   gw_errors = gw_errors + excluded.gw_errors, gw_ms_total = gw_ms_total + excluded.gw_ms_total, gw_ms_max = MAX(gw_ms_max, excluded.gw_ms_max)`;
 
 interface StatDelta {
   gateway: string;
+  currency: string;
   minute: number;
   started: number;
   paid: number;
@@ -153,13 +154,14 @@ export async function ingestEvents(env: Env, projectId: string, envName: string,
       env.DB.prepare(UPSERT_PAYMENT).bind(
         projectId, envName, e.attempt_id, e.order_id ?? null, e.gateway, o.amount_paisa, o.status, ts,
         e.data?.provider_ref ?? null, e.data?.reason ?? null, e.data?.message ?? null, err, ful, e.id, hasReason,
-        o.refund_paisa, o.customer?.hash ?? null, o.customer?.mask ?? null, o.customer?.name ?? null, o.gw_env,
+        o.refund_paisa, o.customer?.hash ?? null, o.customer?.mask ?? null, o.customer?.name ?? null, o.gw_env, e.currency ?? DEFAULT_CURRENCY,
       ),
     );
     rows.push({
       project_id: projectId, env: envName, id: e.id, attempt_id: e.attempt_id, type: e.type, ts, received_at: receivedAt, gateway: e.gateway,
       status: e.status ?? null, duration_ms: e.duration_ms ?? null, data: e.data ? JSON.stringify(e.data) : null,
       order_id: e.order_id ?? null, amount_paisa: e.amount_paisa ?? null, sdk: e.sdk ? JSON.stringify(e.sdk) : null,
+      currency: e.currency ?? DEFAULT_CURRENCY,
     });
   });
   for (let i = 0; i < rows.length; i += EVENTS_PER_INSERT) {
@@ -167,7 +169,7 @@ export async function ingestEvents(env: Env, projectId: string, envName: string,
     stmts.push(
       env.DB.prepare(insertEvents(part.length)).bind(
         projectId, envName, receivedAt,
-        ...part.flatMap((r) => [r.id, r.attempt_id, r.type, r.ts, r.gateway, r.status, r.duration_ms, r.data, r.order_id, r.amount_paisa, r.sdk]),
+        ...part.flatMap((r) => [r.id, r.attempt_id, r.type, r.ts, r.gateway, r.status, r.duration_ms, r.data, r.order_id, r.amount_paisa, r.sdk, r.currency]),
       ),
     );
   }
@@ -175,11 +177,11 @@ export async function ingestEvents(env: Env, projectId: string, envName: string,
   const results = stmts.length ? await env.DB.batch(stmts) : [];
 
   const deltas = new Map<string, StatDelta>();
-  const delta = (gateway: string, ts: number): StatDelta => {
+  const delta = (gateway: string, ts: number, currency: string = DEFAULT_CURRENCY): StatDelta => {
     const minute = Math.floor(ts / MINUTE);
-    const k = `${gateway}|${minute}`;
+    const k = `${gateway}|${currency}|${minute}`;
     let d = deltas.get(k);
-    if (!d) deltas.set(k, (d = { gateway, minute, started: 0, paid: 0, failed: 0, paid_amount_paisa: 0, gw_requests: 0, gw_errors: 0, gw_ms_total: 0, gw_ms_max: 0 }));
+    if (!d) deltas.set(k, (d = { gateway, currency, minute, started: 0, paid: 0, failed: 0, paid_amount_paisa: 0, gw_requests: 0, gw_errors: 0, gw_ms_total: 0, gw_ms_max: 0 }));
     return d;
   };
 
@@ -201,9 +203,10 @@ export async function ingestEvents(env: Env, projectId: string, envName: string,
     out.payments.set(e.attempt_id, payment);
     out.transitions.push({ event: e, old, payment });
 
-    if (e.type === "payment.started") delta(e.gateway, ts).started++;
+    const cur = payment.currency ?? DEFAULT_CURRENCY;
+    if (e.type === "payment.started") delta(e.gateway, ts, cur).started++;
     if (e.type === "gateway.request") {
-      const d = delta(e.gateway, ts);
+      const d = delta(e.gateway, ts, cur);
       d.gw_requests++;
       if (isGatewayError(e)) d.gw_errors++;
       d.gw_ms_total += e.duration_ms ?? 0;
@@ -213,22 +216,22 @@ export async function ingestEvents(env: Env, projectId: string, envName: string,
     const was = old?.status;
     const is = payment.status;
     if (is === "paid" && was !== "paid") {
-      const d = delta(payment.gateway, payment.finished_at ?? ts);
+      const d = delta(payment.gateway, payment.finished_at ?? ts, cur);
       d.paid++;
       d.paid_amount_paisa += payment.amount_paisa ?? 0;
     }
-    if (is === "failed" && was !== "failed") delta(payment.gateway, payment.finished_at ?? ts).failed++;
+    if (is === "failed" && was !== "failed") delta(payment.gateway, payment.finished_at ?? ts, cur).failed++;
     if (old && was === "paid" && is !== "paid") {
-      const d = delta(old.gateway, old.finished_at ?? ts);
+      const d = delta(old.gateway, old.finished_at ?? ts, old.currency ?? DEFAULT_CURRENCY);
       d.paid--;
       d.paid_amount_paisa -= old.amount_paisa ?? 0;
     }
-    if (old && was === "failed" && is !== "failed") delta(old.gateway, old.finished_at ?? ts).failed--;
+    if (old && was === "failed" && is !== "failed") delta(old.gateway, old.finished_at ?? ts, old.currency ?? DEFAULT_CURRENCY).failed--;
   });
 
   const after: D1PreparedStatement[] = [];
   for (const d of deltas.values()) {
-    after.push(env.DB.prepare(UPSERT_STATS).bind(projectId, envName, d.gateway, d.minute, d.started, d.paid, d.failed, d.paid_amount_paisa, d.gw_requests, d.gw_errors, d.gw_ms_total, d.gw_ms_max));
+    after.push(env.DB.prepare(UPSERT_STATS).bind(projectId, envName, d.gateway, d.minute, d.started, d.paid, d.failed, d.paid_amount_paisa, d.gw_requests, d.gw_errors, d.gw_ms_total, d.gw_ms_max, d.currency));
   }
   after.push(...statusMinuteStatements(env, projectId, envName, out.transitions));
   const opsAfter = afterStatements(env, projectId, envName, out.transitions, receivedAt);
@@ -246,7 +249,7 @@ export async function ingestEvents(env: Env, projectId: string, envName: string,
 
 const KEY_RE = /^pnp_(test|live)_[0-9A-Za-z]{32}$/;
 
-async function readCapped(req: Request, max: number): Promise<string | null> {
+export async function readCapped(req: Request, max: number): Promise<string | null> {
   if (!req.body) return "";
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];

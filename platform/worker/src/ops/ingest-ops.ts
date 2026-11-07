@@ -80,7 +80,7 @@ pairs AS (
   JOIN payments p ON p.project_id = ?1 AND p.env = ?2 AND p.attempt_id = np.a AND p.status = 'paid'
   JOIN payments q ON q.project_id = ?1 AND q.env = ?2 AND q.attempt_id <> p.attempt_id AND q.status = 'paid'
     AND ((p.order_id IS NOT NULL AND q.order_id = p.order_id)
-      OR (p.customer_hash IS NOT NULL AND q.customer_hash = p.customer_hash AND q.amount_paisa = p.amount_paisa
+      OR (p.customer_hash IS NOT NULL AND q.customer_hash = p.customer_hash AND q.amount_paisa = p.amount_paisa AND q.currency = p.currency
           AND ABS(q.started_at - p.started_at) <= ${DUPLICATE_WINDOW}))
 )
 INSERT OR IGNORE INTO refund_cases (id, project_id, env, kind, status, attempt_id, related_attempt_id, gateway, amount_paisa, reason, created_at, updated_at)
@@ -103,10 +103,10 @@ const UPSERT_FINDING_TAIL = `ON CONFLICT (project_id, env, code, gateway) DO UPD
   last_seen = MAX(doctor_findings.last_seen, excluded.last_seen), count = doctor_findings.count + excluded.count,
   example_attempt = excluded.example_attempt, severity = excluded.severity, resolved_at = NULL`;
 
-// >= 3 of the last 10 payments on the gateway under 100 paisa while the project's 30-day median is over 10000.
+// NPR only (other currencies have other scales). >= 3 of the last 10 payments on the gateway under 100 paisa while the project's 30-day median is over 10000.
 const RUPEE_AMOUNTS = `INSERT INTO doctor_findings (project_id, env, code, severity, gateway, first_seen, last_seen, count, example_attempt)
 SELECT ?1, ?2, 'amount_looks_like_rupees', 'warning', ?4, ?3, ?3, 1, ?5
-WHERE (SELECT COUNT(*) FROM (SELECT amount_paisa FROM payments WHERE project_id = ?1 AND env = ?2 AND gateway = ?4 AND amount_paisa IS NOT NULL
+WHERE (SELECT COUNT(*) FROM (SELECT amount_paisa FROM payments WHERE project_id = ?1 AND env = ?2 AND gateway = ?4 AND currency = 'NPR' AND amount_paisa IS NOT NULL
          ORDER BY started_at DESC LIMIT 10) WHERE amount_paisa < 100) >= 3
   AND (SELECT amount_paisa FROM payments WHERE project_id = ?1 AND env = ?2 AND amount_paisa IS NOT NULL AND started_at > ?6 ORDER BY amount_paisa
          LIMIT 1 OFFSET (SELECT COUNT(*) / 2 FROM payments WHERE project_id = ?1 AND env = ?2 AND amount_paisa IS NOT NULL AND started_at > ?6)) > 10000
@@ -208,7 +208,7 @@ export function afterStatements(env: Env, projectId: string, envName: string, tr
     return m;
   };
   if (envName === "live") {
-    for (const [gw, { example }] of gateways((tr) => tr.event.type === "payment.started" && tr.event.amount_paisa !== undefined && tr.event.amount_paisa < 100)) {
+    for (const [gw, { example }] of gateways((tr) => tr.event.type === "payment.started" && !tr.event.currency && tr.event.amount_paisa !== undefined && tr.event.amount_paisa < 100)) {
       statements.push(env.DB.prepare(RUPEE_AMOUNTS).bind(projectId, envName, t, gw, example, t - 30 * DAY));
     }
   }

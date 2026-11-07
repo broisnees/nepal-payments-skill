@@ -43,7 +43,7 @@ const j = (i: number) => `json_extract(j.value, '$[${i}]')`;
 const H = H_COLS.join(", ");
 const UPSERT = `INSERT INTO status_minutes (gateway, minute, projects, requests, errors, ms_total, ms_p95, samples, ms_max, ${H})
 SELECT ${j(0)}, ${j(1)},
-  CASE WHEN COALESCE((SELECT gw_requests FROM minute_stats m WHERE m.project_id = ?1 AND m.env = 'live' AND m.gateway = ${j(0)} AND m.minute = ${j(1)}), 0) > ${j(2)} THEN 0 ELSE 1 END,
+  CASE WHEN COALESCE((SELECT SUM(gw_requests) FROM minute_stats m WHERE m.project_id = ?1 AND m.env = 'live' AND m.gateway = ${j(0)} AND m.minute = ${j(1)}), 0) > ${j(2)} THEN 0 ELSE 1 END,
   ${Array.from({ length: 6 + BUCKETS }, (_, i) => j(i + 2)).join(", ")}
 FROM json_each(?2) j WHERE true
 ON CONFLICT (gateway, minute) DO UPDATE SET

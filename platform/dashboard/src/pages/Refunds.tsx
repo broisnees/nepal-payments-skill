@@ -153,7 +153,7 @@ function CaseRow({ c, current, onSelect }: { c: RefundCase; current: boolean; on
         {kindLabel(c)}
         {c.payment?.order_id && <span className="muted"> · {c.payment.order_id}</span>}
       </span>
-      <Money paisa={c.amount_paisa} />
+      <Money paisa={c.amount_paisa} currency={c.payment?.currency} />
       <span className="meta">
         <Gateway id={c.gateway} />
         <RefundPill status={c.status} />
@@ -171,7 +171,7 @@ function CaseDetail({ c, onChange, local }: { c: RefundCase; onChange: (c: Refun
   const [note, setNote] = useState(c.status === "failed" ? "" : (c.note ?? ""));
   const [busy, setBusy] = useState<string | null>(null);
   const live = c.status === "open" || c.status === "failed";
-  const m = moneyParts(c.amount_paisa);
+  const m = moneyParts(c.amount_paisa, c.payment?.currency);
   const partial = c.payment?.amount_paisa && c.amount_paisa < c.payment.amount_paisa;
 
   const patch = async (body: Record<string, unknown>, label: string, optimistic?: RefundCase) => {
@@ -195,7 +195,7 @@ function CaseDetail({ c, onChange, local }: { c: RefundCase; onChange: (c: Refun
 
   const send = async () => {
     const ok = await confirmAction({
-      title: `Refund ${formatMoney(c.amount_paisa)} on ${gatewayName(c.gateway)}?`,
+      title: `Refund ${formatMoney(c.amount_paisa, c.payment?.currency)} on ${gatewayName(c.gateway)}?`,
       body: "discerns sends a signed request to your action endpoint. Your server calls the gateway with its own keys and reports back. This cannot be undone from here.",
       action: "Send refund",
     });
@@ -247,7 +247,7 @@ function CaseDetail({ c, onChange, local }: { c: RefundCase; onChange: (c: Refun
           </span>
           <span className="muted">
             to refund on <Gateway id={c.gateway} />
-            {partial ? <> (part of {formatMoney(c.payment!.amount_paisa)})</> : null}
+            {partial ? <> (part of {formatMoney(c.payment!.amount_paisa, c.payment!.currency)})</> : null}
           </span>
         </div>
         <p className="muted" style={{ maxWidth: "70ch" }}>
@@ -416,7 +416,7 @@ function PayCard({ p, role, base }: { p: PaymentSummary; role: "keep" | "refund"
       <dl className="kv">
         <dt>Amount</dt>
         <dd>
-          <Money paisa={p.amount_paisa} />
+          <Money paisa={p.amount_paisa} currency={p.currency} />
         </dd>
         <dt>Gateway</dt>
         <dd>

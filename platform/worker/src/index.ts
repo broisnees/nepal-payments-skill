@@ -6,11 +6,13 @@ import { registerAccount } from "./api/account.ts";
 import { registerAlerts } from "./api/alerts.ts";
 import { registerData } from "./api/data.ts";
 import { registerFinance } from "./api/finance.ts";
+import { registerInbound } from "./api/inbound.ts";
 import { registerOps } from "./api/ops.ts";
 import { registerProjects } from "./api/projects.ts";
 import { registerWebhooks } from "./api/webhooks.ts";
 import { registerAuth, requireAuth } from "./auth.ts";
 import { scheduled } from "./cron.ts";
+import { handleInbound } from "./inbound/receive.ts";
 import { handleIngest } from "./ingest.ts";
 import { HttpError, errorBody } from "./lib/util.ts";
 import { registerStatusPage } from "./ops/status-page.ts";
@@ -30,6 +32,7 @@ const onError: ErrorHandler<AppEnv> = (err, c) => {
 app.onError(onError);
 
 app.post("/v1/events", handleIngest);
+app.post("/v1/inbound/:id", handleInbound);
 app.get("/v1/health", (c) => c.json({ ok: true }));
 
 registerAuth(app);
@@ -47,6 +50,7 @@ registerAlerts(api);
 registerFinance(api);
 registerOps(api);
 registerWebhooks(api);
+registerInbound(api);
 registerAiApi(api, app);
 api.all("*", (c) => c.json(errorBody("not_found", `no route for ${c.req.method} ${c.req.path}`), 404));
 app.route("/api", api);

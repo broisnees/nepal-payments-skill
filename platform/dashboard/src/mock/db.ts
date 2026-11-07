@@ -1,6 +1,6 @@
 // In-memory data for mock mode: a fictional Kathmandu clothing store with 30 days of traffic, a second org, and
 // one empty project so the onboarding state is reachable.
-import type { AlertChannel, AlertRule, ApiKey, Env, Incident, Me, Payment, Project, Session, StoredEvent } from "@paynp/shared";
+import type { AlertChannel, AlertRule, ApiKey, Env, InboundSource, Incident, Me, Payment, Project, Session, StoredEvent } from "@paynp/shared";
 import { NPT_OFFSET_MS } from "../lib/format.ts";
 import type { Invite, Member, Pat } from "../lib/types.ts";
 import { GATEWAY_MIX, between, int, rollup, seeded, trace, weighted, type Rng, type Scenario } from "./gen.ts";
@@ -16,6 +16,8 @@ export interface ProjectData {
   project: Project;
   env: Record<Env, Bucket>;
   keys: ApiKey[];
+  /** Provider connections (Settings, Integrations); created on first use. */
+  inbound?: InboundSource[];
   channels: AlertChannel[];
   rules: AlertRule[];
   incidents: Incident[];

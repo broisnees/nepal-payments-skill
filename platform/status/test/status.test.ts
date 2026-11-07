@@ -23,10 +23,10 @@ function rows() {
   return out;
 }
 
-/** Just enough D1 for loadReport: a batch of three SELECTs. */
+/** Just enough D1 for loadReport: a batch of four SELECTs (hours, minutes, days, incidents). */
 const DB = {
   prepare: () => ({ bind: () => ({}) }),
-  batch: async () => [{ results: rows() }, { results: [] }, { results: [] }],
+  batch: async () => [{ results: [] }, { results: rows() }, { results: [] }, { results: [] }],
 } as unknown as D1Database;
 const env = { DB, APP_URL: "https://status.discerns.app", PLATFORM_URL: "https://discerns.app" };
 const get = (path: string, headers: Record<string, string> = {}) =>

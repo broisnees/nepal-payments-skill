@@ -220,6 +220,7 @@ export function rollup(env: Env, events: StoredEvent[]): Payment {
     attempt_id: first.attempt_id,
     env,
     order_id: first.order_id ?? null,
+    currency: first.currency ?? "NPR",
     gateway: first.gateway,
     amount_paisa: null,
     status: "initiated",

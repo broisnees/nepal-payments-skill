@@ -23,6 +23,7 @@ export function toSummary(p: PaymentRow): PaymentSummary {
     order_id: p.order_id,
     gateway: p.gateway,
     amount_paisa: p.amount_paisa,
+    currency: p.currency ?? "NPR",
     status: p.status as PaymentStatus,
     started_at: p.started_at,
     finished_at: p.finished_at,

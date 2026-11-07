@@ -2,7 +2,7 @@
 import { OPEN_STATUSES, type Payment, type StoredEvent } from "@paynp/shared";
 import { Fragment, useMemo, useState } from "react";
 import { describe, tone } from "../lib/describe.ts";
-import { formatDuration, formatOffset, formatTimeMs, gatewayName, moneyParts } from "../lib/format.ts";
+import { formatDuration, formatOffset, formatTimeMs, formatMoney, gatewayName } from "../lib/format.ts";
 import { reasonLabel } from "../lib/labels.ts";
 import { EmptySmall, JsonView, useNow } from "./ui.tsx";
 import "../styles/timeline.css";
@@ -82,7 +82,7 @@ function detail(e: StoredEvent): string {
   const d = e.data ?? {};
   switch (e.type) {
     case "payment.started": {
-      const amount = e.amount_paisa !== undefined ? `Rs ${moneyParts(e.amount_paisa).int}.${moneyParts(e.amount_paisa).frac}` : null;
+      const amount = e.amount_paisa !== undefined ? formatMoney(e.amount_paisa, e.currency) : null;
       return [amount, e.order_id && `order ${e.order_id}`].filter(Boolean).join(" · ");
     }
     case "payment.redirected":

@@ -1,9 +1,9 @@
-import type { ApiKey, CreatedKey, Env, Page, Project, Role, Session } from "@paynp/shared";
+import { INBOUND_PROVIDERS, INBOUND_PROVIDER_NAMES, type ApiKey, type CreatedKey, type Env, type InboundProvider, type InboundSource, type Page, type Project, type Role, type Session } from "@paynp/shared";
 import { useState, type FormEvent } from "react";
 import { NavLink, useNavigate, useParams } from "react-router";
 import { Icon, type IconName } from "../components/Icon.tsx";
 import { useMe, useProject } from "../components/Shell.tsx";
-import { CodeBlock, Command, CopyButton, Dialog, EmptySmall, Seg, Skeleton, Switch, Time, confirmAction, toast, useNow, Select, type SelectOption } from "../components/ui.tsx";
+import { CodeBlock, Command, CopyButton, Dialog, EmptySmall, Gateway, Seg, Skeleton, Switch, Time, confirmAction, toast, useNow, Select, type SelectOption } from "../components/ui.tsx";
 import { api, errorMessage, items } from "../lib/api.ts";
 import { formatDateTime, formatFull, formatRelative } from "../lib/format.ts";
 import { ApiFailure } from "../lib/api.ts";
@@ -27,6 +27,7 @@ const SECTIONS: [string, string, IconName][] = [
   ["account", "Account", "mail"],
   ["keys", "API keys", "key"],
   ["actions", "Action endpoint", "zap"],
+  ["integrations", "Integrations", "link"],
   ["members", "Members", "users"],
   ["sessions", "Sessions", "laptop"],
   ["tokens", "Tokens", "terminal"],
@@ -52,7 +53,7 @@ export default function Settings() {
           ))}
         </nav>
         <div>
-          {section === "keys" ? <Keys /> : section === "actions" ? <Actions /> : section === "members" ? <Members /> : section === "sessions" ? <Sessions /> : section === "tokens" ? <Tokens /> : section === "account" ? <Account /> : <General />}
+          {section === "keys" ? <Keys /> : section === "actions" ? <Actions /> : section === "integrations" ? <Integrations /> : section === "members" ? <Members /> : section === "sessions" ? <Sessions /> : section === "tokens" ? <Tokens /> : section === "account" ? <Account /> : <General />}
         </div>
       </div>
     </>
@@ -958,5 +959,195 @@ function Actions() {
         </Dialog>
       )}
     </section>
+  );
+}
+
+// ------------------------------------------------------------------ integrations
+const PROVIDER_HELP: Record<InboundProvider, { blurb: string; key: (env: Env) => string; placeholder: (env: Env) => string; where: string }> = {
+  stripe: {
+    blurb: "PaymentIntents and refunds, in any currency.",
+    key: (env) => `A ${env}-mode restricted key (rk_${env}_...) with Webhook Endpoints set to Write is enough. A secret key (sk_${env}_...) works too.`,
+    placeholder: (env) => `rk_${env}_...`,
+    where: "Stripe Dashboard → Developers → API keys",
+  },
+  dodo: {
+    blurb: "Payments and refunds from Dodo Payments.",
+    key: (env) => `Use a ${env === "live" ? "live" : "test"} mode key; discerns calls ${env === "live" ? "live" : "test"}.dodopayments.com for this environment.`,
+    placeholder: () => "Dodo Payments API key",
+    where: "Dodo Payments dashboard → Developer → API Keys",
+  },
+};
+
+function Integrations() {
+  const { project, env, canAdmin } = useProject();
+  const key = `/api/projects/${project.id}/inbound?env=${env}`;
+  // Listing needs the admin role: connections hold API keys.
+  const q = useQuery<Page<InboundSource>>(canAdmin ? key : null);
+  const [connecting, setConnecting] = useState<InboundProvider | null>(null);
+  const now = useNow();
+  const byProvider = new Map(items(q.data).map((s) => [s.provider, s]));
+
+  const disconnect = async (src: InboundSource) => {
+    const name = INBOUND_PROVIDER_NAMES[src.provider];
+    if (!(await confirmAction({ title: `Disconnect ${name}?`, body: `discerns deletes its webhook from your ${name} account (${env}). Payments already received stay here; new ones stop arriving.`, action: "Disconnect", danger: true }))) return;
+    try {
+      await api(`/api/projects/${project.id}/inbound/${src.id}`, { method: "DELETE" });
+    } catch (e) {
+      // The provider refused (revoked key, deleted account): offer to forget the connection anyway.
+      const forced = await confirmAction({
+        title: `${name} did not accept the request`,
+        body: `${errorMessage(e)}. Remove the connection from discerns anyway? Delete the webhook in ${name} yourself; until then its deliveries are refused.`,
+        action: "Remove anyway",
+        danger: true,
+      });
+      if (!forced) return;
+      try {
+        await api(`/api/projects/${project.id}/inbound/${src.id}?force=1`, { method: "DELETE" });
+      } catch (e2) {
+        return toast("Could not disconnect", { kind: "error", sub: errorMessage(e2) });
+      }
+    }
+    setData<Page<InboundSource>>(key, (d) => (d ? { ...d, items: d.items.filter((x) => x.id !== src.id) } : d));
+    toast(`${name} disconnected`, { sub: env });
+  };
+
+  return (
+    <section className="set-section">
+      <Head title="Integrations">
+        Payment providers with webhooks of their own. Connect one with an API key and discerns registers a webhook in your account, so its payments show up next to your Nepali gateways, with alerts and analytics. One connection per provider and environment.
+      </Head>
+      {!canAdmin ? (
+        <EmptySmall icon="lock" title="Admins only">
+          Connections hold provider API keys, so only owners and admins can see or change them.
+        </EmptySmall>
+      ) : q.error ? (
+        <p className="err">{errorMessage(q.error)}</p>
+      ) : !q.data ? (
+        <Skeleton h={120} />
+      ) : (
+        <div className="grid-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+          {INBOUND_PROVIDERS.map((p) => {
+            const src = byProvider.get(p);
+            return (
+              <div key={p} className="card integration">
+                <div className="card-head">
+                  <h2>
+                    <Gateway id={p} />
+                  </h2>
+                  {src ? (
+                    <span className="pill" data-s={src.last_error ? "failed" : "paid"}>
+                      {src.last_error ? "Needs attention" : "Connected"}
+                    </span>
+                  ) : (
+                    <span className="tag">{env}</span>
+                  )}
+                </div>
+                <div className="card-body stack" style={{ gap: 12 }}>
+                  {src ? (
+                    <>
+                      <dl className="facts" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
+                        <div className="fact">
+                          <dt>Webhook</dt>
+                          <dd className="mono truncate" title={src.url}>
+                            {src.provider_webhook_id}
+                          </dd>
+                        </div>
+                        <div className="fact">
+                          <dt>API key</dt>
+                          <dd className="mono">{src.api_key_hint}</dd>
+                        </div>
+                        <div className="fact">
+                          <dt>Last event</dt>
+                          <dd>{src.last_event_at ? <Time t={src.last_event_at}>{formatRelative(src.last_event_at, now)}</Time> : <span className="muted">None yet</span>}</dd>
+                        </div>
+                      </dl>
+                      {src.last_error && (
+                        <div className="note" style={{ color: "var(--crit-ink)" }}>
+                          <Icon name="alert" />
+                          <span>Last delivery refused: {src.last_error}</span>
+                        </div>
+                      )}
+                      <div className="actions">
+                        <span className="muted" style={{ fontSize: 12.5 }}>
+                          Connected {formatDateTime(src.created_at, now)}
+                        </span>
+                        <button className="btn btn-danger btn-sm" style={{ marginInlineStart: "auto" }} onClick={() => void disconnect(src)}>
+                          Disconnect
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="muted">{PROVIDER_HELP[p].blurb}</p>
+                      <div className="actions">
+                        <button className="btn btn-secondary" onClick={() => setConnecting(p)}>
+                          <Icon name="plus" />
+                          Connect {INBOUND_PROVIDER_NAMES[p]}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="note">
+        <Icon name="lock" />
+        <span>API keys and webhook signing secrets are stored encrypted. The key is kept only to remove the webhook when you disconnect. Amounts keep their own currency; revenue in other currencies is shown next to NPR, never added to it.</span>
+      </div>
+      {connecting && <ConnectDialog provider={connecting} onClose={() => setConnecting(null)} onDone={(src) => setData<Page<InboundSource>>(key, (d) => ({ items: [...(d?.items ?? []), src], next_cursor: null }))} />}
+    </section>
+  );
+}
+
+function ConnectDialog({ provider, onClose, onDone }: { provider: InboundProvider; onClose: () => void; onDone: (s: InboundSource) => void }) {
+  const { project, env } = useProject();
+  const [apiKey, setApiKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const name = INBOUND_PROVIDER_NAMES[provider];
+  const help = PROVIDER_HELP[provider];
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!apiKey.trim()) return setErr("Paste the API key");
+    setBusy(true);
+    setErr("");
+    try {
+      const src = await api<InboundSource>(`/api/projects/${project.id}/inbound`, { method: "POST", body: { env, provider, api_key: apiKey.trim() } });
+      onDone(src);
+      toast(`${name} connected`, { sub: `Webhook ${src.provider_webhook_id} created in ${name} (${env})` });
+      onClose();
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open onClose={onClose} title={`Connect ${name}`} description={`For the ${env} environment. discerns creates the webhook in your ${name} account and keeps its signing secret; there is nothing to copy back.`}>
+      <form className="stack" onSubmit={submit}>
+        <label className="field">
+          <span className="label">{name} API key</span>
+          <input className="input mono" type="password" autoComplete="off" autoFocus spellCheck={false} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={help.placeholder(env)} />
+          <span className="hint">
+            {help.key(env)} Find it in {help.where}.
+          </span>
+        </label>
+        {err && <p className="err">{err}</p>}
+        <div className="actions" style={{ justifyContent: "flex-end" }}>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" disabled={busy}>
+            {busy && <span className="spinner" />}
+            Connect {env}
+          </button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

@@ -156,7 +156,7 @@ export default function Live() {
                   <span className="mono">{e.order_id ?? e.attempt_id}</span> {describe(e)}
                 </span>
                 <span className="row tail-right" style={{ gap: 10, justifyContent: "flex-end" }}>
-                  {e.type === "payment.started" && <Money paisa={e.amount_paisa ?? null} />}
+                  {e.type === "payment.started" && <Money paisa={e.amount_paisa ?? null} currency={e.currency} />}
                   {(e.type === "status.changed" || e.type === "payment.fulfilled") && p && <StatusPill status={p.status} />}
                 </span>
               </Link>

@@ -25,7 +25,7 @@ export const notFound = (what = "resource") => new HttpError(404, "not_found", `
 
 export function toPayment(r: PaymentRow): Payment {
   return {
-    attempt_id: r.attempt_id, env: r.env as PayEnv, order_id: r.order_id, gateway: r.gateway, amount_paisa: r.amount_paisa,
+    attempt_id: r.attempt_id, env: r.env as PayEnv, order_id: r.order_id, gateway: r.gateway, amount_paisa: r.amount_paisa, currency: r.currency,
     status: r.status as PaymentStatus, started_at: r.started_at, updated_at: r.updated_at, finished_at: r.finished_at,
     provider_ref: r.provider_ref, last_reason: r.last_reason, last_message: r.last_message,
     event_count: r.event_count, error_count: r.error_count, fulfil_count: r.fulfil_count,
@@ -178,11 +178,12 @@ interface Sum {
   paid: number;
   failed: number;
   revenue: number;
+  byCurrency: Record<string, number>;
   req: number;
   err: number;
   ms: number;
 }
-const emptySum = (): Sum => ({ started: 0, paid: 0, failed: 0, revenue: 0, req: 0, err: 0, ms: 0 });
+const emptySum = (): Sum => ({ started: 0, paid: 0, failed: 0, revenue: 0, byCurrency: {}, req: 0, err: 0, ms: 0 });
 
 export function analytics(store: DevStore, q: URLSearchParams, t = Date.now()): Analytics {
   const env = parseEnv(q.get("env"));
@@ -211,7 +212,8 @@ export function analytics(store: DevStore, q: URLSearchParams, t = Date.now()): 
       s.started += m.started;
       s.paid += m.paid;
       s.failed += m.failed;
-      s.revenue += m.paid_amount_paisa;
+      if (m.currency === "NPR") s.revenue += m.paid_amount_paisa;
+      if (m.paid_amount_paisa) s.byCurrency[m.currency] = (s.byCurrency[m.currency] ?? 0) + m.paid_amount_paisa;
       s.req += m.gw_requests;
       s.err += m.gw_errors;
       s.ms += m.gw_ms_total;
@@ -221,7 +223,7 @@ export function analytics(store: DevStore, q: URLSearchParams, t = Date.now()): 
     const paid = r?.paid ?? 0;
     const failed = r?.failed ?? 0;
     return {
-      t: tStart, started: r?.started ?? 0, paid, failed, revenue_paisa: r?.revenue ?? 0,
+      t: tStart, started: r?.started ?? 0, paid, failed, revenue_paisa: r?.revenue ?? 0, revenue_by_currency: Object.fromEntries(Object.entries(r?.byCurrency ?? {}).filter(([, n]) => n !== 0)),
       success_rate: rate(paid, paid + failed), gw_latency_avg: rate(r?.ms ?? 0, r?.req ?? 0), gw_error_rate: rate(r?.err ?? 0, r?.req ?? 0),
     };
   };
@@ -247,12 +249,12 @@ export function analytics(store: DevStore, q: URLSearchParams, t = Date.now()): 
 
   return {
     series,
-    totals: { started: tp.started, paid: tp.paid, failed: tp.failed, revenue_paisa: tp.revenue_paisa, success_rate: tp.success_rate },
+    totals: { started: tp.started, paid: tp.paid, failed: tp.failed, revenue_paisa: tp.revenue_paisa, revenue_by_currency: tp.revenue_by_currency, success_rate: tp.success_rate },
     by_gateway: [...byGw.entries()]
       .sort((a, b) => b[1].started - a[1].started)
       .map(([gw, r]) => {
         const p = point(from, r);
-        return { gateway: gw, started: p.started, paid: p.paid, failed: p.failed, revenue_paisa: p.revenue_paisa, success_rate: p.success_rate };
+        return { gateway: gw, started: p.started, paid: p.paid, failed: p.failed, revenue_paisa: p.revenue_paisa, revenue_by_currency: p.revenue_by_currency, success_rate: p.success_rate };
       }),
     failure_reasons: [...reasons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([reason, count]) => ({ reason, count })),
     time_to_pay_ms: { p50: percentile(durations, 50), p95: percentile(durations, 95) },

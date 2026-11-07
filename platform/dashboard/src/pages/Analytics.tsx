@@ -5,7 +5,7 @@ import { Chart, type ChartSeries } from "../components/Chart.tsx";
 import { useProject } from "../components/Shell.tsx";
 import { EmptySmall, Gateway, Money, Seg, Skeleton, Select } from "../components/ui.tsx";
 import { qs } from "../lib/api.ts";
-import { formatCount, formatCountCompact, formatDuration, formatMoney, formatMoneyCompact, formatPct, moneyParts } from "../lib/format.ts";
+import { formatCount, formatCountCompact, formatDuration, formatMoney, formatMoneyCompact, formatOtherCurrencies, formatPct, moneyParts } from "../lib/format.ts";
 import { reasonLabel } from "../lib/labels.ts";
 import { useQuery } from "../lib/query.ts";
 import { RANGES, isRange, useMinute } from "../lib/range.ts";
@@ -85,7 +85,14 @@ export default function Analytics() {
               <Skeleton w={120} h={24} />
             )}
           </span>
-          <span className="tile-foot">{tot && tot.paid ? <span>Average {formatMoney(Math.round(tot.revenue_paisa / tot.paid))}</span> : null}</span>
+          {/* paid counts every currency, so the NPR average is only meaningful when there is no other currency. */}
+          <span className="tile-foot">
+            {formatOtherCurrencies(tot?.revenue_by_currency) ? (
+              <span>+ {formatOtherCurrencies(tot?.revenue_by_currency)}</span>
+            ) : tot && tot.paid ? (
+              <span>Average {formatMoney(Math.round(tot.revenue_paisa / tot.paid))}</span>
+            ) : null}
+          </span>
         </div>
         <div className="tile">
           <span className="tile-label">Time to pay</span>
@@ -210,7 +217,8 @@ function GatewayTable({ d }: { d?: Data }) {
                     <td className="r hide-sm">{formatCount(g.failed)}</td>
                     <td className="r">{formatPct(g.success_rate)}</td>
                     <td className="r">
-                      <Money paisa={g.revenue_paisa} />
+                      {g.revenue_paisa || !formatOtherCurrencies(g.revenue_by_currency) ? <Money paisa={g.revenue_paisa} /> : null}
+                      {formatOtherCurrencies(g.revenue_by_currency) && <div className="muted">{formatOtherCurrencies(g.revenue_by_currency)}</div>}
                     </td>
                   </tr>
                 ))}

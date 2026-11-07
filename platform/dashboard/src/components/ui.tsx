@@ -113,15 +113,16 @@ export function Gateway({ id, logo = false, size = 16 }: { id: string; logo?: bo
   );
 }
 
-export function Money({ paisa, className = "amount" }: { paisa: number | null | undefined; className?: string }) {
+/** An amount in minor units of `currency` (paisa unless the payment says otherwise). */
+export function Money({ paisa, currency = "NPR", className = "amount" }: { paisa: number | null | undefined; currency?: string; className?: string }) {
   if (paisa === null || paisa === undefined) return <span className="subtle">-</span>;
-  const p = moneyParts(paisa);
+  const p = moneyParts(paisa, currency);
   return (
     <span className={className}>
-      <span className="cur">Rs</span>
+      <span className="cur">{p.cur}</span>
       {p.sign}
       {p.int}
-      <span className="frac">.{p.frac}</span>
+      {p.frac && <span className="frac">.{p.frac}</span>}
     </span>
   );
 }

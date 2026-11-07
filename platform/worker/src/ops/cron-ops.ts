@@ -1,11 +1,10 @@
 // Cron work for v2 operations: paid_not_fulfilled incidents (SPEC-v2 4.3), the doctor checks that need time to pass
 // (4.4: no_status_check_after_return, no_reconcile) and retention for the ops tables.
-import { DOCTOR_CHECKS, OPEN_STATUSES, newId } from "@paynp/shared";
+import { DOCTOR_CHECKS, OPEN_STATUSES, formatMoney, newId } from "@paynp/shared";
 import type { RuleRow } from "../alerts/engine.ts";
 import { DAY, HOUR, MINUTE, now } from "../lib/util.ts";
 import { MAX_PARAMS } from "./ingest-ops.ts";
 
-const rupees = (paisa: number | null) => (paisa == null ? "" : ` (Rs ${(paisa / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`);
 
 /**
  * Opens one pending incident per paid payment with no fulfilment after `after_min`, finished in the last 24 h.
@@ -17,20 +16,20 @@ export async function openPaidNotFulfilled(env: Env, rule: RuleRow, t = now()): 
   const after = (Number(p.after_min) || 15) * MINUTE;
   const rows = (
     await env.DB.prepare(
-      `SELECT p.attempt_id, p.gateway, p.amount_paisa, p.order_id, p.finished_at FROM payments p
+      `SELECT p.attempt_id, p.gateway, p.amount_paisa, p.currency, p.order_id, p.finished_at FROM payments p
        WHERE p.project_id = ?1 AND p.env = ?2 AND p.status = 'paid' AND p.fulfil_count = 0 AND p.finished_at < ?3 AND p.finished_at > ?4
          AND EXISTS (SELECT 1 FROM payments f WHERE f.project_id = ?1 AND f.env = ?2 AND f.fulfilled_at > ?5)
          AND NOT EXISTS (SELECT 1 FROM alert_incidents i WHERE i.rule_id = ?6 AND i.attempt_id = p.attempt_id)
        ORDER BY p.finished_at LIMIT 50`,
     )
       .bind(rule.project_id, rule.env, t - after, t - DAY, t - 30 * DAY, rule.id)
-      .all<{ attempt_id: string; gateway: string; amount_paisa: number | null; order_id: string | null; finished_at: number }>()
+      .all<{ attempt_id: string; gateway: string; amount_paisa: number | null; currency: string; order_id: string | null; finished_at: number }>()
   ).results;
   if (!rows.length) return 0;
   const res = await env.DB.batch(
     rows.map((r) => {
       const mins = Math.round((t - r.finished_at) / MINUTE);
-      const summary = `${r.attempt_id} on ${r.gateway}${rupees(r.amount_paisa)}${r.order_id ? `, order ${r.order_id},` : ""} was paid ${mins} min ago and is not fulfilled`;
+      const summary = `${r.attempt_id} on ${r.gateway}${r.amount_paisa != null ? ` (${formatMoney(r.amount_paisa, r.currency)})` : ""}${r.order_id ? `, order ${r.order_id},` : ""} was paid ${mins} min ago and is not fulfilled`;
       const ctx = JSON.stringify({ attempt_id: r.attempt_id, gateway: r.gateway, amount_paisa: r.amount_paisa, order_id: r.order_id, paid_at: r.finished_at });
       return env.DB.prepare(
         `INSERT INTO alert_incidents (id, rule_id, project_id, state, opened_at, last_notified_at, summary, context, attempt_id, env, pending)
@@ -76,14 +75,15 @@ export async function runDoctorCron(env: Env, t = now()): Promise<Record<string,
   const to = minuteStart - MINUTE;
   const noCheck = (
     await env.DB.prepare(
-      `SELECT cb.project_id, cb.env, cb.gateway, COUNT(*) AS n, MAX(cb.attempt_id) AS example FROM events cb
-       WHERE cb.received_at > ?1 AND cb.type = 'callback.received' AND cb.ts >= ?2 AND cb.ts < ?3
+      // events_callbacks_by_ts (migrations/0011): reads only this minute's callbacks, not every recent event.
+      `SELECT cb.project_id, cb.env, cb.gateway, COUNT(*) AS n, MAX(cb.attempt_id) AS example FROM events cb INDEXED BY events_callbacks_by_ts
+       WHERE cb.type = 'callback.received' AND cb.ts >= ?1 AND cb.ts < ?2
          AND NOT EXISTS (SELECT 1 FROM events x WHERE x.project_id = cb.project_id AND x.env = cb.env AND x.attempt_id = cb.attempt_id
            AND x.ts >= cb.ts - 1000 AND x.ts <= cb.ts + 60000
            AND ((x.type = 'gateway.request' AND json_extract(x.data, '$.op') IN ('status', 'lookup')) OR x.type = 'reconcile.checked'))
        GROUP BY cb.project_id, cb.env, cb.gateway LIMIT 500`,
     )
-      .bind(from - 30 * MINUTE, from, to)
+      .bind(from, to)
       .all<CronHit>()
   ).results;
   const stmts = upsertHits(env, "no_status_check_after_return", noCheck, t, "add");

@@ -43,7 +43,10 @@ export interface Payment {
   env: Env;
   order_id: string | null;
   gateway: string;
+  /** Minor units of `currency`. */
   amount_paisa: number | null;
+  /** ISO 4217; NPR unless the gateway charged in another currency (Stripe, Dodo). */
+  currency: string;
   status: PaymentStatus;
   started_at: number;
   updated_at: number;
@@ -83,15 +86,18 @@ export interface SeriesPoint {
   started: number;
   paid: number;
   failed: number;
+  /** NPR revenue only; other currencies are in revenue_by_currency. */
   revenue_paisa: number;
+  /** Paid amount per ISO 4217 currency, in minor units. Includes NPR. */
+  revenue_by_currency: Record<string, number>;
   success_rate: number | null; // paid / (paid + failed), null when both are 0
   gw_latency_avg: number | null;
   gw_error_rate: number | null;
 }
 export interface Analytics {
   series: SeriesPoint[];
-  totals: { started: number; paid: number; failed: number; revenue_paisa: number; success_rate: number | null };
-  by_gateway: { gateway: string; started: number; paid: number; failed: number; revenue_paisa: number; success_rate: number | null }[];
+  totals: { started: number; paid: number; failed: number; revenue_paisa: number; revenue_by_currency: Record<string, number>; success_rate: number | null };
+  by_gateway: { gateway: string; started: number; paid: number; failed: number; revenue_paisa: number; revenue_by_currency: Record<string, number>; success_rate: number | null }[];
   failure_reasons: { reason: string; count: number }[];
   time_to_pay_ms: { p50: number | null; p95: number | null };
   funnel: { started: number; redirected: number; callback: number; paid: number };

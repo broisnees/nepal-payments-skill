@@ -9,7 +9,7 @@
 // pending. double_payment (v2) is per-payment on ingest too; paid_not_fulfilled (v2) opens per-payment incidents from
 // the cron (ops/cron-ops.ts) and resolves on ingest when payment.fulfilled arrives. flushPending() sends each channel at most one message per clock minute listing every pending payment; what a
 // throttled channel misses goes out with the next cron run.
-import { OPEN_STATUSES, newId, type PaymentEvent, type RuleType } from "@paynp/shared";
+import { OPEN_STATUSES, formatMoney, newId, type PaymentEvent, type RuleType } from "@paynp/shared";
 import { DAY, MINUTE, badRequest, now, parseJson } from "../lib/util.ts";
 import { openPaidNotFulfilled } from "../ops/cron-ops.ts";
 import type { DuplicateHit } from "../ops/ingest-ops.ts";
@@ -305,7 +305,7 @@ export async function applyEvaluation(env: Env, rule: RuleRow, ev: Evaluation, t
 function perPaymentMatch(rule: RuleRow, tr: IngestTransition): string | null {
   const p = params(rule);
   const pay = tr.payment;
-  const amt = pay.amount_paisa != null ? ` (${rupees(pay.amount_paisa)})` : "";
+  const amt = pay.amount_paisa != null ? ` (${formatMoney(pay.amount_paisa, pay.currency)})` : "";
   switch (rule.type) {
     case "payment_failed": {
       if (pay.status !== "failed" || tr.old?.status === "failed") return null;
