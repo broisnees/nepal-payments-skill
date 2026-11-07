@@ -1,6 +1,8 @@
 // The REST API of SPEC section 6, answered from memory. Same paths, same shapes, same CSRF rule.
 import {
   CSRF_HEADER,
+  INBOUND_PROVIDERS,
+  INBOUND_PROVIDER_NAMES,
   OPEN_STATUSES,
   explain,
   newId,
@@ -10,6 +12,8 @@ import {
   type CreatedKey,
   type Env,
   type GatewayHealth,
+  type InboundProvider,
+  type InboundSource,
   type Page,
   type Payment,
   type PaymentDetail,
@@ -212,6 +216,43 @@ export function createServer(db: Db, hub: Hub) {
       }
       if (method === "DELETE") {
         db.projects.delete(pd.project.id);
+        return noContent;
+      }
+    }
+
+    if (sub === "inbound") {
+      // Mirrors worker/src/api/inbound.ts, minus the provider call: the "webhook" is made up.
+      const list = (pd.inbound ??= []);
+      if (method === "GET") return ok(page(q.get("env") ? list.filter((s) => s.env === env) : list, q));
+      if (method === "POST") {
+        const ienv: Env = body.env === "live" ? "live" : "test";
+        const provider = body.provider as InboundProvider;
+        const apiKey = String(body.api_key ?? "").trim();
+        if (!(INBOUND_PROVIDERS as readonly string[]).includes(provider)) return fail(400, "bad_request", `provider must be one of: ${INBOUND_PROVIDERS.join(", ")}`);
+        if (provider === "stripe") {
+          const m = /^(sk|rk)_(test|live)_[0-9A-Za-z]{10,}$/.exec(apiKey);
+          if (!m) return fail(400, "bad_request", "api_key must be a Stripe secret key (sk_...) or restricted key (rk_...)");
+          if (m[2] !== ienv) return fail(400, "bad_request", `this is a ${m[2]}-mode Stripe key; use a ${ienv}-mode key for the ${ienv} environment`);
+        } else if (apiKey.length < 16) return fail(400, "bad_request", "api_key must be a Dodo Payments API key");
+        if (list.some((s) => s.env === ienv && s.provider === provider)) return fail(409, "already_connected", `${INBOUND_PROVIDER_NAMES[provider]} is already connected to ${ienv}; disconnect it first`);
+        const id = newId("ibs");
+        const src: InboundSource = {
+          id,
+          env: ienv,
+          provider,
+          provider_webhook_id: provider === "stripe" ? `we_${secret(24)}` : `whk_${secret(21)}`,
+          url: `${location.origin}/v1/inbound/${id}`,
+          api_key_hint: `${apiKey.slice(0, 12)}****${apiKey.slice(-4)}`,
+          enabled: true,
+          last_event_at: null,
+          last_error: null,
+          created_at: Date.now(),
+        };
+        list.push(src);
+        return ok(src, 201);
+      }
+      if (method === "DELETE" && seg[3]) {
+        pd.inbound = list.filter((s) => s.id !== seg[3]);
         return noContent;
       }
     }
@@ -430,6 +471,7 @@ function analytics(b: { payments: Payment[]; events: Map<string, StoredEvent[]> 
     paid: r.paid,
     failed: r.failed,
     revenue_paisa: r.revenue_paisa,
+    revenue_by_currency: (r.revenue_paisa ? { NPR: r.revenue_paisa } : {}) as Record<string, number>,
     success_rate: rate(r.paid, r.failed),
     gw_latency_avg: r.req ? Math.round(r.lat / r.req) : null,
     gw_error_rate: r.req ? r.err / r.req : null,
@@ -439,8 +481,8 @@ function analytics(b: { payments: Payment[]; events: Map<string, StoredEvent[]> 
   const pct = (p: number) => (ttp.length ? ttp[Math.min(ttp.length - 1, Math.floor(p * ttp.length))] : null);
   return {
     series,
-    totals: { ...totals, success_rate: rate(totals.paid, totals.failed) },
-    by_gateway: [...byGw.entries()].map(([gateway, g]) => ({ gateway, ...g, success_rate: rate(g.paid, g.failed) })).sort((a, z) => z.started - a.started),
+    totals: { ...totals, revenue_by_currency: (totals.revenue_paisa ? { NPR: totals.revenue_paisa } : {}) as Record<string, number>, success_rate: rate(totals.paid, totals.failed) },
+    by_gateway: [...byGw.entries()].map(([gateway, g]) => ({ gateway, ...g, revenue_by_currency: (g.revenue_paisa ? { NPR: g.revenue_paisa } : {}) as Record<string, number>, success_rate: rate(g.paid, g.failed) })).sort((a, z) => z.started - a.started),
     failure_reasons: [...reasons.entries()].map(([reason, count]) => ({ reason, count })).sort((a, z) => z.count - a.count),
     time_to_pay_ms: { p50: pct(0.5), p95: pct(0.95) },
     funnel,

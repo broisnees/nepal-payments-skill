@@ -7,7 +7,7 @@ import { SetupEmpty, TestPaymentButton } from "../components/Setup.tsx";
 import { useProject } from "../components/Shell.tsx";
 import { EmptySmall, Gateway, Money, Seg, Skeleton, Spark, StatusPill, Time, useNow } from "../components/ui.tsx";
 import { items, qs } from "../lib/api.ts";
-import { formatCount, formatCountCompact, formatDuration, formatMoney, formatPct, formatRelative, moneyParts } from "../lib/format.ts";
+import { formatCount, formatCountCompact, formatDuration, formatMoney, formatOtherCurrencies, formatPct, formatRelative, moneyParts } from "../lib/format.ts";
 import { reasonLabel } from "../lib/labels.ts";
 import { useQuery } from "../lib/query.ts";
 import { RANGES, useMinute, type RangeKey } from "../lib/range.ts";
@@ -135,6 +135,7 @@ function Kpis({ a, prev, prevLabel }: { a?: Analytics; prev?: Analytics; prevLab
             <Skeleton w={120} h={24} />
           )}
         </span>
+        {formatOtherCurrencies(t?.revenue_by_currency) && <span className="tile-other">+ {formatOtherCurrencies(t?.revenue_by_currency)}</span>}
         <div className="tile-foot">
           <Delta d={delta(t?.revenue_paisa, pt?.revenue_paisa)} label={prevLabel} />
           {a && <Spark values={a.series.map((s) => s.revenue_paisa)} />}
@@ -297,7 +298,7 @@ function RecentFailures() {
                   {p.order_id ?? p.attempt_id} · <Time t={p.started_at}>{formatRelative(p.started_at, now)}</Time>
                 </div>
               </div>
-              <Money paisa={p.amount_paisa} />
+              <Money paisa={p.amount_paisa} currency={p.currency} />
             </Link>
           ))}
         </div>

@@ -28,6 +28,7 @@ function build(n: number, gateway: string, order: string, amount: number, status
       attempt_id: attempt,
       env: "live",
       order_id: order,
+      currency: "NPR",
       gateway,
       amount_paisa: amount,
       status,

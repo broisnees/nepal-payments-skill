@@ -20,6 +20,8 @@ interface Env {
   AI_MODEL_WORKERS?: string;
   /** "off" skips the per-minute gateway probes (tests). */
   GATEWAY_PROBES?: string;
+  /** Secret. 32 random bytes, base64: encrypts inbound provider API keys and signing secrets (lib/crypto.ts). */
+  INBOUND_ENC_KEY?: string;
   /** Workers AI. Optional so tests and local dev run without it. */
   AI?: Ai;
 }

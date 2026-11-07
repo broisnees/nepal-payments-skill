@@ -116,8 +116,8 @@ describe("payments, events, analytics, health", () => {
     ];
     await ingest(s.key, [...trace("a1", 0, true, 100000), ...trace("a2", 1000, true, 50000), ...trace("a3", 2000, false, 9900), ev("payment.started", "a4", 3000)]);
     const a = await json(call("GET", `/api/projects/${s.projectId}/analytics?env=test&from=${Date.now() - 3600_000}&bucket=hour`, { cookie: s.cookie }));
-    expect(a.totals).toEqual({ started: 4, paid: 2, failed: 1, revenue_paisa: 150000, success_rate: 2 / 3 });
-    expect(a.by_gateway).toEqual([{ gateway: "esewa", started: 4, paid: 2, failed: 1, revenue_paisa: 150000, success_rate: 2 / 3 }]);
+    expect(a.totals).toEqual({ started: 4, paid: 2, failed: 1, revenue_paisa: 150000, revenue_by_currency: { NPR: 150000 }, success_rate: 2 / 3 });
+    expect(a.by_gateway).toEqual([{ gateway: "esewa", started: 4, paid: 2, failed: 1, revenue_paisa: 150000, revenue_by_currency: { NPR: 150000 }, success_rate: 2 / 3 }]);
     expect(a.failure_reasons).toEqual([{ reason: "amount_mismatch", count: 1 }]);
     expect(a.time_to_pay_ms).toEqual({ p50: 31000, p95: 31000 });
     expect(a.funnel).toEqual({ started: 4, redirected: 3, callback: 2, paid: 2 });

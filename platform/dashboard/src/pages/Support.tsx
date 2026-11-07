@@ -202,7 +202,7 @@ function VerdictCard({ m }: { m: LookupMatch }) {
         </p>
         <div className="verdict-facts">
           <span>
-            <Money paisa={p.amount_paisa} />
+            <Money paisa={p.amount_paisa} currency={p.currency} />
           </span>
           <Gateway id={p.gateway} />
           {p.order_id && <span>Order {p.order_id}</span>}

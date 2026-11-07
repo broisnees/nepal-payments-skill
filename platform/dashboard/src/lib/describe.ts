@@ -1,6 +1,6 @@
 // One line of human text per event, shared by the timeline and the live tail.
 import type { StoredEvent } from "@paynp/shared";
-import { moneyParts } from "./format.ts";
+import { formatMoney } from "./format.ts";
 import { reasonLabel } from "./labels.ts";
 
 export type Tone = "ok" | "bad" | "warn" | undefined;
@@ -24,7 +24,7 @@ export function describe(e: StoredEvent): string {
   const d = e.data ?? {};
   switch (e.type) {
     case "payment.started":
-      return [e.amount_paisa !== undefined ? `Rs ${moneyParts(e.amount_paisa).int}.${moneyParts(e.amount_paisa).frac}` : null, e.order_id ? `order ${e.order_id}` : null].filter(Boolean).join(", ");
+      return [e.amount_paisa !== undefined ? formatMoney(e.amount_paisa, e.currency) : null, e.order_id ? `order ${e.order_id}` : null].filter(Boolean).join(", ");
     case "payment.redirected":
       return [d.method, d.endpoint].filter(Boolean).join(" ");
     case "callback.received":
@@ -40,7 +40,7 @@ export function describe(e: StoredEvent): string {
     case "reconcile.checked":
       return [d.provider_status && `gateway says ${d.provider_status}`, e.status && `now ${e.status}`].filter(Boolean).join(", ");
     case "payment.refunded":
-      return [e.amount_paisa !== undefined ? `Rs ${moneyParts(e.amount_paisa).int}.${moneyParts(e.amount_paisa).frac}` : null, d.refund_ref && `ref ${d.refund_ref}`, d.refund_reason].filter(Boolean).join(", ");
+      return [e.amount_paisa !== undefined ? formatMoney(e.amount_paisa, e.currency) : null, d.refund_ref && `ref ${d.refund_ref}`, d.refund_reason].filter(Boolean).join(", ");
     case "payment.annotated":
       return [e.order_id && `order ${e.order_id}`, e.customer?.name].filter(Boolean).join(", ") || "Order or customer details";
     case "error":

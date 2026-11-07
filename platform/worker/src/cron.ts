@@ -1,9 +1,11 @@
 // Scheduled work: every minute alerts; daily at 09:00 Asia/Kathmandu the digest and retention cleanup.
+import { formatMoneyMap } from "@paynp/shared";
 import { runProbes } from "../../status/src/probe.ts";
 import { runAlertCron } from "./alerts/engine.ts";
 import { NPT_OFFSET } from "./api/data.ts";
 import { htmlMail, sendMail } from "./email.ts";
-import { DAY, MINUTE, appOrigin, now } from "./lib/util.ts";
+import { DAY, HOUR, MINUTE, appOrigin, now } from "./lib/util.ts";
+import { CROWD, PROBES, rollupRecentHours } from "./status/aggregate.ts";
 import { financeDaily } from "./finance/daily.ts";
 import { opsCleanup, runDoctorCron } from "./ops/cron-ops.ts";
 import { kickOverdue } from "./webhooks/deliver.ts";
@@ -12,15 +14,14 @@ export const DAILY_CRON = "15 3 * * *";
 
 export const RETENTION = { events: 30 * DAY, payments: 400 * DAY, minute_stats: 400 * DAY, webhook_deliveries: 30 * DAY };
 
-const rs = (paisa: number) => `Rs ${(paisa / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 interface DigestSection {
   project: string;
   env: string;
   started: number;
   paid: number;
   failed: number;
-  revenue: number;
+  /** Paid amount per currency, in minor units. */
+  revenue: Record<string, number>;
   reasons: { reason: string; count: number }[];
   open: number;
 }
@@ -49,14 +50,18 @@ export async function sendDigests(env: Env, t = now()): Promise<number> {
       for (const envName of ["live", "test"]) {
         const [stats, reasons, open] = await env.DB.batch([
           env.DB.prepare(
-            "SELECT COALESCE(SUM(started),0) AS started, COALESCE(SUM(paid),0) AS paid, COALESCE(SUM(failed),0) AS failed, COALESCE(SUM(paid_amount_paisa),0) AS revenue FROM minute_stats WHERE project_id = ? AND env = ? AND minute >= ? AND minute < ?",
+            `SELECT COALESCE(SUM(started),0) AS started, COALESCE(SUM(paid),0) AS paid, COALESCE(SUM(failed),0) AS failed,
+              (SELECT json_group_object(currency, amount) FROM (SELECT currency, SUM(paid_amount_paisa) AS amount FROM minute_stats
+                WHERE project_id = ?1 AND env = ?2 AND minute >= ?3 AND minute < ?4 GROUP BY currency)) AS revenue
+             FROM minute_stats WHERE project_id = ?1 AND env = ?2 AND minute >= ?3 AND minute < ?4`,
           ).bind(p.id, envName, dayStart / MINUTE, dayEnd / MINUTE),
           env.DB.prepare(
             "SELECT COALESCE(last_reason, 'unknown') AS reason, COUNT(*) AS count FROM payments WHERE project_id = ? AND env = ? AND status = 'failed' AND started_at >= ? AND started_at < ? GROUP BY reason ORDER BY count DESC LIMIT 3",
           ).bind(p.id, envName, dayStart, dayEnd),
           env.DB.prepare("SELECT COUNT(*) AS n FROM alert_incidents WHERE project_id = ? AND env = ? AND state = 'firing'").bind(p.id, envName),
         ]);
-        const s = stats.results[0] as { started: number; paid: number; failed: number; revenue: number };
+        const raw = stats.results[0] as { started: number; paid: number; failed: number; revenue: string | null };
+        const s = { ...raw, revenue: JSON.parse(raw.revenue ?? "{}") as Record<string, number> };
         const openN = (open.results[0] as { n: number }).n;
         if (!s.started && !s.paid && !s.failed && !openN) continue;
         sections.push({ project: p.name, env: envName, ...s, reasons: reasons.results as DigestSection["reasons"], open: openN });
@@ -68,7 +73,7 @@ export async function sendDigests(env: Env, t = now()): Promise<number> {
       const done = s.paid + s.failed;
       const rate = done ? `${Math.round((s.paid / done) * 1000) / 10}%` : "n/a";
       lines.push(
-        `${s.project} (${s.env}): ${s.started} payments, ${rate} success, ${rs(s.revenue)} revenue` +
+        `${s.project} (${s.env}): ${s.started} payments, ${rate} success, ${formatMoneyMap(s.revenue)} revenue` +
           (s.reasons.length ? `. Top failures: ${s.reasons.map((r) => `${r.reason} (${r.count})`).join(", ")}` : "") +
           (s.open ? `. ${s.open} open incident${s.open === 1 ? "" : "s"}` : ""),
       );
@@ -127,6 +132,13 @@ export async function scheduled(controller: ScheduledController, env: Env, _ctx?
   const probing = (env.GATEWAY_PROBES === "off" ? Promise.resolve() : runProbes(env, t)).catch((e: unknown) => console.error(JSON.stringify({ msg: "gateway probes failed", error: String(e) })));
   const counts = await runAlertCron(env, t);
   Object.assign(counts, await runDoctorCron(env, t).catch((e: unknown) => (console.error(JSON.stringify({ msg: "doctor cron failed", error: String(e) })), {})));
+  // Two minutes into each Nepal hour: summarise the hour that just closed for the status reports (status/aggregate.ts).
+  if (Math.floor(((t + NPT_OFFSET) % HOUR) / MINUTE) === 2) {
+    const [crowd, probes] = await Promise.all([rollupRecentHours(env, t, CROWD), rollupRecentHours(env, t, PROBES)]).catch(
+      (e: unknown) => (console.error(JSON.stringify({ msg: "status hour rollup failed", error: String(e) })), [{ hours: 0 }, { hours: 0 }]),
+    );
+    counts.status_hours = crowd.hours + probes.hours;
+  }
   counts.webhook_kicks = await kickOverdue(env, t).catch((e: unknown) => (console.error(JSON.stringify({ msg: "webhook kick cron failed", error: String(e) })), 0));
   await probing;
   if (Object.values(counts).some(Boolean)) console.log(JSON.stringify({ msg: "alert cron", ...counts }));

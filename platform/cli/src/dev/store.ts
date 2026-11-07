@@ -38,6 +38,8 @@ export interface PaymentRow {
   customer_name: string | null;
   gw_env: string | null;
   fulfilled_at: number | null;
+  // worker migrations/0010_inbound.sql: a payment keeps its first event's currency
+  currency: string;
 }
 
 /** Same columns as the worker's events table. */
@@ -56,12 +58,14 @@ export interface EventRow {
   order_id: string | null;
   amount_paisa: number | null;
   sdk: string | null;
+  currency: string;
 }
 
 export interface MinuteRow {
   project_id: string;
   env: string;
   gateway: string;
+  currency: string;
   minute: number;
   started: number;
   paid: number;
@@ -148,7 +152,7 @@ export function applyEvent(old: PaymentRow | undefined, e: PaymentEvent, ts: num
       provider_ref: ref, last_reason: reason, last_message: message, event_count: 1, error_count: err, fulfil_count: ful,
       status_at: s === null ? 0 : ts, reason_at: hasReason ? ts : 0,
       refunded_paisa: refund ?? 0, customer_hash: customer?.hash ?? null, customer_mask: customer?.mask ?? null, customer_name: customer?.name ?? null,
-      gw_env: gwEnv, fulfilled_at: ful ? ts : null,
+      gw_env: gwEnv, fulfilled_at: ful ? ts : null, currency: e.currency ?? "NPR",
     };
   }
   const s: PaymentStatus | null =
@@ -256,6 +260,7 @@ export class DevStore {
         project_id: project, env, id: e.id, attempt_id: e.attempt_id, type: e.type, ts, received_at: receivedAt, gateway: e.gateway,
         status: e.status ?? null, duration_ms: e.duration_ms ?? null, data: e.data ? JSON.stringify(e.data) : null,
         order_id: e.order_id ?? null, amount_paisa: e.amount_paisa ?? null, sdk: e.sdk ? JSON.stringify(e.sdk) : null,
+        currency: e.currency ?? "NPR",
       };
       this.events.set(ek, row);
       out.accepted++;
@@ -268,12 +273,12 @@ export class DevStore {
   // minute_stats, the same deltas as the worker: started and gateway requests by event, paid and failed by
   // the payment's status transition so a late or repeated status event never double counts.
   private stats(env: string, e: PaymentEvent, ts: number, old: PaymentRow | undefined, payment: PaymentRow): void {
-    const row = (gateway: string, t: number): MinuteRow => {
+    const row = (gateway: string, t: number, currency = payment.currency): MinuteRow => {
       const minute = Math.floor(t / MINUTE);
-      const k = `${env}|${gateway}|${minute}`;
+      const k = `${env}|${gateway}|${currency}|${minute}`;
       let r = this.minutes.get(k);
       if (!r) {
-        r = { project_id: LOCAL_PROJECT, env, gateway, minute, started: 0, paid: 0, failed: 0, paid_amount_paisa: 0, gw_requests: 0, gw_errors: 0, gw_ms_total: 0, gw_ms_max: 0 };
+        r = { project_id: LOCAL_PROJECT, env, gateway, currency, minute, started: 0, paid: 0, failed: 0, paid_amount_paisa: 0, gw_requests: 0, gw_errors: 0, gw_ms_total: 0, gw_ms_max: 0 };
         this.minutes.set(k, r);
       }
       return r;
@@ -295,11 +300,11 @@ export class DevStore {
     }
     if (is === "failed" && was !== "failed") row(payment.gateway, payment.finished_at ?? ts).failed++;
     if (old && was === "paid" && is !== "paid") {
-      const d = row(old.gateway, old.finished_at ?? ts);
+      const d = row(old.gateway, old.finished_at ?? ts, old.currency);
       d.paid--;
       d.paid_amount_paisa -= old.amount_paisa ?? 0;
     }
-    if (old && was === "failed" && is !== "failed") row(old.gateway, old.finished_at ?? ts).failed--;
+    if (old && was === "failed" && is !== "failed") row(old.gateway, old.finished_at ?? ts, old.currency).failed--;
   }
 
   paymentsOf(env: string): PaymentRow[] {

@@ -62,13 +62,19 @@ export interface PaymentEvent {
   attempt_id: string;
   order_id?: string;
   gateway: string;
+  /** Minor units of `currency` (paisa for NPR, cents for USD). The name predates multi-currency. */
   amount_paisa?: number;
+  /** ISO 4217, upper case. Absent means NPR. */
+  currency?: string;
   status?: PaymentStatus;
   duration_ms?: number;
   data?: EventData;
   customer?: EventCustomer;
   sdk?: { name: string; version: string; lang: string };
 }
+
+/** Currency of events and payments that do not name one: every Nepali gateway charges in NPR. */
+export const DEFAULT_CURRENCY = "NPR";
 
 export const MAX_BATCH_EVENTS = 100;
 export const MAX_BATCH_BYTES = 256 * 1024;
@@ -146,6 +152,11 @@ export function validateEvent(input: unknown): ValidationResult {
   if (e.amount_paisa !== undefined) {
     if (!Number.isSafeInteger(e.amount_paisa) || (e.amount_paisa as number) < 0) return { ok: false, error: "amount_paisa must be a non-negative integer" };
     event.amount_paisa = e.amount_paisa as number;
+  }
+  if (e.currency !== undefined) {
+    if (typeof e.currency !== "string" || !/^[A-Za-z]{3}$/.test(e.currency)) return { ok: false, error: "currency must be a 3-letter ISO 4217 code" };
+    const cur = e.currency.toUpperCase();
+    if (cur !== DEFAULT_CURRENCY) event.currency = cur;
   }
   if (e.status !== undefined) {
     if (!(STATUSES as readonly string[]).includes(e.status as string)) return { ok: false, error: `unknown status: ${String(e.status)}` };

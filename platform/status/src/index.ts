@@ -1,6 +1,6 @@
 // status.discerns.app: public gateway status pages, the v1 status API, badges and an incident feed, all built from
 // the site's own once-a-minute probes of each gateway's production API (src/probe.ts). Public, read-only, cached.
-import { STATUS_SITE_NAME, type GatewayState } from "@paynp/shared";
+import { STATUS_SITE_NAME, type GatewayState, type StatusReport } from "@paynp/shared";
 import { Hono, type Context } from "hono";
 import { PROBES as PROBE_SOURCE, STATUS_GATEWAYS, loadReport } from "../../worker/src/status/aggregate.ts";
 import { checkoutPlan, incidentList, statusList, summarize } from "./api.ts";
@@ -65,8 +65,20 @@ function notModified(c: Context<{ Bindings: Env }>, res: Response): Response {
   }
   return res;
 }
-// Checks land once a minute, so the report is as of the minute: same data, same body, same ETag.
-const report = (c: Context<{ Bindings: Env }>) => loadReport(c.env, Math.floor(Date.now() / 60_000) * 60_000, PROBE_SOURCE);
+// Checks land once a minute, so the report is as of the minute: same data, same body, same ETag. Every page and API
+// route shares one build per location per minute through the edge cache; a build reads D1, the pages do not.
+async function report(c: Context<{ Bindings: Env }>): Promise<StatusReport> {
+  const t = Math.floor(Date.now() / 60_000) * 60_000;
+  const cache = (globalThis as { caches?: { default?: Cache } }).caches?.default;
+  const key = new Request(`https://status-report.internal/probes/${t}`);
+  if (cache) {
+    const hit = await cache.match(key);
+    if (hit) return (await hit.json()) as StatusReport;
+  }
+  const r = await loadReport(c.env, t, PROBE_SOURCE);
+  if (cache) c.executionCtx.waitUntil(cache.put(key, new Response(JSON.stringify(r), { headers: { "content-type": "application/json", "cache-control": "max-age=120" } })));
+  return r;
+}
 
 // ---- API ----
 

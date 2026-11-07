@@ -1,4 +1,5 @@
 // Money, numbers, durations and Nepal time. Everything the UI prints goes through here.
+import { minorDigits } from "@paynp/shared";
 
 export const TZ = "Asia/Kathmandu";
 /** Nepal has no daylight saving: UTC+05:45 all year. */
@@ -10,25 +11,63 @@ const DAY = 24 * HOUR;
 // en-IN groups the way Nepal writes money: 1,24,999.50 (lakh, crore).
 const intFmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const oneDec = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 });
+const intFmtIntl = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
 
 export interface MoneyParts {
   sign: string;
   int: string;
+  /** Minor-unit digits without the dot; empty for currencies without one (JPY). */
   frac: string;
+  /** What to print before the number: "Rs" for NPR, "$" or "€" or the ISO code for others. */
+  cur: string;
 }
 
-/** Splits paisa into display parts so the UI can dim the currency and the paisa. */
-export function moneyParts(paisa: number): MoneyParts {
-  const sign = paisa < 0 ? "-" : "";
-  const abs = Math.abs(Math.round(paisa));
-  return { sign, int: intFmt.format(Math.floor(abs / 100)), frac: String(abs % 100).padStart(2, "0") };
+const curLabels = new Map<string, string>();
+/** "Rs" for NPR (how Nepal writes it), the narrow symbol where Intl has one ($, €, £), else the ISO code. */
+export function currencyLabel(currency = "NPR"): string {
+  const c = currency.toUpperCase();
+  if (c === "NPR") return "Rs";
+  let l = curLabels.get(c);
+  if (!l) {
+    try {
+      l = new Intl.NumberFormat("en", { style: "currency", currency: c, currencyDisplay: "narrowSymbol" }).formatToParts(0).find((p) => p.type === "currency")?.value ?? c;
+    } catch {
+      l = c;
+    }
+    // A bare "$" is ambiguous for CAD, AUD and friends; only USD keeps it.
+    if (l === "$" && c !== "USD") l = c;
+    curLabels.set(c, l);
+  }
+  return l;
 }
 
-/** "Rs 1,24,999.50". Null amounts print as a hyphen. */
-export function formatMoney(paisa: number | null | undefined): string {
-  if (paisa === null || paisa === undefined || !Number.isFinite(paisa)) return "-";
-  const p = moneyParts(paisa);
-  return `${p.sign}Rs ${p.int}.${p.frac}`;
+/** Splits an amount in minor units into display parts so the UI can dim the currency and the fraction. NPR groups
+ *  in lakh and crore (en-IN); other currencies group in thousands. */
+export function moneyParts(minor: number, currency = "NPR"): MoneyParts {
+  const c = currency.toUpperCase();
+  const digits = minorDigits(c);
+  const sign = minor < 0 ? "-" : "";
+  const abs = Math.abs(Math.round(minor));
+  const scale = 10 ** digits;
+  const fmt = c === "NPR" ? intFmt : intFmtIntl;
+  return { sign, int: fmt.format(Math.floor(abs / scale)), frac: digits ? String(abs % scale).padStart(digits, "0") : "", cur: currencyLabel(c) };
+}
+
+/** "Rs 1,24,999.50", "$20.00", "€49.99". Null amounts print as a hyphen. */
+export function formatMoney(minor: number | null | undefined, currency = "NPR"): string {
+  if (minor === null || minor === undefined || !Number.isFinite(minor)) return "-";
+  const p = moneyParts(minor, currency);
+  const num = `${p.int}${p.frac ? `.${p.frac}` : ""}`;
+  return p.cur.length > 1 ? `${p.sign}${p.cur} ${num}` : `${p.sign}${p.cur}${num}`;
+}
+
+/** Non-NPR revenue from an analytics revenue_by_currency map, as "$45.00 + €12.00"; "" when there is none. */
+export function formatOtherCurrencies(byCurrency: Record<string, number> | undefined): string {
+  return Object.entries(byCurrency ?? {})
+    .filter(([c, n]) => c !== "NPR" && n !== 0)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([c, n]) => formatMoney(n, c))
+    .join(" + ");
 }
 
 /** Short form for axes and tight spots: Rs 950, Rs 12.5K, Rs 4.2L (lakh), Rs 1.3Cr (crore). */
@@ -179,6 +218,8 @@ const GATEWAY_NAMES: Record<string, string> = {
   nepalpay: "NEPALPAY QR",
   hamropay: "Hamro Pay",
   getpay: "GetPay (cards)",
+  stripe: "Stripe",
+  dodo: "Dodo Payments",
 };
 
 export function statusLabel(s: string): string {

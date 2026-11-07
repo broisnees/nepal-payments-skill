@@ -8,6 +8,8 @@ export interface PaymentSummary {
   order_id: string | null;
   gateway: string;
   amount_paisa: number | null;
+  /** ISO 4217; absent from older servers, which means NPR. */
+  currency?: string;
   status: PaymentStatus;
   started_at: number;
   finished_at: number | null;

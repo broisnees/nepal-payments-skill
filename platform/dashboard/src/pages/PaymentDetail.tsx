@@ -102,17 +102,17 @@ function Header({ p, base, ops }: { p: Payment; base: string; ops: PaymentOps | 
   const hasOpenCase = ops?.refund_cases?.some((c) => c.attempt_id === p.attempt_id && (c.status === "open" || c.status === "requested" || c.status === "failed"));
   const customer = ops?.customer ?? (p.customer_mask ? { mask: p.customer_mask, name: null } : null);
   const open = OPEN_STATUSES.includes(p.status);
-  const m = p.amount_paisa !== null ? moneyParts(p.amount_paisa) : null;
+  const m = p.amount_paisa !== null ? moneyParts(p.amount_paisa, p.currency) : null;
   return (
     <section className="pd-head">
       <BackLink base={base} />
       <div className="row wrap" style={{ gap: 12, alignItems: "center" }}>
-        <div className="pd-amount" aria-label={m ? `Rs ${m.int}.${m.frac}` : "No amount"}>
+        <div className="pd-amount" aria-label={m ? formatMoney(p.amount_paisa, p.currency) : "No amount"}>
           {m ? (
             <>
-              <span className="cur">Rs</span>
+              <span className="cur">{m.cur}</span>
               {m.int}
-              <span className="frac">.{m.frac}</span>
+              {m.frac && <span className="frac">.{m.frac}</span>}
             </>
           ) : (
             <span className="muted">No amount</span>
@@ -286,7 +286,7 @@ function RefundsCard({ p, ops, events, base }: { p: Payment; ops: PaymentOps | n
         <h2 id="refunds-title">Refunds</h2>
         {refunded > 0 && (
           <span className="hint">
-            {formatMoney(refunded)} of {formatMoney(p.amount_paisa)} refunded
+            {formatMoney(refunded, p.currency)} of {formatMoney(p.amount_paisa, p.currency)} refunded
           </span>
         )}
       </div>
@@ -296,7 +296,7 @@ function RefundsCard({ p, ops, events, base }: { p: Payment; ops: PaymentOps | n
             <Icon name="undo" className="subtle" />
             <div className="grow">
               <div className="ink">
-                <Money paisa={e.amount_paisa ?? null} /> refunded{e.data?.refund_ref ? <span className="muted">, ref <span className="mono">{e.data.refund_ref}</span></span> : null}
+                <Money paisa={e.amount_paisa ?? null} currency={e.currency ?? p.currency} /> refunded{e.data?.refund_ref ? <span className="muted">, ref <span className="mono">{e.data.refund_ref}</span></span> : null}
               </div>
               {e.data?.refund_reason && <div className="meta">{e.data.refund_reason}</div>}
             </div>
@@ -310,7 +310,7 @@ function RefundsCard({ p, ops, events, base }: { p: Payment; ops: PaymentOps | n
             <Icon name="inbox" className="subtle" />
             <div className="grow">
               <div className="ink">
-                {kindLabel(c)}, <Money paisa={c.amount_paisa} />
+                {kindLabel(c)}, <Money paisa={c.amount_paisa} currency={p.currency} />
               </div>
               <div className="meta">Opened {formatRelative(c.created_at, now)}</div>
             </div>

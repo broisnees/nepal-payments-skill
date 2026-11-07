@@ -883,6 +883,13 @@ code,
   font-size: 16px;
 }
 
+/* Revenue in currencies other than NPR, under the NPR figure. */
+.tile-other {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .tile-foot {
   display: flex;
   align-items: flex-end;

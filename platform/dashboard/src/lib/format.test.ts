@@ -7,6 +7,7 @@ import {
   formatMoney,
   formatMoneyCompact,
   formatOffset,
+  formatOtherCurrencies,
   formatPct,
   formatRelative,
   formatTime,
@@ -34,7 +35,23 @@ describe("money", () => {
   });
 
   test("splits parts for dimmed paisa", () => {
-    expect(moneyParts(124_905)).toEqual({ sign: "", int: "1,249", frac: "05" });
+    expect(moneyParts(124_905)).toEqual({ sign: "", int: "1,249", frac: "05", cur: "Rs" });
+  });
+
+  test("other currencies use their own symbol, exponent and thousands grouping", () => {
+    expect(formatMoney(2000, "USD")).toBe("$20.00");
+    expect(formatMoney(12_499_950, "usd")).toBe("$124,999.50");
+    expect(formatMoney(4999, "EUR")).toBe("€49.99");
+    expect(formatMoney(500, "JPY")).toBe("¥500");
+    expect(formatMoney(1500, "CAD")).toBe("CAD 15.00");
+    expect(formatMoney(-2500, "USD")).toBe("-$25.00");
+    expect(moneyParts(500, "JPY")).toEqual({ sign: "", int: "500", frac: "", cur: "¥" });
+  });
+
+  test("lists revenue in other currencies, NPR left out", () => {
+    expect(formatOtherCurrencies({ NPR: 150000, USD: 2000, EUR: 4999 })).toBe("€49.99 + $20.00");
+    expect(formatOtherCurrencies({ NPR: 150000 })).toBe("");
+    expect(formatOtherCurrencies(undefined)).toBe("");
   });
 
   test("compact uses K, lakh and crore", () => {

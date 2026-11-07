@@ -257,7 +257,7 @@ export default function Payments() {
                         <StatusPill status={p.status} />
                       </td>
                       <td className="r">
-                        <Money paisa={p.amount_paisa} />
+                        <Money paisa={p.amount_paisa} currency={p.currency} />
                       </td>
                       <td>
                         <Gateway id={p.gateway} />

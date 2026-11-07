@@ -155,7 +155,7 @@ describe("/api", () => {
     expect(Object.keys(a).sort()).toEqual(["by_gateway", "failure_reasons", "funnel", "series", "time_to_pay_ms", "totals"]);
     expect(a.totals).toMatchObject({ started: 1, paid: 1, failed: 0, revenue_paisa: 10000, success_rate: 1 });
     expect(a.funnel).toEqual({ started: 1, redirected: 1, callback: 1, paid: 1 });
-    expect(a.by_gateway).toEqual([{ gateway: "esewa", started: 1, paid: 1, failed: 0, revenue_paisa: 10000, success_rate: 1 }]);
+    expect(a.by_gateway).toEqual([{ gateway: "esewa", started: 1, paid: 1, failed: 0, revenue_paisa: 10000, revenue_by_currency: { NPR: 10000 }, success_rate: 1 }]);
     expect(a.time_to_pay_ms.p50).toBeGreaterThan(30_000);
     expect(a.series.length).toBeGreaterThanOrEqual(24);
     expect((await get("/api/projects/local/analytics?bucket=week")).status).toBe(400);

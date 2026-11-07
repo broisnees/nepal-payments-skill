@@ -10,6 +10,7 @@ export function toPayment(r: PaymentRow): Payment {
     order_id: r.order_id,
     gateway: r.gateway,
     amount_paisa: r.amount_paisa,
+    currency: r.currency ?? "NPR",
     status: r.status as PaymentStatus,
     started_at: r.started_at,
     updated_at: r.updated_at,
@@ -38,6 +39,7 @@ export function toEvent(r: EventRow): StoredEvent {
   };
   if (r.order_id != null) e.order_id = r.order_id;
   if (r.amount_paisa != null) e.amount_paisa = r.amount_paisa;
+  if (r.currency && r.currency !== "NPR") e.currency = r.currency;
   if (r.status != null) e.status = r.status as PaymentStatus;
   if (r.duration_ms != null) e.duration_ms = r.duration_ms;
   const data = parseJson<StoredEvent["data"] | null>(r.data, null);
