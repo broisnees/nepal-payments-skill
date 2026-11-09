@@ -147,7 +147,7 @@ export const providerGuides: ProviderGuide[] = [
       optional: ["CONNECTIPS_ENV", "CONNECTIPS_APP_NAME", "CONNECTIPS_APP_PASSWORD"],
     },
     sandbox: [
-      "Request UAT credentials and a test `.pfx` from connectIPS technical support through your bank.",
+      "Request UAT credentials and a test `.pfx` from connectIPS technical support by email.",
       "The payer test login comes with the test account.",
     ],
     extraSetup: {
@@ -362,7 +362,7 @@ export const providerGuides: ProviderGuide[] = [
     description: "Accept cards through Nepali banks with NCHL's GetPay checkout, step by step in TypeScript, Python, Java, Kotlin, PHP or Go: SDK pages and token check.",
     kind: "Cards",
     summary:
-      "GetPay is the card checkout NCHL hosts for Nepali banks (NMB, Global IME and others): Visa and Mastercard with 3-D Secure. It is a browser SDK spread over four pages, not a redirect or a form. The bank sends back a token, and your server checks it against your `oprKey` before it asks `merchant-status`. Credentials come only from your bank, and the bank registers your domain with NCHL.",
+      "GetPay is the card checkout NCHL hosts for Nepali banks (NMB, Global IME and others): Visa and Mastercard with 3-D Secure. It is a browser SDK spread over four pages, not a redirect or a form. GetPay redirects back with a token, and your server checks it against your `oprKey` before it asks `merchant-status`. Credentials come only from your bank, and the bank registers your domain with NCHL.",
     flow: [
       "`initiate()` returns `{ kind: \"sdk\", scriptUrl, options }`: the bundle URL and the SDK options, with the price in rupees and the attempt id as `clientRequestId`.",
       "Your checkout page loads the bundle and runs `new GetPay(options).initialize()`. Its `onSuccess` opens your payment page, where GetPay renders the card form and runs 3-D Secure.",

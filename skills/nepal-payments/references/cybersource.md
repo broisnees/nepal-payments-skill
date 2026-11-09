@@ -1,7 +1,7 @@
 # CyberSource (card payments via Nepali banks)
 
 Sources: developer.cybersource.com (Secure Acceptance guide, REST getting-started, Unified Checkout guide, 2026 release notes), KB KA-11531, official SDK sources and samples. Verified 2026-11.
-Adapters: `scripts/ts/src/cybersource.ts`, `scripts/python/nepal_payments/cybersource.py` (Secure Acceptance).
+Adapters: `scripts/ts/src/cybersource.ts`, plus the matching file in each port (`cybersource.py`, `CyberSource.java`, `CyberSource.kt`, `src/CyberSource/`, `cybersource.go`) (Secure Acceptance).
 
 ## Contents
 1. Which integration (read first)

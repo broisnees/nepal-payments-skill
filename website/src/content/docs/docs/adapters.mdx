@@ -41,7 +41,14 @@ KHALTI_WEBSITE_URL=https://shop.example.com
   ))}
 </Tabs>
 
-`initiate()` returns a **redirect** (send the browser to `url`), a **form** (render an auto-submitting POST; every port has a `renderAutoSubmitForm` helper) for NEPALPAY QR, a **qr** (show `qrImage` or render `qrString`, then poll `verify()`; there is no return URL), or for GetPay, an **sdk** (load `scriptUrl` and start GetPay's card checkout with `options`; the adapter renders the checkout, payment and return pages, and `verify()` takes the return `token`). Store the `providerRef` it returns on the attempt: Khalti's `pidx`, NPS's `ProcessId`, IME Pay's token and NEPALPAY QR's `validationTraceId` are needed by `verify()`. Hamro Pay's `sessionId` isn't, but keep it for support.
+`initiate()` returns one of four kinds:
+
+- **redirect** (Khalti, Fonepay, IME Pay): send the browser to `url`.
+- **form** (eSewa, connectIPS, CyberSource, NPS, Hamro Pay): render an auto-submitting POST; every port has a `renderAutoSubmitForm` helper.
+- **qr** (NEPALPAY QR): show `qrImage` or render `qrString`, then poll `verify()`. There is no return URL.
+- **sdk** (GetPay): load `scriptUrl` and start GetPay's card checkout with `options`. The adapter renders the checkout, payment and return pages, and `verify()` takes the return `token`.
+
+Store the `providerRef` it returns on the attempt: Khalti's `pidx`, NPS's `ProcessId`, IME Pay's token and NEPALPAY QR's `validationTraceId` are needed by `verify()`. Hamro Pay's `sessionId` isn't, but keep it for support.
 
 <Aside type="danger" title="Never fulfil from the callback alone">
   Pass the amount and ids from your database into `verify()`, then apply the result with `decideTransition` and a guarded `UPDATE`. Fulfil only when the new status is `paid`. [Production architecture](/docs/guides/architecture/) has the table schema, the return handler and the reconciliation job.

@@ -18,13 +18,13 @@ The provider-specific files cover the wire format. This file covers what makes a
 
 ## 1. Non-negotiable rules
 
-1. **Secrets never leave the server.** Signing (eSewa, Fonepay, connectIPS, CyberSource, NPS) and API keys (Khalti, IME Pay) live in backend env vars or a secret manager, never in a web bundle, mobile app, or git repo. Mobile and web clients ask *your* backend to start a payment.
-2. **The redirect is not proof of payment.** Query params on `success_url` / `return_url`, and "success" callbacks from mobile SDKs, can be forged, replayed, or arrive for a payment that later reverses. Fulfil only after a **server-to-server status check** (eSewa status API, Khalti lookup, Fonepay verification, connectIPS validatetxn, NPS CheckTransactionStatus, IME Pay Confirm/Recheck) or, for CyberSource, a **verified HMAC signature** on the response.
-3. **Check amount and order id, not only status.** Compare the provider-reported amount to what *you* stored for that order. A valid "COMPLETE" for a Rs 10 order must not unlock a Rs 10,000 one.
-4. **One order id per payment attempt.** Providers reject or misreport reused ids (`transaction_uuid`, `purchase_order_id`, `PRN`, `TXNID`, `MerchantTxnId`, `reference_number`). Use a fresh id each time the user clicks Pay, linked to your order.
-5. **Fulfil exactly once.** Return-URL hits, webhooks, and the reconciliation job can all arrive for the same attempt, sometimes at the same moment. Use a conditional state transition (below) so only one wins.
-6. **Money is integer paisa in your system.** Convert to the provider's format (rupee string, paisa integer, decimal string) at the adapter edge only. Floats will eventually produce `109.99999999` and a signature mismatch.
-7. **Keep sandbox and live completely separate**: separate env vars, base URLs and keys. A sandbox key against a live URL usually returns 401 or `NOT_FOUND`, which looks like a lost payment.
+The rules themselves, with the per-provider status checks, are in `SKILL.md` ("Non-negotiable rules"); that list is the one to keep up to date. Why they exist:
+
+- **The redirect is not proof of payment.** Query params on a return URL, and "success" callbacks from mobile SDKs, can be forged, replayed, or arrive for a payment that later reverses. Only a server-to-server status check (or, for CyberSource Secure Acceptance, a verified response signature) is evidence.
+- **Status alone isn't enough.** A valid "COMPLETE" for a Rs 10 attempt must not unlock a Rs 10,000 order, so compare the provider's amount and order id with what you stored.
+- **Reused ids get rejected or misreported** (`transaction_uuid`, `purchase_order_id`, `PRN`, `TXNID`, `MerchantTxnId`, `merchantTxnId`, `reference_number`), so every click on Pay gets a fresh attempt id.
+- **Return hits, webhooks and the reconciliation job race** for the same attempt, so a conditional state transition (§4) decides which one fulfils.
+- **Floats eventually produce `109.99999999`** and a signature mismatch, so money is integer paisa until the adapter edge.
 
 ## 2. Data model
 
@@ -41,7 +41,7 @@ CREATE TABLE payment_attempts (
   order_id         uuid NOT NULL REFERENCES orders(id),
   provider         text NOT NULL,                 -- 'esewa' | 'khalti' | ...
   provider_order_id text NOT NULL,                -- the id YOU sent (transaction_uuid / purchase_order_id / PRN / TXNID)
-  provider_ref     text,                          -- session id from initiate() that verify() needs (Khalti pidx, NPS ProcessId, IME TokenId)
+  provider_ref     text,                          -- session id from initiate() that verify() needs (Khalti pidx, NPS ProcessId, IME TokenId, NEPALPAY validationTraceId, Hamro Pay sessionId)
   provider_txn_id  text,                          -- final transaction id from verify() (eSewa ref_id, Khalti transaction_id, ...)
   amount_paisa     bigint NOT NULL CHECK (amount_paisa > 0),
   currency         char(3) NOT NULL DEFAULT 'NPR',
@@ -85,8 +85,8 @@ Client (web/mobile)           Your backend                         Provider
       │  POST /payments {orderId, provider}
       │──────────────────────────►│ load order, compute amount server-side
       │                           │ insert payment_attempt (initiated)
-      │                           │ adapter.initiate()  ───────────────►│ (Khalti/NPS/IME: API call)
-      │◄──────────────────────────│ {redirect url} or {form fields}     │
+      │                           │ adapter.initiate()  ───────────────►│ (Khalti/NPS/IME/Hamro Pay/NEPALPAY: API call)
+      │◄──────────────────────────│ {redirect url}, {form fields}, {QR} or {SDK page}
       │  user pays on provider page / SDK ─────────────────────────────►│
       │◄──────────────── redirect to return URL (GET/POST) ─────────────│
       │──────────────────────────►│ adapter.verify()  ─────────────────►│ status API
@@ -109,7 +109,8 @@ import { decideTransition } from "./payments/index.ts"; // pure, unit-tested sta
 
 const SESSION_WINDOW_MS = 60 * 60_000; // longest provider session (Khalti pidx ~60 min, eSewa ~50 min)
 
-// /payments/:provider/return[/:attemptId]  (eSewa/Khalti/Fonepay/connectIPS/NPS: GET; CyberSource/IME Pay: POST)
+// /payments/:provider/return[/:attemptId]  (eSewa/Khalti/Fonepay/connectIPS/NPS/Hamro Pay: GET; CyberSource/IME Pay: POST;
+// GetPay: GET ?token= forwarded by getpay.returnPage(); NEPALPAY QR has no return URL: the QR page polls verify())
 export async function handleReturn(provider: ProviderId, params: Record<string, string>, pathAttemptId?: string) {
   // 1. Find YOUR attempt: from the callback, else from the URL path (eSewa failure redirects carry no data).
   const providerOrderId = adapters[provider].orderIdFromCallback(params) ?? pathAttemptId;
@@ -175,6 +176,9 @@ Notes:
 | CyberSource | Merchant POST URL (configured in the Secure Acceptance profile) gets a signed POST for every decision. Most reliable signal. |
 | NPS | Notification URL receives an unsigned GET with `MerchantTxnId` + `GatewayTxnId`. Verify, then reply `received` (or `already received`) **only once a final status is recorded**; while it's still pending, return a non-2xx so NPS keeps notifying. |
 | IME Pay | No webhook; Confirm/Recheck. |
+| NEPALPAY QR | No redirect at all: poll `verify()` from the QR page, or listen on NCHL's STOMP WebSocket and call `verify()` on `COMPLETED`. Merchants that register a callback with NCHL also get a Basic-auth **payment confirmation** POST; check it with `verifyConfirmation()` and answer with `confirmationResponse()` (`nepalpay.md` §6). |
+| Hamro Pay | Signed JSON POST to the URL saved in the merchant portal, `Signature` header keyed with the separate **webhook secret**. Check it with `verifyWebhook(body, signature)`, then `verify()` (`hamropay.md` §6). |
+| GetPay | No webhook; the return token plus `merchant-status` (with the `oprSecret` and `clientId` checks) + reconciliation. |
 
 Treat every webhook as a hint, never as the truth: verify the signature if there is one, then call `verify()` and run the same conditional update as the return handler.
 
@@ -201,7 +205,7 @@ For each row, call `verify()` with bounded concurrency (5–10) and run the same
 
 ## 7. Refunds
 
-Refund APIs vary (Khalti has a merchant refund API; CyberSource refunds through the REST API; eSewa, Fonepay and connectIPS refunds usually go through the merchant portal or a support request). Model refunds as their own rows (`refunds` table with amount, status, provider ref) and update the attempt to `refunded` / `partially_refunded` only after the provider confirms.
+Refund APIs vary (Khalti has a merchant refund API; CyberSource refunds through the REST API; eSewa, Fonepay and connectIPS refunds usually go through the merchant portal or a support request; NEPALPAY QR and GetPay refunds go through the acquiring bank; `hamropay.md` documents no refund API). Model refunds as their own rows (`refunds` table with amount, status, provider ref) and update the attempt to `refunded` / `partially_refunded` only after the provider confirms.
 
 ## 8. Security checklist
 
@@ -215,7 +219,7 @@ Refund APIs vary (Khalti has a merchant refund API; CyberSource refunds through 
 - [ ] Return / callback URLs are HTTPS, fixed on the server, and not built from client input (open-redirect risk).
 - [ ] Callback endpoints rate-limited; log and drop invalid signatures.
 - [ ] No secrets or full card data in logs. Log ids and statuses; mask phone numbers and emails.
-- [ ] Card payments use hosted pages (CyberSource Secure Acceptance / Unified Checkout) so card data never touches your servers (PCI SAQ A scope).
+- [ ] Card payments use hosted pages (CyberSource Secure Acceptance / Unified Checkout, GetPay's card iframe) so card data never touches your servers (PCI SAQ A scope).
 - [ ] `fetch` timeouts on every provider call (the adapters default to 15 s).
 
 ## 9. Observability
@@ -228,9 +232,9 @@ Log a structured line at each step: `payment.initiate`, `payment.return`, `payme
 
 ## 10. Go-live checklist
 
-- [ ] Live credentials from the provider (eSewa/Khalti merchant onboarding, the bank for Fonepay/CyberSource, NCHL via the bank for connectIPS).
+- [ ] Live credentials from the provider (eSewa/Khalti/Hamro Pay merchant onboarding, the bank for Fonepay/CyberSource, NCHL via the bank for connectIPS, NEPALPAY QR and GetPay). Hamro Pay also issues the live gateway URL; it isn't published.
 - [ ] Live base URLs set through config, not code edits.
-- [ ] Return URLs registered or allowlisted with the provider where required (Fonepay RU, CyberSource profile URLs, connectIPS success/failure URLs, IME Pay).
+- [ ] Return URLs registered or allowlisted with the provider where required (Fonepay RU, CyberSource profile URLs, connectIPS success/failure URLs, IME Pay). GetPay: your domain registered with NCHL through the bank (the card iframe answers 401 otherwise). Hamro Pay: webhook URL saved in the merchant portal. NEPALPAY QR: the confirmation callback, if you use it, registered with NCHL.
 - [ ] One real low-value live payment per provider, verified end to end, then refunded.
 - [ ] Reconciliation job running and alerting.
 - [ ] Customer support runbook: how to look up an attempt by provider ref, and how to issue a refund.

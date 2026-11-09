@@ -82,7 +82,7 @@ const STATUSES: Record<string, PaymentStatus> = {
   PENDING: "pending",
   AMBIGUOUS: "pending",
   FULL_REFUND: "refunded",
-  PARTIAL_REFUND: "refunded",
+  PARTIAL_REFUND: "partially_refunded",
   CANCELED: "canceled",
   NOT_FOUND: "not_found", // never paid, session expired, or the wrong total_amount
 };
@@ -223,7 +223,7 @@ STATUSES = {
     "PENDING": "pending",
     "AMBIGUOUS": "pending",
     "FULL_REFUND": "refunded",
-    "PARTIAL_REFUND": "refunded",
+    "PARTIAL_REFUND": "partially_refunded",
     "CANCELED": "canceled",
     "NOT_FOUND": "not_found",  # never paid, session expired, or the wrong total_amount
 }
@@ -369,7 +369,7 @@ final class EsewaGateway implements Gateway
         'PENDING' => 'pending',
         'AMBIGUOUS' => 'pending',
         'FULL_REFUND' => 'refunded',
-        'PARTIAL_REFUND' => 'refunded',
+        'PARTIAL_REFUND' => 'partially_refunded',
         'CANCELED' => 'canceled',
         'NOT_FOUND' => 'not_found', // never paid, session expired, or the wrong total_amount
     ];
@@ -557,7 +557,7 @@ var esewaStatuses = map[string]string{
 	"PENDING":        "pending",
 	"AMBIGUOUS":      "pending",
 	"FULL_REFUND":    "refunded",
-	"PARTIAL_REFUND": "refunded",
+	"PARTIAL_REFUND": "partially_refunded",
 	"CANCELED":       "canceled",
 	"NOT_FOUND":      "not_found", // never paid, session expired, or the wrong total_amount
 }
@@ -764,7 +764,7 @@ public final class EsewaGateway implements Gateway {
         "PENDING", "pending",
         "AMBIGUOUS", "pending",
         "FULL_REFUND", "refunded",
-        "PARTIAL_REFUND", "refunded",
+        "PARTIAL_REFUND", "partially_refunded",
         "CANCELED", "canceled",
         "NOT_FOUND", "not_found"); // never paid, session expired, or the wrong total_amount
 
@@ -951,7 +951,7 @@ class EsewaGateway(
         "PENDING" to "pending",
         "AMBIGUOUS" to "pending",
         "FULL_REFUND" to "refunded",
-        "PARTIAL_REFUND" to "refunded",
+        "PARTIAL_REFUND" to "partially_refunded",
         "CANCELED" to "canceled",
         "NOT_FOUND" to "not_found", // never paid, session expired, or the wrong total_amount
     )

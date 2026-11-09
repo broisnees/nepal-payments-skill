@@ -1,0 +1,19 @@
+[
+  { "query": "add eSewa checkout to my Django shop, the order total is in a Decimal field", "should_trigger": true },
+  { "query": "khalti lookup returns 400 for a payment the user cancelled, is my integration broken?", "should_trigger": true },
+  { "query": "Fonepay keeps saying DV mismatch on the return url, here's my php code", "should_trigger": true },
+  { "query": "how do I sign the connectIPS token with the CREDITOR.pfx the bank sent me, in Go", "should_trigger": true },
+  { "query": "we need customers in Nepal to pay by card on our Next.js site, the bank is NIC Asia", "should_trigger": true },
+  { "query": "set up NCHL dynamic QR for our restaurant billing software so customers can scan with any bank app", "should_trigger": true },
+  { "query": "integrate Hamro Pay into our Laravel app", "should_trigger": true },
+  { "query": "the GetPay success page shows a blank screen and the token never reaches my Spring Boot backend", "should_trigger": true },
+  { "query": "my flutter app needs a payment gateway for NPR, which one should I use and how do I verify it server side", "should_trigger": true },
+  { "query": "eSewa returns ES104 even though the amount is right", "should_trigger": true },
+  { "query": "users close the tab after paying with khalti and never get their order, how do I fix this", "should_trigger": true },
+  { "query": "NPS OnePG integration in FastAPI with the notification url", "should_trigger": true },
+  { "query": "integrate Razorpay UPI checkout in my Express app for customers in India", "should_trigger": false },
+  { "query": "set up Stripe Checkout with webhooks for our SaaS subscriptions", "should_trigger": false },
+  { "query": "how do I verify a Paystack webhook signature in Node", "should_trigger": false },
+  { "query": "convert this price from USD to NPR using today's exchange rate in my spreadsheet", "should_trigger": false },
+  { "query": "write a blog post about the history of the Nepali rupee", "should_trigger": false }
+]

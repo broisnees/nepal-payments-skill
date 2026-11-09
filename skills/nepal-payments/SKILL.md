@@ -1,6 +1,6 @@
 ---
 name: nepal-payments
-description: Integrate Nepali payment gateways (eSewa, Khalti, Fonepay, connectIPS, CyberSource via Nepali banks, NPS/OnePG, IME Pay, NEPALPAY QR (NCHL dynamic QR), Hamro Pay, GetPay (NCHL bank card gateway); plus HBL 2C2P, Moru, Prabhu Pay notes) into any backend, web app or mobile app, production-ready. Ships tested zero-dependency adapters for TypeScript (Node/Bun/Deno/Cloudflare Workers/Next.js), Python, Java and Kotlin (Spring Boot/Ktor), PHP (Laravel) and Go, with verified signature test vectors, server-side verification, exactly-once fulfilment, reconciliation, and Flutter/React Native/Android/iOS patterns. Use whenever the user mentions any of these providers, NPR / Nepal payments, "payment gateway in Nepal", eSewa ePay v2 or Intent, Khalti KPG-2 / pidx, Fonepay DV / dynamic QR, connectIPS TOKEN / .pfx, NEPALPAY QR / NCHL QR / validationTraceId, Hamro Pay checkout / sessionId, GetPay / papInfo / oprKey / oprSecret, Secure Acceptance with a Nepali bank, or is debugging a Nepali payment signature, callback, or status-check problem, even if they don't say "skill".
+description: Integrate Nepali payment gateways (eSewa, Khalti, Fonepay, connectIPS, NPS OnePG, CyberSource via Nepali banks, NEPALPAY QR, Hamro Pay, GetPay, IME Pay) into any backend, web app or mobile app, with tested adapters for TypeScript, Python, Java, Kotlin, PHP and Go covering server-side signing and verification, exactly-once fulfilment, reconciliation, webhooks and go-live. Use whenever the user mentions any of these providers, NPR or Nepal payments, a payment gateway in Nepal, eSewa ePay v2 or Intent, Khalti pidx, Fonepay DV or dynamic QR, connectIPS .pfx, NCHL QR, Hamro Pay, GetPay, CyberSource Secure Acceptance with a Nepali bank, HBL 2C2P, or is debugging a Nepali payment signature, callback or status check, even if they don't say "skill".
 license: MIT
 compatibility: Bundled adapters need one of Node.js 22.18+ (or Bun, Deno, Cloudflare Workers), Python 3.10+ (plus the cryptography package for connectIPS), JDK 17+ (Java or Kotlin), PHP 8.1+ with ext-curl and ext-openssl, or Go 1.22+. Live sandbox checks need internet access.
 metadata:
@@ -15,7 +15,24 @@ Production integrations for Nepali payment providers. Everything here was checke
 
 ## Workflow
 
-1. **Pick providers** (table below). If the user didn't say, recommend **eSewa + Khalti** (largest wallets), then **NPS or Fonepay** to cover banks with one integration, then **connectIPS** for direct bank debit, and **CyberSource** or **GetPay** (whichever the merchant's bank offers) only for card acquiring. Add **Hamro Pay** for Hamro Patro's wallet users. For in-person or POS QR, use **Fonepay Dynamic QR** or **NEPALPAY QR** (whichever network the merchant's bank acquires on).
+Copy this checklist into your notes and tick it off:
+
+```
+- [ ] 1. Providers picked (tree below)
+- [ ] 2. Stack detected
+- [ ] 3. Adapters copied; their bundled tests pass in the project
+- [ ] 4. payment_attempts table + POST /payments, /start, return route (architecture.md, web.md / mobile.md)
+- [ ] 5. Reconciliation job scheduled
+- [ ] 6. Sandbox payment per provider verified end to end (testing.md)
+- [ ] 7. Env vars documented; go-live list done (env.md, testing.md §5)
+```
+
+1. **Pick providers.** If the user didn't say:
+   - Online checkout, web or app: **eSewa + Khalti** (largest wallets). Add **Hamro Pay** for Hamro Patro's wallet users.
+   - Bank customers without a wallet: **NPS** or **Fonepay** (many banks through one integration), then **connectIPS** for direct bank debit.
+   - Cards: **GetPay** or **CyberSource**, whichever the merchant's bank offers. The bundled CyberSource adapter is Secure Acceptance; a new CyberSource contract means Unified Checkout through Visa's official SDK (`cybersource.md` §1).
+   - In-person, POS, kiosk or desktop "scan to pay": **Fonepay Dynamic QR** or **NEPALPAY QR**, whichever network the merchant's bank acquires on.
+   - IME Pay only for an existing IME Pay merchant account (it merged into Khalti in 2025).
 2. **Detect the stack** (`package.json`, `pyproject.toml`/`requirements.txt`, `composer.json`, `pubspec.yaml`, `go.mod`, …) and where server routes and DB models live.
 3. **Install the adapters**:
    - TypeScript/JavaScript: copy `scripts/ts/src/` into the project's server code (e.g. `src/server/payments/`), keeping only the providers needed plus `core.ts` and `index.ts`. The files import each other with `.ts` extensions (runs natively on Node ≥ 22.18, Bun, Deno). If the project's tsconfig lacks `allowImportingTsExtensions`, rewrite `./x.ts` imports to match its module resolution (`./x.js` for NodeNext, extensionless for bundlers).
@@ -25,6 +42,7 @@ Production integrations for Nepali payment providers. Everything here was checke
    - PHP (Laravel, Symfony, plain PHP): copy `scripts/php/src/` (namespace `NepalPayments`, PHP 8.1+, ext-curl + ext-openssl, no Composer dependencies) and register it in the project's PSR-4 autoload.
    - Go: copy `scripts/go/payments/` into the module (e.g. `internal/payments/`) and fix the import path (stdlib only, Go 1.22+; `context.Context` on every network call; convert a connectIPS `.pfx` to PEM with openssl).
    - Other languages (C#, Ruby, Rust, Dart server): port from the TS adapter of each provider. Write the provider's **test vectors** as tests first (in each `references/<provider>.md`) and port until they pass.
+   - Copy the adapters and run their tests; don't read the adapter source end to end to understand it. The interface below and the provider reference are the documentation.
 4. **Add persistence + routes**: the `payment_attempts` table and the return handler from `references/architecture.md`, wired to the framework via `references/web.md`. For mobile, follow `references/mobile.md`.
 5. **Add reconciliation** (`architecture.md` §6). Without it, customers who close the tab after paying never get their order.
 6. **Test**: run the bundled tests, then the integration checks in `references/testing.md`. Use the sandbox credentials listed there.
@@ -39,6 +57,7 @@ Production integrations for Nepali payment providers. Everything here was checke
 5. **Exactly-once fulfilment**: a conditional `UPDATE … WHERE status IN ('initiated','pending','unknown')`, and idempotent fulfilment.
 6. **Use `decideTransition()` (`decide_transition()`) for state changes.** It encodes the rules: `not_found` inside the session window (~60 min) writes nothing (anyone can hit a return URL early); a provider "paid" after you closed the attempt is a **late payment to recover**, not ignore; a "paid" whose amount differs or is missing goes to manual review, never fulfilment.
 7. **Money is integer paisa internally**; format once at the adapter edge and sign exactly the string you send.
+8. **Keep sandbox and live separate**: their own env vars, base URLs and keys. A sandbox key against a live URL usually answers 401 or `NOT_FOUND`, which looks like a lost payment.
 
 ## Provider quick reference
 
@@ -57,7 +76,9 @@ Production integrations for Nepali payment providers. Everything here was checke
 | NEPALPAY QR | NCHL dynamic QR, any NEPALPAY bank app | Basic (or OAuth) + RSA-SHA256 token (`.pfx`) | rupees `"10.50"` | `merchanttxnreport` by validationTraceId | `references/nepalpay.md` |
 | HBL (2C2P PACO), Moru, Prabhu Pay, CellPay | niche / direct acquiring | JOSE / various | — | — | `references/others.md` |
 
-## Adapter interface (TS; Python mirrors it in snake_case)
+## Adapter interface
+
+TypeScript is shown. The other ports keep the same shape: Python `create_payments(config_from_env())`, `new_order_id()`, `decide_transition()`; Go `payments.New(payments.ConfigFromEnv())`, `NewOrderID()`, `DecideTransition()`; Java `Payments.create(Payments.configFromEnv())`; Kotlin `Payments.create(paymentsConfigFromEnv())`; PHP `Payments::create(Payments::configFromEnv())`, `Payments::newOrderId()`.
 
 ```ts
 import { createPayments, paymentsConfigFromEnv, newOrderId, renderAutoSubmitForm } from "./payments/index.ts";
@@ -69,7 +90,7 @@ const init = await payments.get("esewa").initiate({
   returnUrl: `${APP_URL}/payments/esewa/return/${attemptId}`,
 });
 // init.kind === "redirect" → 302 to init.url        (Khalti, Fonepay, IME Pay)
-// init.kind === "form"     → renderAutoSubmitForm(init) (eSewa, connectIPS, CyberSource, NPS)
+// init.kind === "form"     → renderAutoSubmitForm(init) (eSewa, connectIPS, CyberSource, NPS, Hamro Pay)
 // init.kind === "qr"       → show init.qrImage / init.qrString, poll verify() (NEPALPAY QR)
 // init.kind === "sdk"      → getpay.checkoutPage(init, paymentPageUrl); success/fail URLs serve getpay.returnPage(verifyUrl) (GetPay)
 // persist init.providerRef when present (Khalti pidx, NPS ProcessId, IME TokenId, NEPALPAY validationTraceId, Hamro Pay sessionId)
@@ -89,7 +110,7 @@ Provider extras: `esewa.intentBook/intentVerify/intentCancel`, `khalti.refund`, 
 - Khalti: the endpoint without its trailing slash → 301 → POST body lost; amounts are paisa; lookup returns **HTTP 400** with a valid body for Expired/User canceled; new merchants are capped at NPR 200 until KYC; `a.khalti.com` was superseded by `dev.khalti.com`.
 - Fonepay: `DT` is `MM/DD/YYYY` in **Nepal time**; txnVerification's `auth` HMAC covers the exact JSON bytes.
 - connectIPS: `TXNDATE` is `DD-MM-YYYY`; amounts are paisa; `referenceId` in validatetxn is your **TXNID**; redirect URLs must be registered with NCHL.
-- CyberSource: SA secret = raw bytes, REST secret = base64-decoded; SA is being sunset (migration target 2026-09-30), so new builds use Unified Checkout + JWT through the official SDK.
+- CyberSource: SA secret = raw bytes, REST secret = base64-decoded; Secure Acceptance is past its announced 2026-09-30 migration target (end-of-life dates are set per merchant), so new builds use Unified Checkout + JWT through the official SDK.
 - NPS: the gateway form must be `multipart/form-data`; a failed payment comes back with `code:"0"`, so read `data.Status`.
 - NEPALPAY QR: there's no redirect, so persist `validationTraceId` and poll the report; one QR can show a failed row and then a paid row; `transactionAmount` needs two decimals (`"10.50"`).
 - Hamro Pay: send `Connection: close` (the API kills keep-alive sockets); amounts go out in paisa and come back in rupees; the live gateway host comes from Hamro Pay.
@@ -97,14 +118,14 @@ Provider extras: `esewa.intentBook/intentVerify/intentCancel`, `khalti.refund`, 
 
 ## Files (read only what the task needs)
 
-- [references/architecture.md](references/architecture.md): data model, state machine, return handler, webhooks, reconciliation, security + go-live checklists. **Read before writing any handler or schema.**
+- [references/architecture.md](references/architecture.md): data model, state machine, return handler, webhooks and notifications for every provider (§5), reconciliation, security checklist. **Read before writing any handler or schema.**
 - Read the provider file for each provider you integrate, before writing its code: [esewa](references/esewa.md), [khalti](references/khalti.md), [fonepay](references/fonepay.md), [connectips](references/connectips.md), [cybersource](references/cybersource.md), [nps](references/nps.md), [imepay](references/imepay.md), [nepalpay](references/nepalpay.md), [hamropay](references/hamropay.md), [getpay](references/getpay.md), [others](references/others.md) (HBL, Moru, Prabhu Pay, CellPay, Namaste Pay). Each has endpoints, credentials, fields, signatures + test vectors, status mapping, SDKs and gotchas.
 - [references/web.md](references/web.md): read when wiring routes in Express, Hono/Workers, Next.js, FastAPI, Django, Laravel, Spring Boot or Ktor (includes CSRF exemptions).
 - [references/mobile.md](references/mobile.md): read for Flutter, React Native/Expo, Android or iOS (native SDKs, the universal WebView pattern, deep links).
 - [references/env.md](references/env.md): read when adding env vars or `.env.example`.
-- [references/testing.md](references/testing.md): read when testing or going live (sandbox credentials, test plan, go-live per provider).
-- `scripts/ts/`: adapters (`src/`), 67 offline tests (`npm test`), live sandbox check (`node test/sandbox.ts`), runnable demo (`node examples/server.ts`).
-- `scripts/python/`: adapters (`nepal_payments/`) + 53 tests (`python -m unittest discover -s tests`).
-- `scripts/java/` (132 tests), `scripts/kotlin/` (106 tests): `./gradlew test`, live check `./gradlew sandbox`.
-- `scripts/php/` (90 tests, PHP 8.1–8.5): `composer install && vendor/bin/phpunit`, live check `php tests/sandbox.php`.
-- `scripts/go/` (87 tests): `go test -race ./...`, live check `go run ./cmd/sandbox`.
+- [references/testing.md](references/testing.md): read when testing or going live (sandbox credentials, test plan, and the go-live checklist in §5, which covers every provider).
+- `scripts/ts/`: adapters (`src/`), offline tests (`npm test`), live sandbox check (`node test/sandbox.ts`), runnable demo with every provider wired (`node examples/server.ts`).
+- `scripts/python/`: adapters (`nepal_payments/`) + tests (`python -m unittest discover -s tests`).
+- `scripts/java/`, `scripts/kotlin/`: `./gradlew test`, live check `./gradlew sandbox`.
+- `scripts/php/` (PHP 8.1–8.5): `composer install && vendor/bin/phpunit`, live check `php tests/sandbox.php`.
+- `scripts/go/`: `go test -race ./...`, live check `go run ./cmd/sandbox`.

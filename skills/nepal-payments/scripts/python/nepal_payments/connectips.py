@@ -1,7 +1,8 @@
 """connectIPS (NCHL) e-payment gateway. TOKEN = base64(RSA-SHA256(creditor private key, token string)).
 
-Requires `cryptography` (pip install cryptography). Load the key from the .pfx once:
-    pem = load_pfx_private_key_pem(open("CREDITOR.pfx","rb").read(), os.environ["CONNECTIPS_PFX_PASSWORD"])
+Requires `cryptography` (pip install cryptography). The adapter reads the key as PKCS#8 PEM from
+CONNECTIPS_PRIVATE_KEY_PEM (references/env.md). To convert the creditor .pfx in code instead of with openssl:
+    pem = load_pfx_private_key_pem(open("CREDITOR.pfx", "rb").read(), pfx_password)
 """
 
 from __future__ import annotations

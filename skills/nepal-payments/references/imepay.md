@@ -3,7 +3,7 @@
 **Status**: IME Pay merged with Khalti in July 2025 ("Khalti by IME"); its dev docs now live at `github.com/khalti/imepay-dev-docs`. For new builds use **Khalti** (it reaches the former IME Pay user base). Use this for existing IME Pay merchant accounts, after confirming with the Khalti-by-IME merchant team that web checkout is still open to you.
 
 Source: IME Pay's **official** WooCommerce and WHMCS plugins (no public web-API spec exists). Items from community code only are marked UNVERIFIED.
-Adapters: `scripts/ts/src/imepay.ts`, `scripts/python/nepal_payments/imepay.py`.
+Adapters: `scripts/ts/src/imepay.ts`, plus the matching file in each port (`imepay.py`, `ImePay.java`, `ImePay.kt`, `src/ImePay/`, `imepay.go`).
 
 ## Environments and credentials
 

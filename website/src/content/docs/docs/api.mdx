@@ -111,6 +111,7 @@ Adapters throw `PaymentError` (`PaymentException` in Java, Kotlin and PHP) with 
 | `callback_mismatch` | The callback or status is for a different order |
 | `malformed_callback` | The callback data can't be decoded (HTTP 400) |
 | `network_error` | The provider couldn't be reached after retries |
+| `upstream_error` | The provider kept answering with a 5xx after retries |
 | `unauthorized` | The provider rejected your credentials (401) |
 | `http_<status>` / `<provider>_<code>` | The provider returned an error body |
 

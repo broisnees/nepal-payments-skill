@@ -72,7 +72,8 @@ function transformReference(md, file) {
   }
   body = body.replace(/`(?:references\/)?([a-z]+\.md)`/g, (m, name) => (REFERENCES[name] ? `[\`${name}\`](${urlOf(name)})` : m));
   body = body.replace(/^```gradle$/gm, "```groovy"); // Shiki has no gradle grammar
-  body = body.replace(/`(scripts\/[^`\s]+)`/g, (_m, p) => `[\`${p}\`](${repo}/blob/main/skills/nepal-payments/${p.replace(/\/$/, "")})`);
+  // Placeholder paths such as `scripts/ts/src/<provider>.ts` stay plain code: they have no GitHub page.
+  body = body.replace(/`(scripts\/[^`\s<>]+)`/g, (_m, p) => `[\`${p}\`](${repo}/blob/main/skills/nepal-payments/${p.replace(/\/$/, "")})`);
   return body;
 }
 

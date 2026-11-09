@@ -1162,7 +1162,7 @@ class HamroPayGateway(
 };
 
 // Signature vector from references/hamropay.md section 2: base64(HMAC-SHA512(key, message)).
-// printf 'T1,1000,M,C,K' | openssl dgst -sha512 -hmac abcdefg -binary | base64 -w0
+// printf 'T1,1000,M,C,K' | openssl dgst -sha512 -hmac abcdefg -binary | openssl base64 -A
 export const vectors: { key: string; message: string; signature: string }[] = [
   { key: "abcdefg", message: "T1,1000,M,C,K", signature: "7MhTBtP9MzyiNUg7P/ljNqxHxrUPQSAHhNpAD9bPlacsF2lMj8GAka1pVKD7MSMnNdBLqCwz9SoY4l+2RHdpxA==" },
 ];

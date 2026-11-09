@@ -1,12 +1,12 @@
 ---
-title: "eSewa Payment Gateway Integration: Step by Step in Any Framework"
+title: "eSewa Payment Gateway Integration: Step by Step"
 description: "Build eSewa ePay v2 checkout in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: signed form, verified callback, status API and sandbox."
 label: eSewa
 provider: esewa
 published: 2026-11-05
 order: 10
 stack: true
-stackTitle: "eSewa Payment Gateway Integration in {stack}: Step by Step"
+stackTitle: "eSewa Payment Gateway Integration in {stack}"
 stackDescription: "Integrate eSewa ePay v2 in {stack}: signed form, verified callback, status API, reconciliation and sandbox testing, with code you can run."
 faq:
   - q: "Is uat.esewa.com.np still the eSewa sandbox?"
@@ -183,7 +183,8 @@ Both URLs point to the same route, `/pay/return/<attemptId>`. eSewa's failure re
 | `AMBIGUOUS` | Stuck mid-payment at eSewa; check again later | `pending` |
 | `NOT_FOUND` | Never paid, session expired, or wrong total | `not_found` |
 | `CANCELED` | Canceled or reversed by eSewa | `canceled` |
-| `FULL_REFUND`, `PARTIAL_REFUND` | Refunded through eSewa | `refunded` |
+| `FULL_REFUND` | Refunded in full through eSewa | `refunded` |
+| `PARTIAL_REFUND` | Part of it refunded through eSewa | `partially_refunded` |
 
 Two quirks are handled here. A `+` in the base64 receipt can arrive as a space after query parsing, and eSewa sometimes formats `total_amount` with a thousands separator (`"1,000.0"`). Sources disagree on whether that comma is signed, so the module tries both.
 

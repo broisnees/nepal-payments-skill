@@ -1,12 +1,12 @@
 ---
-title: "CyberSource Payment Gateway Integration in Nepal: Visa and Mastercard in Any Framework"
+title: "CyberSource Payment Gateway in Nepal: Visa and Mastercard"
 description: "Accept Visa and Mastercard in Nepal with CyberSource Secure Acceptance in Express, Laravel, Django, Go, Spring or Ktor: signed form, verified POST, test cards."
 label: CyberSource (cards)
 provider: cybersource
 published: 2026-11-05
 order: 50
 stack: true
-stackTitle: "CyberSource Payment Gateway Integration in {stack}: Step by Step"
+stackTitle: "CyberSource Payment Gateway Integration in {stack}"
 stackDescription: "Take Visa and Mastercard in Nepal with CyberSource Secure Acceptance in {stack}: signed form, verified response POST, reconciliation and test cards."
 faq:
   - q: "Which Nepali banks give out CyberSource credentials?"
@@ -197,6 +197,8 @@ The two override fields are what make the shared routes work. Without them Cyber
 | `DECLINE`, `ERROR` | Declined or rejected | `failed` |
 | `DECLINE`, `ERROR` with reason 150, 151 or 152 | System failure or timeout, the card may still be charged | `pending` |
 | `CANCEL` | The buyer canceled on the hosted page | `canceled` |
+
+The adapters in the skill report reasons 150 to 152 as `unknown`, so a person checks the Business Center before anyone retries. This post counts them as `pending`, which keeps the attempt open in the same way and lets the reconcile job keep asking.
 
 `transaction_id` comes back as the provider reference. It is the id the Business Center shows for the payment.
 

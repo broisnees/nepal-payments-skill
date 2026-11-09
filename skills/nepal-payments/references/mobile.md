@@ -19,8 +19,9 @@ The app holds **no secrets** and **never decides** that a payment succeeded. It 
 | Approach | Use for | Pros | Cons |
 |---|---|---|---|
 | **Native SDK** | eSewa, Khalti | Best UX, app-to-app switching to the wallet | SDK quirks; still must verify on server |
-| **WebView** (in-app) | Fonepay, connectIPS, NPS, IME Pay, CyberSource, or any provider without an SDK | One code path for every provider; you control the return | Some bank 3DS / wallet deep links need extra handling (§8) |
-| **System browser / Custom Tabs / ASWebAuthenticationSession** + deep link | Card payments (3DS), or when WebViews are blocked or unreliable | Real browser: 3DS, password managers and wallet apps all work | Needs universal/app links configured |
+| **WebView** (in-app) | Fonepay, connectIPS, NPS, IME Pay, Hamro Pay, CyberSource, GetPay, or any provider without an SDK | One code path for every provider; you control the return | Some bank 3DS / wallet deep links need extra handling (§8) |
+| **System browser / Custom Tabs / ASWebAuthenticationSession** + deep link | Card payments (3DS: CyberSource, GetPay), or when WebViews are blocked or unreliable |
+| **Show a QR, poll the server** | NEPALPAY QR (and Fonepay Dynamic QR) on a second screen: POS, kiosk, desktop checkout | No redirect to handle at all | The payer needs another device to scan it; on a phone-only checkout offer a wallet or bank provider instead | Real browser: 3DS, password managers and wallet apps all work | Needs universal/app links configured |
 
 Pragmatic default: native SDK for Khalti/eSewa if you want app switching, and the **WebView pattern for everything else** using the same backend endpoints.
 
@@ -211,4 +212,7 @@ async function confirmPayment(attemptId: string): Promise<string> {
 - **Cookies / third-party storage**: 3DS ACS pages sometimes need third-party cookies. On Android enable `CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)`. If problems persist, use the system-browser pattern.
 - **Back button / close**: always confirm with the server when the user leaves the payment screen. "Closed" doesn't mean "not paid".
 - **Don't hardcode sandbox in release builds.** The backend decides the environment; the app only needs the Khalti public key for the SDK, injected per flavor.
+- **GetPay in a WebView: don't stop at GetPay's success URL.** For cards without 3-D Secure the return token sits in the URL `#hash`, which only the page's JavaScript can read. Let `getpay.returnPage()` load and forward the token to your return route; close the WebView only on your own receipt URL, like every other provider. GetPay's card iframe also refuses origins not registered with NCHL, so load your `/start` URL from your registered domain, never a local file or `localhost`.
+- **NEPALPAY QR**: get `qrImage`/`qrString` from your backend (never generate the QR in the app; the token needs the `.pfx`), show it, and poll `GET /payments/:attemptId` every 3-5 s. There is no return URL to intercept.
+- **Hamro Pay** is a form provider: load your `/start` URL in the WebView exactly like eSewa.
 - **Return URL must be reachable from the phone**: use your public HTTPS domain or a tunnel (ngrok / cloudflared) in development, never `localhost`.

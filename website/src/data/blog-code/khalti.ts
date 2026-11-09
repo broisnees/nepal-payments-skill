@@ -63,8 +63,8 @@ const STATUSES: Record<string, PaymentStatus> = {
   pending: "pending", // not final; sandbox payments sometimes stay here
   initiated: "pending", // payment page opened, nothing paid yet
   refunded: "refunded",
-  "partially refunded": "refunded",
-  expired: "failed", // link expired unpaid (HTTP 400)
+  "partially refunded": "partially_refunded",
+  expired: "expired", // link expired unpaid (HTTP 400)
   "user canceled": "canceled", // buyer canceled on Khalti (HTTP 400)
 };
 
@@ -167,8 +167,8 @@ STATUSES = {
     "pending": "pending",  # not final; sandbox payments sometimes stay here
     "initiated": "pending",  # payment page opened, nothing paid yet
     "refunded": "refunded",
-    "partially refunded": "refunded",
-    "expired": "failed",  # link expired unpaid (HTTP 400)
+    "partially refunded": "partially_refunded",
+    "expired": "expired",  # link expired unpaid (HTTP 400)
     "user canceled": "canceled",  # buyer canceled on Khalti (HTTP 400)
 }
 
@@ -283,8 +283,8 @@ final class KhaltiGateway implements Gateway
         'pending' => 'pending', // not final; sandbox payments sometimes stay here
         'initiated' => 'pending', // payment page opened, nothing paid yet
         'refunded' => 'refunded',
-        'partially refunded' => 'refunded',
-        'expired' => 'failed', // link expired unpaid (HTTP 400)
+        'partially refunded' => 'partially_refunded',
+        'expired' => 'expired', // link expired unpaid (HTTP 400)
         'user canceled' => 'canceled', // buyer canceled on Khalti (HTTP 400)
     ];
 
@@ -425,8 +425,8 @@ var khaltiStatuses = map[string]string{
 	"pending":            "pending", // not final; sandbox payments sometimes stay here
 	"initiated":          "pending", // payment page opened, nothing paid yet
 	"refunded":           "refunded",
-	"partially refunded": "refunded",
-	"expired":            "failed",   // link expired unpaid (HTTP 400)
+	"partially refunded": "partially_refunded",
+	"expired":            "expired",   // link expired unpaid (HTTP 400)
 	"user canceled":      "canceled", // buyer canceled on Khalti (HTTP 400)
 }
 
@@ -572,8 +572,8 @@ public final class KhaltiGateway implements Gateway {
         "pending", "pending", // not final; sandbox payments sometimes stay here
         "initiated", "pending", // payment page opened, nothing paid yet
         "refunded", "refunded",
-        "partially refunded", "refunded",
-        "expired", "failed", // link expired unpaid (HTTP 400)
+        "partially refunded", "partially_refunded",
+        "expired", "expired", // link expired unpaid (HTTP 400)
         "user canceled", "canceled"); // buyer canceled on Khalti (HTTP 400)
 
     // Called from the return route (params = query + body) and from the reconcile job (empty params).
@@ -697,8 +697,8 @@ class KhaltiGateway(secretKey: String, private val apiUrl: String) : Gateway {
         "pending" to "pending", // not final; sandbox payments sometimes stay here
         "initiated" to "pending", // payment page opened, nothing paid yet
         "refunded" to "refunded",
-        "partially refunded" to "refunded",
-        "expired" to "failed", // link expired unpaid (HTTP 400)
+        "partially refunded" to "partially_refunded",
+        "expired" to "expired", // link expired unpaid (HTTP 400)
         "user canceled" to "canceled", // buyer canceled on Khalti (HTTP 400)
     )
 

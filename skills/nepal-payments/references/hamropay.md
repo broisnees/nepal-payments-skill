@@ -49,7 +49,7 @@ Test vector (`clientSecret = "abcdefg"`):
 ```
 message   = "T1,1000,M,C,K"
 signature = 7MhTBtP9MzyiNUg7P/ljNqxHxrUPQSAHhNpAD9bPlacsF2lMj8GAka1pVKD7MSMnNdBLqCwz9SoY4l+2RHdpxA==
-# printf 'T1,1000,M,C,K' | openssl dgst -sha512 -hmac abcdefg -binary | base64 -w0
+# printf 'T1,1000,M,C,K' | openssl dgst -sha512 -hmac abcdefg -binary | openssl base64 -A
 ```
 The join has no escaping, so a comma inside a value lets two different tuples share a signature. The adapters refuse signed values that contain commas.
 

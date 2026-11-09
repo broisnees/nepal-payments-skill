@@ -1,12 +1,12 @@
 ---
-title: "NEPALPAY QR Payment Integration: Dynamic QR Step by Step in Any Framework"
+title: "NEPALPAY QR Payment Integration: Dynamic QR Step by Step"
 description: "Build NEPALPAY QR dynamic QR payments in Express, Next.js, Laravel, Django, Go, Spring or Ktor: RSA token, generateQR, polling and the transaction report."
 label: NEPALPAY QR
 provider: nepalpay
 published: 2026-11-06
 order: 80
 stack: true
-stackTitle: "NEPALPAY QR Payment Integration in {stack}: Step by Step"
+stackTitle: "NEPALPAY QR Payment Integration in {stack}"
 stackDescription: "Integrate NEPALPAY QR dynamic QR in {stack}: RSA-signed token, generateQR, a QR page that polls, the transaction report and reconciliation."
 faq:
   - q: "What is NEPALPAY QR?"
@@ -168,7 +168,7 @@ NCHL publishes no test key, but RSA PKCS#1 v1.5 is deterministic: the same key a
 
 ```bash
 printf '%s' '00002501,2501ELFDRY2,5411,524,100.00,0f3a9c2e7b1d4a6c8e5f,npiuser' \
-  | openssl dgst -sha256 -sign test.key.pem | base64 -w0
+  | openssl dgst -sha256 -sign test.key.pem | openssl base64 -A
 ```
 
 <details class="full-file">
@@ -232,7 +232,7 @@ Anything else (`E003 INVALID TOKEN`, `E010 RECORD NOT FOUND:- Merchant not found
 Two choices here differ from the adapters in my project, and they're deliberate for a page that polls:
 
 - **A failed scan is `not_found`, not `failed`.** Marking the attempt failed would close it, and the buyer's second scan on the same QR would then pay for an order you've already given up on. Left open, the attempt either turns paid or the reconcile job expires it after an hour.
-- **A debit without a credit is `pending`.** The adapters report it as `unknown` for a person to review. The shared `settle` here has no `unknown`, so `pending` keeps it open, and the reconcile job flags it for review after three days.
+- **A debit without a credit is `pending`.** The adapters report it as `unknown` for a person to review. `pending` keeps the attempt open the same way, and here the reconcile job also flags it for review after three days.
 
 `amount` comes back in rupees as a number (`100.0`), so the module converts it to paisa before comparing. `DEFER` means NCHL settles to your account later; for the payment itself it's final. `RFND` rows are refunds, which your acquiring bank starts, and they never make an attempt paid.
 

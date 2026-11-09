@@ -1,7 +1,7 @@
 # Fonepay (web payment + Dynamic QR)
 
 Sources: official "Technical Specification Document (Fonepay Web Integration) v2.0" (Sept 2020), the Dynamic QR spec v1.1 (2024, community transcription matched by two independent codebases), official Java samples, and live dev-gateway tests (2026-11).
-Adapters: `scripts/ts/src/fonepay.ts`, `scripts/python/nepal_payments/fonepay.py`.
+Adapters: `scripts/ts/src/fonepay.ts`, plus the matching file in each port (`fonepay.py`, `Fonepay.java`, `Fonepay.kt`, `src/Fonepay/`, `fonepay.go`).
 
 ## Contents
 1. Environments and credentials

@@ -1,6 +1,6 @@
 {
   "name": "nepal-payments-skill",
-  "description": "Agent skill for integrating Nepali payment gateways: eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay.",
+  "description": "Agent skill for integrating Nepali payment gateways: eSewa, Khalti, Fonepay, connectIPS, NPS, CyberSource, NEPALPAY QR, Hamro Pay, GetPay and IME Pay.",
   "owner": {
     "name": "Nischal Dahal"
   },
@@ -8,10 +8,23 @@
     {
       "name": "nepal-payments",
       "source": "./",
-      "description": "Production-ready eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS and IME Pay integrations with tested TypeScript and Python adapters.",
+      "description": "Production-ready integrations for ten Nepali payment gateways (eSewa, Khalti, Fonepay, connectIPS, NPS, CyberSource, NEPALPAY QR, Hamro Pay, GetPay, IME Pay) with tested adapters for TypeScript, Python, Java, Kotlin, PHP and Go.",
       "version": "1.0.0",
       "license": "MIT",
-      "keywords": ["nepal", "payments", "esewa", "khalti", "fonepay", "connectips", "cybersource", "nps", "imepay"]
+      "keywords": [
+        "nepal",
+        "payments",
+        "esewa",
+        "khalti",
+        "fonepay",
+        "connectips",
+        "cybersource",
+        "nps",
+        "imepay",
+        "nepalpay",
+        "hamropay",
+        "getpay"
+      ]
     }
   ]
 }

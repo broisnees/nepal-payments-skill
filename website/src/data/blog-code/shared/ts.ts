@@ -23,7 +23,9 @@ export const types: Block = { file: "payments.ts", lang: "ts", code: `// Types e
 // answer to an attempt. Same file for every gateway and every framework.
 import { fulfil, setProviderRef, transition, type Attempt } from "./store";
 
-export type PaymentStatus = "paid" | "pending" | "failed" | "canceled" | "refunded" | "not_found";
+export type PaymentStatus =
+  | "paid" | "pending" | "failed" | "canceled" | "expired"
+  | "refunded" | "partially_refunded" | "not_found" | "unknown";
 
 // What startPayment hands back: send the buyer to a URL, or auto-POST a form.
 export type Start =
@@ -65,7 +67,7 @@ const OPEN = ["initiated", "pending"] as const;
 // attempt out of an open state, so fulfil() runs once.
 export function settle(attempt: Attempt, outcome: Outcome): void {
   const s = outcome.status;
-  if (s === "paid" || s === "failed" || s === "canceled") {
+  if (s === "paid" || s === "failed" || s === "canceled" || s === "expired") {
     if (transition(attempt.id, [...OPEN], s) && s === "paid") {
       // Keep the gateway's transaction id (refunds, support). A ref saved at start
       // (Khalti pidx, IME TokenId, NPS ProcessId) stays: confirm looks the payment up with it.
@@ -75,7 +77,9 @@ export function settle(attempt: Attempt, outcome: Outcome): void {
   } else if (s === "pending") {
     transition(attempt.id, ["initiated"], "pending");
   }
-  // not_found: leave it open. The reconcile job expires it after an hour.
+  // not_found and unknown: leave it open.
+  // The reconcile job re-checks it and expires a not_found after an hour; an unknown
+  // status needs a person. refunded and partially_refunded come after paid: nothing to do.
 }
 
 export function escapeHtml(s: string): string {
