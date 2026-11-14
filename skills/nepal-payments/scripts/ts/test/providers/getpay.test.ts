@@ -36,6 +36,14 @@ describe("getpay", () => {
     assert.equal(getPayDecodeToken(btoa(JSON.stringify({ id }))), null);
   });
 
+  test("token whose trailing '+' a query parser turned into a space still decodes", () => {
+    // btoa("ab:cd~") is "YWI6Y2R+": six bytes, no padding, so the "+" is the last character.
+    const raw = btoa("ab:cd~");
+    assert.ok(raw.endsWith("+"));
+    const mangled = raw.replace(/\+/g, " ");
+    assert.deepEqual(getPayDecodeToken(mangled), { id: "ab", oprSecret: "cd~" });
+  });
+
   test("initiate: SDK options with a numeric price, clientRequestId and same-origin callbacks", async () => {
     const r = await g.initiate({
       orderId: "P1",

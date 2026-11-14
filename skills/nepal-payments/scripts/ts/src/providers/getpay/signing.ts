@@ -25,7 +25,8 @@ function splitColonToken(text: string): { id: string; oprSecret: string } | null
 export function getPayDecodeToken(token: string): { id: string; oprSecret: string } | null {
   let text: string;
   try {
-    text = new TextDecoder().decode(fromBase64(token.trim().replace(/ /g, "+")));
+    // fromBase64 turns spaces back into "+" before trimming, so pass the token untouched.
+    text = new TextDecoder().decode(fromBase64(token));
   } catch {
     return null;
   }

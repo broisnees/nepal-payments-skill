@@ -96,7 +96,8 @@ func GetPayOprSecret(oprKey, transactionID string) string {
 // GetPayDecodeToken decodes the return token. GetPay sends base64 JSON {id, oprSecret}; one integration
 // reports "id:oprSecret". ok is false when neither form fits.
 func GetPayDecodeToken(token string) (t GetPayToken, ok bool) {
-	b, err := FromBase64(strings.ReplaceAll(jsTrim(token), " ", "+"))
+	// FromBase64 turns spaces back into "+" before trimming, so pass the token untouched.
+	b, err := FromBase64(token)
 	if err != nil {
 		return GetPayToken{}, false
 	}
