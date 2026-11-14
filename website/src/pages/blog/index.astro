@@ -2,7 +2,6 @@
 import Landing from "../../layouts/Landing.astro";
 import SiteNav from "../../components/SiteNav.astro";
 import SiteFooter from "../../components/SiteFooter.astro";
-import Icon from "../../components/Icon.astro";
 import { getPosts } from "../../data/blog";
 import { SITE_NAME } from "../../data/site";
 import "../../styles/blog.css";
@@ -30,7 +29,7 @@ const jsonLd = [
   <main id="main" class="blog-index container">
     <header class="blog-index-head">
       <h1>{title}</h1>
-      <p>
+      <p class="lede">
         One guide per gateway. Each builds a working checkout in the framework you pick, explains every request and
         signature, and ends with the sandbox logins and error codes you will need.
       </p>
@@ -40,10 +39,9 @@ const jsonLd = [
         posts.map((p) => (
           <li>
             <a href={`/blog/${p.id}/`}>
-              {p.data.provider ? <span class="guide-logo"><GatewayLogo slug={p.data.provider} name={p.data.label} height={18} /></span> : <span class="mono guide-label">{p.data.label}</span>}
+              {p.data.provider ? <span class="guide-logo"><GatewayLogo slug={p.data.provider} name={p.data.label} height={18} /></span> : <span class="guide-label">{p.data.label}</span>}
               <span class="guide-title">{p.data.title}</span>
               <span class="guide-desc">{p.data.description}</span>
-              <span class="guide-more">Read the guide<Icon name="chevron" size={14} /></span>
             </a>
           </li>
         ))

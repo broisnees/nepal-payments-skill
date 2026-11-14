@@ -1,5 +1,7 @@
-/* Starlight theme matching the landing page: Inter, ink accent, square corners, hairline borders. */
+/* Starlight theme matching the landing page: Inter, ink accent, square corners, hairline borders. The grays map
+   onto landing.css roles: gray-2/3 = muted text, gray-4 = subtle text (>= 4.5:1), gray-5 = line, gray-6 = hover. */
 :root {
+  --brand: #c8102e;
   --sl-font: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --sl-font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
   --sl-content-width: 46rem;
@@ -13,7 +15,7 @@
   --sl-color-gray-1: #ededed;
   --sl-color-gray-2: #c7c7c7;
   --sl-color-gray-3: #9a9a9a;
-  --sl-color-gray-4: #6b6b6b;
+  --sl-color-gray-4: #8f8f8f;
   --sl-color-gray-5: #333333;
   --sl-color-gray-6: #1a1a1a;
   --sl-color-black: #0a0a0a;
@@ -27,8 +29,8 @@
   --sl-color-gray-1: #1f1f1f;
   --sl-color-gray-2: #3d3d3d;
   --sl-color-gray-3: #5c5c5c;
-  --sl-color-gray-4: #8a8a8a;
-  --sl-color-gray-5: #e3e3e3;
+  --sl-color-gray-4: #6e6e6e;
+  --sl-color-gray-5: #e8e8e8;
   --sl-color-gray-6: #f5f5f5;
   --sl-color-gray-7: #fafafa;
   --sl-color-black: #ffffff;
@@ -84,18 +86,13 @@ select {
   font-size: 0.85em;
 }
 
-/* sidebar: current page as an ink block */
+/* Sidebar: the current page is a quiet selected row with the brand bar, like the blog's table of contents. */
 .sidebar-content a[aria-current="page"],
 .sidebar-content a[aria-current="page"]:hover {
-  background: var(--sl-color-white);
-  color: var(--sl-color-black);
-  font-weight: 450;
-}
-
-.sidebar-content .large {
-  font-weight: 500;
-  font-size: var(--sl-text-sm);
+  background: var(--sl-color-gray-6);
   color: var(--sl-color-white);
+  font-weight: 500;
+  box-shadow: inset 2px 0 0 var(--brand);
 }
 
 /* links: ink with a quiet underline */
@@ -127,9 +124,12 @@ select {
   border-inline-start: 1px solid var(--sl-color-gray-5);
 }
 
+/* Provider cards lead with the gateway's logo. */
 .np-card {
-  display: block;
-  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem 1.25rem 1.25rem;
   border-inline-end: 1px solid var(--sl-color-gray-5);
   border-bottom: 1px solid var(--sl-color-gray-5);
   text-decoration: none;
@@ -143,8 +143,10 @@ a.np-card:hover {
 }
 
 .np-card strong {
-  display: block;
-  margin-bottom: 0.2rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
   color: var(--sl-color-white);
   font-weight: 500;
 }
@@ -345,17 +347,23 @@ html {
   font-size: var(--sl-text-sm);
 }
 
+/* Nested group headings (each provider) read like the links beside them. */
+.sidebar-content .large {
+  font-weight: 500;
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-white);
+}
+
 /* Top-level group headings read as section labels, not links. */
 .sidebar-content > ul > li > details > summary .large,
 .sidebar-content > ul > li > a.large {
-  font: 500 12px var(--sl-font-mono, ui-monospace, monospace);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: var(--sl-text-xs);
+  font-weight: 500;
   color: var(--sl-color-gray-3);
 }
 
 .sidebar-content > ul > li + li {
-  margin-top: 0.35rem;
+  margin-top: 0.5rem;
 }
 
 .sidebar-content details summary {
@@ -366,34 +374,16 @@ html {
   color: var(--sl-color-white);
 }
 
-/* Provider cards lead with the gateway's logo. */
-.np-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 1.1rem 1.2rem 1.2rem;
-  transition-property: background-color, border-color;
-}
-
 .np-card-logo {
   display: flex;
   align-items: center;
   height: 32px;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.5rem;
 }
 
-.np-card strong {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0;
-}
-
-.np-card-kind {
-  font: 400 11px var(--sl-font-mono, ui-monospace, monospace);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.np-card .np-card-kind {
+  font-size: var(--sl-text-xs);
+  font-weight: 400;
   color: var(--sl-color-gray-3);
 }
 

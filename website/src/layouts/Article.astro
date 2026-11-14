@@ -112,7 +112,10 @@ const jsonLd = [
               <h2 id="faq">FAQ</h2>
               {faq.map((f) => (
                 <details>
-                  <summary>{f.q}</summary>
+                  <summary>
+                    <span>{f.q}</span>
+                    <span class="faq-icon" aria-hidden="true"><Icon name="plus" class="i-plus" /><Icon name="minus" class="i-minus" /></span>
+                  </summary>
                   <p>{f.a}</p>
                 </details>
               ))}
@@ -154,7 +157,7 @@ const jsonLd = [
               {related.map((p) => (
                 <li>
                   <a href={`/blog/${p.id}/`}>
-                    {p.data.provider ? <span class="guide-logo"><GatewayLogo slug={p.data.provider} name={p.data.label} height={18} /></span> : <span class="mono guide-label">{p.data.label}</span>}
+                    {p.data.provider ? <span class="guide-logo"><GatewayLogo slug={p.data.provider} name={p.data.label} height={18} /></span> : <span class="guide-label">{p.data.label}</span>}
                     <span class="guide-title">{p.data.title}</span>
                   </a>
                 </li>

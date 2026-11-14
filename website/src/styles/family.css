@@ -18,33 +18,38 @@
 }
 
 .footer-title {
-  font-size: 1.6rem;
+  font-size: 18px;
+  font-weight: 500;
 }
 
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-block-start: 24px;
+  gap: 8px;
+  margin-block-start: 16px;
 }
 
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 40px;
-  padding-inline: 14px;
+  height: 36px;
+  padding-inline: 12px;
   border: 1px solid var(--line, var(--sl-color-gray-5));
-  background: var(--surface-2, var(--sl-color-gray-6));
-  font-size: 14.5px;
+  font-size: 14px;
   text-decoration: none;
   transition-property: border-color, background-color;
   transition-duration: 150ms;
 }
 
-.chip:hover {
-  border-color: var(--line-strong, var(--sl-color-gray-4));
-  background: var(--bg, var(--sl-color-black));
+@media (hover: hover) and (pointer: fine) {
+  .chip:hover {
+    border-color: var(--line-strong, var(--sl-color-gray-4));
+    background: var(--hover, var(--sl-color-gray-6));
+  }
+  .footer-cols a:hover {
+    color: var(--ink, var(--sl-color-white));
+  }
 }
 
 .footer-cols {
@@ -61,26 +66,21 @@
 
 .footer-cols div {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   align-content: start;
-  font-size: 14.5px;
+  font-size: 14px;
 }
 
 .footer-cols p {
-  font: 12px var(--mono, var(--sl-font-mono));
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--subtle, var(--sl-color-gray-4));
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink, var(--sl-color-white));
   margin-block-end: 4px;
 }
 
 .footer-cols a {
   text-decoration: none;
   color: var(--muted, var(--sl-color-gray-3));
-}
-
-.footer-cols a:hover {
-  color: var(--ink, var(--sl-color-white));
 }
 
 .footer-bottom {
@@ -91,7 +91,7 @@
   margin-block-start: 64px;
   padding-block-start: 24px;
   border-block-start: 1px solid var(--line, var(--sl-color-gray-5));
-  font-size: 13.5px;
+  font-size: 13px;
   color: var(--muted, var(--sl-color-gray-3));
 }
 
