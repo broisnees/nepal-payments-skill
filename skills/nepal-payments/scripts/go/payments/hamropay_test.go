@@ -1,6 +1,6 @@
 package payments
 
-// Ported from scripts/ts/test/adapters.test.ts: describe("hamropay").
+// Ported from scripts/ts/test/providers/hamropay.test.ts.
 
 import (
 	"bufio"

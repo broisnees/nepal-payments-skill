@@ -24,7 +24,7 @@ use NepalPayments\ProviderId;
 use NepalPayments\VerifyInput;
 use PHPUnit\Framework\TestCase;
 
-/** TODO.md correctness list; mirrors the "regressions" block in scripts/ts/test/adapters.test.ts. */
+/** TODO.md correctness list; mirrors the regression tests in scripts/ts/test/ (spread across core/ and providers/). */
 final class RegressionsTest extends TestCase
 {
     /** @param array<string, mixed>|string $body */

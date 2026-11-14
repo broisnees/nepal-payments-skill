@@ -3,7 +3,7 @@
 Hamro Patro's wallet (NRB-licensed PSP "Lenden Sewa", wallet name Hamro Pay). Redirect checkout like eSewa: create a session server-side, POST a signed form to the gateway, the payer approves in Hamro Pay, then confirm with a status call. Hamro Pay accepts **Rs 10 to Rs 50,000** per transaction, and only from KYC-verified users.
 
 Official docs: https://hamropay.com.np/checkout/developer/reference/ (API), https://hamropay.com.np/checkout/developer/quickstart (UAT setup), and the official Node sample at https://github.com/hamropatro/sample-store. Checked 2026-11 against all three plus live host probes.
-Adapters: `scripts/ts/src/hamropay.ts`, plus the matching file in each port (`hamropay.py`, `HamroPay.java`, `HamroPay.kt`, `src/HamroPay/`, `hamropay.go`).
+Adapters: `scripts/ts/src/providers/hamropay/`, plus the matching file in each port (`providers/hamropay/` in Python, `HamroPay.java`, `HamroPay.kt`, `src/HamroPay/`, `hamropay.go`).
 
 ## Contents
 1. Environments and credentials

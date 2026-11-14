@@ -15,7 +15,7 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Port of the "imepay" describe block of adapters.test.ts. */
+/** Port of scripts/ts/test/providers/imepay.test.ts. */
 class ImePayTest {
     private final MockTransport http = new MockTransport();
     private final ImePay i = new ImePay(ImePay.Config.of(Environment.SANDBOX, "MC", "u", "p", "MOD"), http);

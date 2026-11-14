@@ -1,6 +1,6 @@
 package payments
 
-// Ported from scripts/ts/test/adapters.test.ts — describe("esewa").
+// Ported from scripts/ts/test/providers/esewa.test.ts.
 
 import (
 	"context"

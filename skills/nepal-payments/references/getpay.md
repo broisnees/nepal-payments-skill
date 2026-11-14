@@ -3,7 +3,7 @@
 GetPay is the card checkout NCHL hosts for banks: Visa and Mastercard (UnionPay announced), domestic and international cards, with 3-D Secure (CyberSource underneath). NMB Bank (Dec 2025) and Global IME Bank (May 2025) launched their gateways on it, and NCHL reports 14 banks on its hosted gateway. It's the card route for merchants whose bank doesn't offer CyberSource Secure Acceptance directly.
 
 Official docs: https://getpay.global/web-integration/ and https://getpay.global/web-checkout-integration-test/ (operator GetPay; React/Next, Flutter and WooCommerce pages on the same site). The docs cover the browser side well and the server side thinly, so the server details below come from the docs plus three independent integrations (`neputertech/getpay-gateway`, a production Laravel shop, a Laravel booking API) and live probes of both hosts in 2026-11.
-Adapters: `scripts/ts/src/getpay.ts`, plus the matching file in each port (`getpay.py`, `GetPay.java`, `GetPay.kt`, `src/GetPay/`, `getpay.go`).
+Adapters: `scripts/ts/src/providers/getpay/`, plus the matching file in each port (`providers/getpay/` in Python, `GetPay.java`, `GetPay.kt`, `src/GetPay/`, `getpay.go`).
 
 ## Contents
 1. Environments and credentials

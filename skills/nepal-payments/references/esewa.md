@@ -1,7 +1,7 @@
 # eSewa (ePay v2 + Intent)
 
 Official docs: https://developer.esewa.com.np · Verified 2026-11 against the docs' raw pages, the official WordPress plugin, and live sandbox calls.
-Adapters: `scripts/ts/src/esewa.ts`, `scripts/python/nepal_payments/esewa.py`.
+Adapters: `scripts/ts/src/providers/esewa/`, `scripts/python/nepal_payments/providers/esewa/`.
 
 ## Contents
 1. Which flow

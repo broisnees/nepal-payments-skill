@@ -1,6 +1,6 @@
 package payments
 
-// Ported from scripts/ts/test/adapters.test.ts — describe("core").
+// Ported from scripts/ts/test/core/.
 
 import (
 	"bytes"

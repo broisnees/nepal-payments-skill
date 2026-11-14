@@ -1,7 +1,7 @@
 # Khalti (KPG-2 / Web Checkout)
 
 Official docs: https://docs.khalti.com/khalti-epayment/ · Verified 2026-11 against the docs, SDK sources and live sandbox calls.
-Adapters: `scripts/ts/src/khalti.ts`, `scripts/python/nepal_payments/khalti.py`.
+Adapters: `scripts/ts/src/providers/khalti/`, `scripts/python/nepal_payments/providers/khalti/`.
 
 ## Contents
 1. Environments and credentials

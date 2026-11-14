@@ -1,5 +1,5 @@
 /*
- * HTTP behind a pluggable transport. The retry/timeout/JSON policy (TS core.ts `http()`) lives in [Http] and applies
+ * HTTP behind a pluggable transport. The retry/timeout/JSON policy (TS core/http.ts `http()`) lives in [Http] and applies
  * to every transport; a transport only performs ONE exchange and must enforce [TransportRequest.timeout].
  *
  * Plug Ktor client, OkHttp, Spring WebClient... by implementing [HttpTransport]. The default is [JdkHttpTransport]

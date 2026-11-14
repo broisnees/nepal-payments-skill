@@ -1,5 +1,5 @@
 /*
- * IME Pay web checkout. Port of scripts/ts/src/imepay.ts (source: IME Pay's official WooCommerce + WHMCS plugins).
+ * IME Pay web checkout. Port of scripts/ts/src/providers/imepay/ (source: IME Pay's official WooCommerce + WHMCS plugins).
  * IME Pay merged into Khalti ("Khalti by IME", July 2025); prefer Khalti for new builds.
  *
  * Auth: Basic base64(username:password) + header `Module: base64(moduleName)`. No HMAC; callbacks are UNSIGNED,

@@ -248,7 +248,7 @@ export interface GatewayModule {
   confirmPayment?(input: { attemptId: string; amountPaisa: number; providerRef?: string | null; params: Record<string, string> }): Promise<unknown>;
 }
 
-/** Structural shape of a skill adapter (skills/nepal-payments/scripts/ts/src/core.ts PaymentAdapter). */
+/** Structural shape of a skill adapter (skills/nepal-payments/scripts/ts/src/core/types.ts PaymentAdapter). */
 export interface AdapterLike {
   readonly id: string;
   initiate(input: { orderId: string; amountPaisa: number }): Promise<unknown>;

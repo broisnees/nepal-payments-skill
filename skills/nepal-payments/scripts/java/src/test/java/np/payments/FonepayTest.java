@@ -19,7 +19,7 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Port of the "fonepay" describe block of adapters.test.ts, plus behaviour cases. */
+/** Port of scripts/ts/test/providers/fonepay.test.ts, plus behaviour cases. */
 class FonepayTest {
     private static final String SECRET = "a7e3512f5032480a83137793cb2021dc"; // public dev sample (spec v2.0)
     private static final List<String> DV_FIELDS = List.of("PRN", "PID", "PS", "RC", "UID", "BC", "INI", "P_AMT", "R_AMT");

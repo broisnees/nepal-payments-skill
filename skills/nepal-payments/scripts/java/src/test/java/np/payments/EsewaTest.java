@@ -17,7 +17,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Port of the "esewa" describe block of adapters.test.ts, plus Python-only and behaviour cases. */
+/** Port of scripts/ts/test/providers/esewa.test.ts, plus Python-only and behaviour cases. */
 class EsewaTest {
     private final MockTransport http = new MockTransport();
     private final Esewa e = new Esewa(Esewa.Config.sandbox(), http);

@@ -35,7 +35,7 @@ GET  /payments/:attemptId                           -> {status, amountPaisa}   (
 POST /payments/:attemptId/verify                    -> re-runs adapter.verify() and the conditional update; returns status
 ```
 
-`/start` is what makes the WebView approach universal: eSewa, connectIPS, Fonepay and CyberSource need a form POST or a signed redirect, so the server renders `renderAutoSubmitForm()` (from `core.ts`) or issues a 302, and the app just loads one URL. The secret never leaves the server.
+`/start` is what makes the WebView approach universal: eSewa, connectIPS, Fonepay and CyberSource need a form POST or a signed redirect, so the server renders `renderAutoSubmitForm()` (from `core/html.ts`) or issues a 302, and the app just loads one URL. The secret never leaves the server.
 
 The `/payments/done` URL is the app's **finish line**: the WebView intercepts it, or the OS opens the app through an app link.
 

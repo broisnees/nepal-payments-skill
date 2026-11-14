@@ -1,6 +1,6 @@
 package payments
 
-// Ported from scripts/ts/test/adapters.test.ts: describe("nepalpay").
+// Ported from scripts/ts/test/providers/nepalpay.test.ts.
 
 import (
 	"context"

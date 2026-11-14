@@ -1,6 +1,6 @@
 package payments
 
-// Ported from scripts/ts/test/adapters.test.ts — describe("khalti").
+// Ported from scripts/ts/test/providers/khalti.test.ts.
 
 import (
 	"context"

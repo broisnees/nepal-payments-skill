@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { esewa as esewaBlog } from "../../../website/src/data/blog-code/esewa.ts";
 import { store, types as typesBlock } from "../../../website/src/data/blog-code/shared/ts.ts";
-import { ESEWA_SANDBOX, esewa as esewaAdapter } from "../../../skills/nepal-payments/scripts/ts/src/esewa.ts";
+import { ESEWA_SANDBOX, esewa as esewaAdapter } from "../../../skills/nepal-payments/scripts/ts/src/index.ts";
 import { createPaynp, type Paynp } from "../src/index.ts";
 import { TEST_KEY, byTime, startIngest, type MockIngest } from "./ingest.ts";
 

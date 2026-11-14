@@ -10,7 +10,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** TODO.md correctness list; mirrors the "regressions" block in scripts/ts/test/adapters.test.ts. */
+/** TODO.md correctness list; mirrors the regression tests in scripts/ts/test/ (spread across core/ and providers/). */
 class RegressionsTest {
     private val mock = MockTransport()
     private val e = Esewa(EsewaSandbox.config(), mock)

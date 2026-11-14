@@ -29,7 +29,7 @@ export const providers = [
 ] as const;
 
 /**
- * The four shapes initiate() returns (InitiateResult in scripts/ts/src/core.ts). `checkout` on each provider is the
+ * The four shapes initiate() returns (InitiateResult in scripts/ts/src/core/types.ts). `checkout` on each provider is the
  * kind its adapter's initiate() returns.
  */
 export const checkoutKinds = [
@@ -40,7 +40,7 @@ export const checkoutKinds = [
 ] as const;
 
 export const languages = [
-  { name: "TypeScript", runtime: "Node 22.18+, Bun, Deno, Workers, Next.js edge", deps: "Zero dependencies", tests: 67, path: "scripts/ts/src/", test: "npm test" },
+  { name: "TypeScript", runtime: "Node 22.18+, Bun, Deno, Workers, Next.js edge", deps: "Zero dependencies", tests: 73, path: "scripts/ts/src/", test: "npm test" },
   { name: "Python", runtime: "Python 3.10+", deps: "Stdlib (cryptography for connectIPS)", tests: 53, path: "scripts/python/nepal_payments/", test: "python -m unittest discover -s tests" },
   { name: "Java", runtime: "JDK 17+ (Spring Boot, Quarkus)", deps: "No dependencies", tests: 132, path: "scripts/java/src/main/java/np/payments/", test: "./gradlew test" },
   { name: "Kotlin", runtime: "JDK 17+ (Ktor, Spring), suspend API", deps: "kotlin-stdlib only", tests: 106, path: "scripts/kotlin/src/main/kotlin/np/payments/", test: "./gradlew test" },

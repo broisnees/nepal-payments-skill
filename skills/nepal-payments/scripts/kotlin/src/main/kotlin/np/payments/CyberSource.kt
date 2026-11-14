@@ -1,6 +1,6 @@
 /*
  * CyberSource Secure Acceptance Hosted Checkout — the card gateway most Nepali banks provision.
- * Port of scripts/ts/src/cybersource.ts. Secure Acceptance is being sunset in favour of Unified Checkout
+ * Port of scripts/ts/src/providers/cybersource/. Secure Acceptance is being sunset in favour of Unified Checkout
  * (see references/cybersource.md); it still works.
  *
  * Signature: base64(HMAC-SHA256(secret_key as RAW UTF-8, "f1=v1,f2=v2,...")) over `signed_field_names` order.

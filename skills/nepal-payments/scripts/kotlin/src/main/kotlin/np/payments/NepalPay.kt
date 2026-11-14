@@ -1,6 +1,6 @@
 /*
  * NEPALPAY QR (NCHL) merchant dynamic QR: https://doc.connectips.com/docs/NepalPAY-QR/Merchant-QR-generation/introduction
- * Port of scripts/ts/src/nepalpay.ts. Onboarding via your bank (or businesssupport@nchl.com.np) -> acquirerId,
+ * Port of scripts/ts/src/providers/nepalpay/. Onboarding via your bank (or businesssupport@nchl.com.np) -> acquirerId,
  * merchantId, MCC, NPI username/password, and the signing .pfx (NPI.pfx in UAT).
  *
  * Flow: server signs token (RSA-SHA256) -> POST /qr/generateQR -> show qrString / qrImage -> customer scans with any

@@ -1,6 +1,6 @@
 /*
  * Hamro Pay Checkout (Hamro Patro's wallet): https://hamropay.com.np/checkout/developer/reference/
- * Port of scripts/ts/src/hamropay.ts. Credentials: UAT merchant portal https://pay-sandbox.hamropatro.com (signup OTP
+ * Port of scripts/ts/src/providers/hamropay/. Credentials: UAT merchant portal https://pay-sandbox.hamropatro.com (signup OTP
  * 000000) -> Client Credentials: merchantId, Client-Id, Client-API-Key, client secret; Configuration -> Webhook gives
  * the webhook signing secret.
  *

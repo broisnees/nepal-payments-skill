@@ -1,7 +1,7 @@
 # connectIPS (NCHL) e-payment gateway
 
 Official docs: https://doc.connectips.com/docs/connectIPS-Gateway/merchant-interface (heavy WAF; read slowly). Verified 2026-11 against the docs, three community SDKs, and live endpoint probes.
-Adapters: `scripts/ts/src/connectips.ts`, `scripts/python/nepal_payments/connectips.py`.
+Adapters: `scripts/ts/src/providers/connectips/`, `scripts/python/nepal_payments/providers/connectips/`.
 
 ## Contents
 1. Environments and onboarding

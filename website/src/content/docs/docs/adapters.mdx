@@ -12,7 +12,7 @@ Each language has the same shape: build the configured providers from environmen
 
 | Language | Copy | Notes |
 |---|---|---|
-| TypeScript | `scripts/ts/src/` | Keep `core.ts`, `index.ts` and the providers you need. Files import each other with `.ts` extensions; rewrite to `.js` for NodeNext or extensionless for bundlers if your tsconfig lacks `allowImportingTsExtensions`. |
+| TypeScript | `scripts/ts/src/` | Keep `core/`, `index.ts` and the `providers/<id>/` folders you need. Files import each other with `.ts` extensions; rewrite to `.js` for NodeNext or extensionless for bundlers if your tsconfig lacks `allowImportingTsExtensions`. |
 | Python | `scripts/python/nepal_payments/` | Stdlib only. Add `cryptography` for connectIPS. |
 | Java | `scripts/java/src/main/java/np/payments/` | JDK 17+, no dependencies, blocking and thread-safe. |
 | Kotlin | `scripts/kotlin/src/main/kotlin/np/payments/` | kotlin-stdlib only, `suspend` API. Server side only, never inside an Android app. |

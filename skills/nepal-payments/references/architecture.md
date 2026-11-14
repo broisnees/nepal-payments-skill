@@ -76,7 +76,7 @@ initiated ──► pending ──► paid ──► refunded | partially_refund
 - `paid` is terminal for automation. Never move it back to `pending` or `failed` because a later check returned something odd; alert a human instead.
 - A "paid" with an amount that differs from yours, **or with no amount at all**, goes to `unknown` with `review_required = true`. Never fulfil it automatically.
 
-`decideTransition()` in `scripts/ts/src/core.ts` (`decide_transition()` in Python) implements exactly these rules and is unit-tested. Use it rather than re-deriving them.
+`decideTransition()` in `scripts/ts/src/core/state-machine.ts` (`decide_transition()` in Python) implements exactly these rules and is unit-tested. Use it rather than re-deriving them.
 
 ## 3. The flow
 
@@ -105,7 +105,7 @@ The amount always comes from **your database**, never from the client request.
 Every provider handler has the same shape. TypeScript with any SQL client:
 
 ```ts
-import { decideTransition } from "./payments/index.ts"; // pure, unit-tested state machine (core.ts)
+import { decideTransition } from "./payments/index.ts"; // pure, unit-tested state machine (core/state-machine.ts)
 
 const SESSION_WINDOW_MS = 60 * 60_000; // longest provider session (Khalti pidx ~60 min, eSewa ~50 min)
 

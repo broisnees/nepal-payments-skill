@@ -19,7 +19,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
-/** TODO.md correctness list; mirrors the "regressions" block in scripts/ts/test/adapters.test.ts. */
+/** TODO.md correctness list; mirrors the regression tests in scripts/ts/test/ (spread across core/ and providers/). */
 class RegressionsTest {
     private final MockTransport http = new MockTransport();
     private final Esewa e = new Esewa(Esewa.Config.sandbox(), http);

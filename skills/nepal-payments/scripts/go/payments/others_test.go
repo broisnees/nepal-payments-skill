@@ -1,6 +1,6 @@
 package payments
 
-// Ported from scripts/ts/test/adapters.test.ts — describe("connectips" | "cybersource" | "nps" | "imepay").
+// Ported from scripts/ts/test/providers/ (connectips, cybersource, nps, imepay).
 
 import (
 	"context"

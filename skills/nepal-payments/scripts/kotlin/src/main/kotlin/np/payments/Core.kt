@@ -1,5 +1,5 @@
 /*
- * Shared types for every provider adapter. Port of scripts/ts/src/core.ts.
+ * Shared types for every provider adapter. Port of scripts/ts/src/core/.
  *
  * SERVER-SIDE ONLY. These classes hold merchant secrets; never ship them inside an Android/iOS app.
  * Runtime: JDK 17+ and kotlin-stdlib. No other dependencies.

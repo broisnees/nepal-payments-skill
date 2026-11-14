@@ -5,7 +5,7 @@ import java.net.URI
 import java.net.URLDecoder
 
 /**
- * Test conventions: @DisplayName "[ts] ..." = ported 1:1 from scripts/ts/test/adapters.test.ts (same name, vectors,
+ * Test conventions: @DisplayName "[ts] ..." = ported 1:1 from scripts/ts/test/ (same name, vectors,
  * mocked responses, assertions); "[py] ..." = Python-only case from scripts/python/tests; "[kt] ..." = Kotlin-specific.
  */
 fun suspendTest(block: suspend () -> Unit) {

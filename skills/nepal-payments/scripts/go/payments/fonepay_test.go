@@ -1,6 +1,6 @@
 package payments
 
-// Ported from scripts/ts/test/adapters.test.ts — describe("fonepay").
+// Ported from scripts/ts/test/providers/fonepay.test.ts.
 
 import (
 	"context"
