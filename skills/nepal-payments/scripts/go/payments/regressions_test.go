@@ -1,6 +1,6 @@
 package payments
 
-// Ported from the "regressions" block in scripts/ts/test/adapters.test.ts (TODO.md correctness list).
+// Ported from the regression tests in scripts/ts/test/core/ and test/providers/ (TODO.md correctness list).
 
 import (
 	"context"

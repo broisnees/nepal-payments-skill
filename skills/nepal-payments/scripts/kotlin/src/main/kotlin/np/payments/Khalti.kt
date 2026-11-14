@@ -1,5 +1,5 @@
 /*
- * Khalti KPG-2 (Web Checkout / ePayment) — https://docs.khalti.com/khalti-epayment/. Port of scripts/ts/src/khalti.ts.
+ * Khalti KPG-2 (Web Checkout / ePayment) — https://docs.khalti.com/khalti-epayment/. Port of scripts/ts/src/providers/khalti/.
  *
  * Flow: initiate (server, secret key) -> redirect to payment_url -> Khalti GETs return_url
  *       -> lookup (server) with the pidx YOU stored -> fulfil only on "Completed".

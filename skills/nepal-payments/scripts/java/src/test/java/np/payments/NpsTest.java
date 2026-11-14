@@ -11,7 +11,7 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Port of the "nps" describe block of adapters.test.ts, plus the Python-only case. */
+/** Port of scripts/ts/test/providers/nps.test.ts, plus the Python-only case. */
 class NpsTest {
     private final MockTransport http = new MockTransport();
     private final Nps n = new Nps(Nps.Config.of(Environment.SANDBOX, "9", "TestMerchant", "u", "p", "secret"), http);

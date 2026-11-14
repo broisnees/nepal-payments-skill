@@ -1,6 +1,6 @@
 package payments
 
-// Python-only cases (scripts/python/tests/test_adapters.py) and the behaviours from the port brief that
+// Python-only cases (scripts/python/tests/) and the behaviours from the port brief that
 // the TS suite does not assert directly, plus the Go HTTP layer (retries, ctx, timeouts, body closing).
 
 import (

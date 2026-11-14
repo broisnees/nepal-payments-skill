@@ -32,7 +32,6 @@ const title = `Nepal Payments: eSewa, Khalti and ${providers.length - 2} more ga
 const words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
 const langCount = words[languages.length] ?? String(languages.length);
 const tsTests = languages.find((l) => l.name === "TypeScript")!.tests;
-const kindName = Object.fromEntries(checkoutKinds.map((k) => [k.kind, k.title]));
 const byKind = checkoutKinds.map((k) => ({ ...k, providers: providers.filter((p) => p.checkout === k.kind) }));
 const description = `An Agent Skill with tested adapters for eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay, NEPALPAY QR, Hamro Pay and GetPay in six languages. ${totalTests} tests, zero runtime dependencies.`;
 
@@ -57,7 +56,7 @@ const jsonLd = [
   },
 ];
 
-// The mock attempt below uses the exact values from the eSewa verify test (scripts/ts/test/adapters.test.ts).
+// The mock attempt below uses the exact values from the eSewa verify test (scripts/ts/test/providers/esewa.test.ts).
 const trace = [
   { step: "esewa.initiate()", note: "signed form · total_amount=1000", from: 0, to: 14, kind: "server" },
   { step: "payer on eSewa", note: "rc-epay.esewa.com.np", from: 14, to: 62, kind: "provider" },
@@ -69,9 +68,9 @@ const trace = [
 ];
 
 const files = [
-  { name: "core.ts", added: true },
-  { name: "esewa.ts", added: true, active: true },
-  { name: "khalti.ts", added: true },
+  { name: "core/", added: true, dir: true },
+  { name: "providers/esewa/", added: true, active: true, dir: true },
+  { name: "providers/khalti/", added: true, dir: true },
   { name: "index.ts", added: true },
 ];
 
@@ -121,41 +120,27 @@ const watchTimeline = [
 <Landing title={title} description={description} jsonLd={jsonLd}>
   <a class="skip" href="#main">Skip to content</a>
 
-  <div class="announce">
-    <a href={REPO} rel="noopener"><span class="hide-sm">Nepal Payments is open source under MIT.</span><span class="show-sm">Open source, MIT.</span> <span class="u">Star it on GitHub</span><Icon name="external" size={13} /></a>
-  </div>
-
   <SiteNav />
 
   <main id="main">
     <!-- Hero -->
     <section class="hero container">
-      <div class="badge">
-        <span class="badge-mark">{totalTests}</span>
-        <span class="badge-text">
-          <span>Tests across {langCount} languages</span>
-          <span class="mono">PROVIDER VECTORS · SANDBOX CHECKED</span>
-        </span>
-      </div>
+      <p class="hero-proof"><span class="tnum">{totalTests}</span> tests in {langCount} languages, checked against each provider's own test vectors</p>
 
       <div class="split hero-split">
-        <h1>Nepali payments for coding agents</h1>
+        <h1>Add Nepali payments with your coding agent</h1>
         <p class="lede">
           One Agent Skill teaches Claude Code, Codex and Cursor to integrate {providers.length} Nepali gateways, from eSewa and Khalti
           to NEPALPAY QR and GetPay. It ships tested adapters in {langCount} languages, so the agent copies working code instead of guessing.
         </p>
       </div>
 
-      <div class="hero-actions">
+      <div class="actions">
         <a class="btn btn-primary btn-lg" href="/docs/install/">Install the skill</a>
         <CopyButton text={AGENT_PROMPT} label="Copy agent prompt" class="btn-lg" />
-        <a class="btn btn-secondary btn-lg" href={`${PLATFORM_URL}/docs/quickstart`} rel="noopener">
-          <Icon name="activity" />
-          Log your payment events
-        </a>
       </div>
       <p class="fineprint">
-        Free and MIT licensed. Works with any agent that reads Agent Skills, or copy the adapters by hand.{" "}
+        Free and open source under MIT. Works with any agent that reads Agent Skills, or copy the adapters by hand.{" "}
         <a href="/docs/adapters/">Use without an agent</a>.
       </p>
 
@@ -169,7 +154,7 @@ const watchTimeline = [
           <p class="app-label">src/server/payments</p>
           {files.map((f) => (
             <div class:list={["app-item", "indent", { active: f.active }]}>
-              <Icon name="file" size={15} />{f.name}{f.added && <span class="app-added">new</span>}
+              <Icon name={f.dir ? "folder" : "file"} size={15} />{f.name}{f.added && <span class="app-added">new</span>}
             </div>
           ))}
           <div class="app-item"><Icon name="file" size={15} />routes/payments.ts</div>
@@ -184,7 +169,10 @@ const watchTimeline = [
             <span class="pill ok">paid</span>
             <span class="mono muted hide-sm">esewa · EPAYTEST</span>
           </div>
-          <div class="app-tabs"><span class="on">Lifecycle</span><span>Callback</span><span>Raw</span></div>
+          <div class="app-tabs">
+            <span class="on">Lifecycle</span><span>Callback</span><span>Raw</span>
+            <span class="legend hide-sm" aria-hidden="true"><span><span class="kind server"></span>server</span><span><span class="kind provider"></span>provider</span><span><span class="kind browser"></span>browser</span></span>
+          </div>
           <div class="app-table">
             <div class="row head"><span>Step</span><span class="hide-sm">Detail</span><span class="bar-col">Timeline</span></div>
             {trace.map((t, i) => (
@@ -199,8 +187,7 @@ const watchTimeline = [
 
         <aside class="app-detail">
           <div class="app-detail-head">
-            <span class="app-ico"><Icon name="shield" size={15} /></span>
-            <span><strong>status API</strong><span class="mono muted">GET · 200</span></span>
+            <strong>status API</strong><span class="mono muted">GET · 200</span>
           </div>
           <div class="kv-group">
             <p class="kv-title">VerifyResult</p>
@@ -234,7 +221,7 @@ const watchTimeline = [
           <li>
             <a href={`/docs/providers/${p.slug}/`}>
               <span class="gw-logo"><GatewayLogo slug={p.slug} name="" height={26} eager /></span>
-              <span class="gw-meta"><span class="gw-name">{p.name}</span><span class="gw-kind mono">{p.kind}</span></span>
+              <span class="gw-meta"><span class="gw-name">{p.name}</span><span class="gw-kind">{p.kind}</span></span>
             </a>
           </li>
         ))}
@@ -251,17 +238,16 @@ const watchTimeline = [
       <div class="features">
         <Feature
           wide
-          tone="lavender"
           title="A redirect is not a payment"
           body="The return URL is a hint anyone can hit. The adapter checks the callback signature, asks the provider's status API, and compares the amount with the one you stored."
           href="/docs/guides/architecture/"
           link="See the architecture"
         >
           <div class="panel">
-            <div class="panel-bar"><span class="muted">Verify</span><Icon name="chevron" size={13} class="muted" /><span>ORD-2</span><span class="mono muted push">esewa · sandbox</span></div>
+            <div class="panel-bar"><span class="muted">Verify</span><Icon name="chevron" size={13} class="muted" /><span>ORD-2</span><span class="muted push">eSewa sandbox</span></div>
             <div class="ptable cols-3">
               <div class="row head"><span>Check</span><span>Source</span><span class="end">Result</span></div>
-              <div class="row"><span>Callback data</span><span class="mono muted">?data=eyJ0cmFu...</span><span class="end mono">decoded</span></div>
+              <div class="row"><span>Callback data</span><span class="mono muted">?data=eyJ0cmFu...</span><span class="end">decoded</span></div>
               <div class="row"><span>Signature</span><span class="mono muted">HMAC-SHA256</span><span class="end mono ok-t">valid</span></div>
               <div class="row sel"><span>Status API</span><span class="mono muted">transaction/status</span><span class="end mono ok-t">COMPLETE</span></div>
               <div class="row"><span>Amount</span><span class="mono muted">stored 100000</span><span class="end mono ok-t">match</span></div>
@@ -269,14 +255,13 @@ const watchTimeline = [
             </div>
             <div class="panel-foot">
               <div><span class="muted">Order</span><span class="mono">ORD-2</span></div>
-              <div><span class="muted">Amount</span><span class="mono">Rs 1,000</span></div>
+              <div><span class="muted">Amount</span><span class="tnum">Rs 1,000</span></div>
               <div><span class="muted">Reference</span><span class="mono">0001TS9</span></div>
             </div>
           </div>
         </Feature>
 
         <Feature
-          tone="sky"
           title="Signatures that match"
           body="Field order and encoding differ per gateway. Each scheme is pinned by the provider's own test vectors."
           href="/docs/providers/esewa/"
@@ -294,7 +279,6 @@ const watchTimeline = [
         </Feature>
 
         <Feature
-          tone="rose"
           title="Fulfil exactly once"
           body="One pure function decides every status change, including late payments and mismatched amounts."
           href="/docs/api/#decidetransition"
@@ -312,32 +296,30 @@ const watchTimeline = [
         </Feature>
 
         <Feature
-          tone="mint"
           title="Six languages, one interface"
           body="The same providers and the same tests in each, with no runtime dependencies."
           href="/docs/languages/"
           link="See languages"
         >
-          <div class="panel light">
-            <div class="panel-bar"><span class="muted">scripts</span><Icon name="chevron" size={13} class="muted" /><span>Adapters</span><span class="mono muted push">{totalTests} tests</span></div>
+          <div class="panel">
+            <div class="panel-bar"><span class="muted">scripts</span><Icon name="chevron" size={13} class="muted" /><span>Adapters</span><span class="muted push tnum">{totalTests} tests</span></div>
             <div class="ptable cols-3">
               <div class="row head"><span>Language</span><span>Path</span><span class="end">Tests</span></div>
               {languages.map((l) => (
-                <div class="row"><span>{l.name}</span><span class="mono muted trunc">{l.path.replace("scripts/", "")}</span><span class="end mono">{l.tests}</span></div>
+                <div class="row"><span>{l.name}</span><span class="mono muted">{l.path.replace("scripts/", "")}</span><span class="end tnum">{l.tests}</span></div>
               ))}
             </div>
           </div>
         </Feature>
 
         <Feature
-          tone="slate"
           title="Settle abandoned payments"
           body="Customers pay and close the tab. A job re-checks open attempts and settles them."
           href="/docs/guides/architecture/#6-reconciliation-job"
           link="See reconciliation"
         >
-          <div class="panel light">
-            <div class="panel-bar"><span>Reconciliation</span><span class="mono muted push">every 1-5 min</span></div>
+          <div class="panel">
+            <div class="panel-bar"><span>Reconciliation</span><span class="muted push">every 1–5 min</span></div>
             <div class="ptable cols-3">
               <div class="row head"><span>Provider</span><span>Was</span><span class="end">Now</span></div>
               {recon.map((r) => (
@@ -349,7 +331,6 @@ const watchTimeline = [
         </Feature>
 
         <Feature
-          tone="steel"
           title="Keep secrets on the server"
           body="Clients send an order id. Signing keys never reach the browser or the app."
           href="/docs/guides/env/"
@@ -358,9 +339,9 @@ const watchTimeline = [
           <div class="panel">
             <div class="panel-bar"><span class="muted">Config</span><Icon name="chevron" size={13} class="muted" /><span>Secrets</span></div>
             <div class="ptable cols-3">
-              <div class="row head"><span>Variable</span><span>Lives in</span><span class="end">Client</span></div>
+              <div class="row head"><span>Variable</span><span>Lives in</span><span class="end">In client</span></div>
               {secrets.map((s) => (
-                <div class="row"><span class="mono trunc">{s.name}</span><span class="mono muted">{s.where}</span><span class="end"><span class="toggle" aria-label="not exposed"></span></span></div>
+                <div class="row"><span class="mono">{s.name}</span><span class="muted">{s.where}</span><span class="end muted">never</span></div>
               ))}
             </div>
             <div class="panel-foot"><div><span class="muted">Client sends</span><span class="mono">orderId</span></div></div>
@@ -368,7 +349,6 @@ const watchTimeline = [
         </Feature>
 
         <Feature
-          tone="cream"
           title="Install in any agent"
           body="The plugin marketplace for Claude Code, the skills CLI for everything else."
           href="/docs/install/"
@@ -378,12 +358,12 @@ const watchTimeline = [
             <div class="panel-bar"><span class="muted">Setup</span><Icon name="chevron" size={13} class="muted" /><span>Install</span></div>
             <div class="ptable cols-2">
               <div class="row head"><span>Agent</span><span class="end">Command</span></div>
-              <div class="row"><span>Claude Code</span><span class="end mono trunc">/plugin install nepal-payments</span></div>
-              <div class="row"><span>Codex, Cursor</span><span class="end mono trunc">npx skills add ...</span></div>
-              <div class="row"><span>Gemini CLI, Copilot</span><span class="end mono trunc">npx skills add ...</span></div>
-              <div class="row sel"><span>Manual</span><span class="end mono trunc">cp -r skills/nepal-payments</span></div>
+              <div class="row"><span>Claude Code</span><span class="end mono">/plugin install nepal-payments</span></div>
+              <div class="row"><span>Codex, Cursor</span><span class="end mono">npx skills add ...</span></div>
+              <div class="row"><span>Gemini CLI, Copilot</span><span class="end mono">npx skills add ...</span></div>
+              <div class="row sel"><span>Manual</span><span class="end mono">cp -r skills/nepal-payments</span></div>
             </div>
-            <div class="panel-foot"><div><span class="muted">Format</span><span class="mono">Agent Skills</span></div><div><span class="muted">License</span><span class="mono">MIT</span></div></div>
+            <div class="panel-foot"><div><span class="muted">Format</span><span>Agent Skills</span></div><div><span class="muted">License</span><span>MIT</span></div></div>
           </div>
         </Feature>
       </div>
@@ -398,7 +378,7 @@ const watchTimeline = [
       <ol class="cks">
         {byKind.map((k) => (
           <li class="ck">
-            <p class="ck-tag mono"><span class="muted">kind:</span> "{k.kind}"</p>
+            <p class="ck-tag"><code>kind: "{k.kind}"</code></p>
             <h3>{k.title}</h3>
             <p class="ck-body">{k.body}</p>
             <div class="ck-foot">
@@ -424,14 +404,13 @@ const watchTimeline = [
         {posts.map((p) => (
           <li>
             <a href={`/blog/${p.id}/`}>
-              {p.data.provider ? <span class="guide-logo"><GatewayLogo slug={p.data.provider} name={p.data.label} height={18} /></span> : <span class="mono guide-label">{p.data.label}</span>}
+              {p.data.provider ? <span class="guide-logo"><GatewayLogo slug={p.data.provider} name={p.data.label} height={18} /></span> : <span class="guide-label">{p.data.label}</span>}
               <span class="guide-title">{p.data.title}</span>
-              <span class="guide-more">Read the guide<Icon name="chevron" size={14} /></span>
             </a>
           </li>
         ))}
       </ul>
-      <a class="text-link center" href="/blog/">All guides<Icon name="chevron" size={14} /></a>
+      <a class="text-link" href="/blog/">All integration guides<Icon name="chevron" size={14} /></a>
     </section>
 
     <!-- Code -->
@@ -467,34 +446,27 @@ const watchTimeline = [
       <div class="start">
         <div class="start-first">
           <h3>Integrate in one prompt</h3>
-          <p class="mono sub">One prompt for your coding agent</p>
+          <p class="sub">What your agent does with it:</p>
           <ol>
-            {workflow.map((w, i) => <li><span class="mono">{String(i + 1).padStart(2, "0")}</span>{w}</li>)}
+            {workflow.map((w) => <li>{w}</li>)}
           </ol>
-          <CopyButton text={AGENT_PROMPT} label="Copy agent prompt" variant="primary" class="btn-block" />
-          <a class="text-link center" href="/docs/usage/">Or read the usage guide<Icon name="chevron" size={14} /></a>
-        </div>
-        <div class="start-col">
-          <h3>Providers <span class="count">{providers.length}</span></h3>
-          <p class="sub">Wallets, banks and cards.</p>
-          <ul class="logo-list">{providers.map((p) => <li><a href={`/docs/providers/${p.slug}/`}><GatewayLogo slug={p.slug} name={p.name} height={16} /><span class="sr-only">{p.name}</span></a></li>)}</ul>
+          <CopyButton text={AGENT_PROMPT} label="Copy agent prompt" class="btn-block" />
+          <a class="text-link" href="/docs/usage/">Read the usage guide<Icon name="chevron" size={14} /></a>
         </div>
         <div class="start-col">
           <h3>Frameworks <span class="count">{frameworks.length}</span></h3>
           <p class="sub">Routes wired for you.</p>
-          <ul>{frameworks.map((f) => <li><a href="/docs/guides/web/"><span class="sq"></span>{f}</a></li>)}</ul>
+          <ul>{frameworks.map((f) => <li><a href="/docs/guides/web/">{f}</a></li>)}</ul>
         </div>
         <div class="start-col">
           <h3>Languages <span class="count">{languages.length}</span></h3>
           <p class="sub">Adapters you can copy.</p>
-          <ul>{languages.map((l) => <li><a href="/docs/languages/"><span class="sq"></span>{l.name}</a></li>)}</ul>
+          <ul>{languages.map((l) => <li><a href="/docs/languages/">{l.name}</a></li>)}</ul>
         </div>
-        <div class="start-col split-col">
-          <div>
-            <h3>Coding agents <span class="count">{agents.length}</span></h3>
-            <p class="sub">Anything that reads skills.</p>
-            <ul>{agents.map((a) => <li><a href="/docs/install/"><span class="sq"></span>{a}</a></li>)}</ul>
-          </div>
+        <div class="start-col">
+          <h3>Coding agents <span class="count">{agents.length}</span></h3>
+          <p class="sub">Anything that reads skills.</p>
+          <ul>{agents.map((a) => <li><a href="/docs/install/">{a}</a></li>)}</ul>
           <div class="start-note">
             <p>Not on the list? Any agent that supports the Agent Skills format works.</p>
             <a class="text-link" href="https://agentskills.io" rel="noopener">Agent Skills spec<Icon name="chevron" size={14} /></a>
@@ -512,8 +484,8 @@ const watchTimeline = [
     <section class="section container" id="platform" aria-labelledby="platform-title">
       <div class="split section-head">
         <div>
-          <span class="eyebrow">Platform · {PLATFORM_NAME}</span>
-          <h2 id="platform-title">Then watch every payment</h2>
+          <span class="eyebrow">From the same team: {PLATFORM_NAME}</span>
+          <h2 id="platform-title">Then see every payment in production</h2>
         </div>
         <p>
           {PLATFORM_NAME} shows every payment from every app and every Nepali gateway in one place: a live feed, a timeline per
@@ -525,21 +497,21 @@ const watchTimeline = [
       <div class="watch" role="img" aria-label={`Example ${PLATFORM_NAME} dashboard: a payments feed with one failed Khalti payment and an open failure rate alert`}>
         <div class="watch-bar">
           <span>shop-api</span><Icon name="chevron" size={13} class="muted" /><span>Payments</span>
-          <span class="watch-env mono"><span>test</span><span class="on">live</span></span>
-          <span class="mono muted push hide-sm"><span class="live-dot"></span>live feed</span>
+          <span class="watch-env"><span>test</span><span class="on">live</span></span>
+          <span class="muted push hide-sm"><span class="live-dot"></span>live feed</span>
         </div>
         <div class="watch-kpis">
-          {watchKpis.map((k) => <div><span class="muted">{k.label}</span><span class="mono">{k.value}</span></div>)}
+          {watchKpis.map((k) => <div><span class="muted">{k.label}</span><strong>{k.value}</strong></div>)}
         </div>
         <div class="watch-body">
           <div class="ptable watch-table">
             <div class="row head"><span class="hide-sm">Time</span><span>Gateway</span><span class="hide-sm">Order</span><span class="end">Amount</span><span class="end">Status</span></div>
             {watchRows.map((r) => (
               <div class:list={["row", { sel: r.sel }]}>
-                <span class="mono muted hide-sm">{r.t}</span>
+                <span class="muted hide-sm tnum">{r.t}</span>
                 <span class="mono">{r.gw}</span>
                 <span class="mono muted hide-sm">{r.order}</span>
-                <span class="end mono">{r.amount}</span>
+                <span class="end tnum">{r.amount}</span>
                 <span class="end"><span class:list={["pill", r.tone]}>{r.status}</span></span>
               </div>
             ))}
@@ -564,14 +536,17 @@ const watchTimeline = [
       </div>
 
       <ul class="watch-facts">
-        {platformFacts.map((f) => <li><span class="mono">{f.value}</span>{f.label}</li>)}
+        {platformFacts.map((f) => <li><strong>{f.value}</strong>{f.label}</li>)}
       </ul>
 
-      <div class="hero-actions">
-        <a class="btn btn-primary btn-lg" href={PLATFORM_URL} rel="noopener">See {PLATFORM_NAME}</a>
-        <a class="btn btn-secondary btn-lg" href={`${PLATFORM_URL}/docs`} rel="noopener">Read the platform docs</a>
+      <div class="actions">
+        <a class="btn btn-secondary" href={PLATFORM_URL} rel="noopener">See {PLATFORM_NAME}</a>
+        <a class="text-link" href={`${PLATFORM_URL}/docs`} rel="noopener">Read the platform docs<Icon name="chevron" size={14} /></a>
       </div>
-      <p class="fineprint">Already using the skill's adapters? <a href={`${PLATFORM_URL}/signup`} rel="noopener">Create an account</a> and wrap them with the SDK.</p>
+      <p class="fineprint">
+        Already using the skill's adapters? <a href={`${PLATFORM_URL}/signup`} rel="noopener">Create an account</a> and
+        follow the <a href={`${PLATFORM_URL}/docs/quickstart`} rel="noopener">quickstart</a> to log your payment events.
+      </p>
     </section>
 
     <!-- FAQ -->
@@ -586,7 +561,7 @@ const watchTimeline = [
             <details open={i === 0}>
               <summary>
                 <span>{f.q}</span>
-                <span class="faq-btn" aria-hidden="true"><Icon name="plus" class="i-plus" /><Icon name="minus" class="i-minus" /></span>
+                <span class="faq-icon" aria-hidden="true"><Icon name="plus" class="i-plus" /><Icon name="minus" class="i-minus" /></span>
               </summary>
               <p>{f.a}</p>
             </details>
@@ -624,7 +599,7 @@ const watchTimeline = [
         <div class="cta-card">
           <h3>Use the adapters directly</h3>
           <p>No agent needed. Copy the folder for your language, set the environment variables and call initiate and verify.</p>
-          <a class="btn btn-secondary btn-lg" href="/docs/adapters/">Adapter guide</a>
+          <a class="text-link" href="/docs/adapters/">Read the adapter guide<Icon name="chevron" size={14} /></a>
         </div>
       </div>
     </section>

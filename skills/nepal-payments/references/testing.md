@@ -58,7 +58,7 @@ Every language suite runs the same signature vectors and mocked-provider cases a
 
 ## 3. What to test in your integration
 
-Automate these with mocked provider responses (see `scripts/ts/test/adapters.test.ts` for the mocking pattern):
+Automate these with mocked provider responses (see `scripts/ts/test/providers/` and `scripts/ts/test/helpers.ts` for the mocking pattern):
 - [ ] **Signature vectors** for each provider you use (from the provider reference) pass in your language.
 - [ ] Return URL with a **forged success payload** (valid shape, attacker-chosen status) does not fulfil: the status API decides.
 - [ ] Return URL hit **before** the payer reaches the provider (`not_found`) leaves the attempt open, and a later real payment is still picked up.

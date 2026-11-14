@@ -1,6 +1,6 @@
 /*
  * connectIPS (NCHL) e-payment gateway — https://doc.connectips.com/docs/connectIPS-Gateway/merchant-interface
- * Port of scripts/ts/src/connectips.ts. Onboarding via your bank -> NCHL emails MERCHANTID, APPID, APPNAME,
+ * Port of scripts/ts/src/providers/connectips/. Onboarding via your bank -> NCHL emails MERCHANTID, APPID, APPNAME,
  * app password and the creditor .pfx.
  *
  * Flow: server signs TOKEN (RSA-SHA256 with the creditor private key) -> auto-POST form to loginpage

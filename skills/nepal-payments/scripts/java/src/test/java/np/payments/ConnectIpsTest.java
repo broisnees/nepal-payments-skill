@@ -28,7 +28,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Port of the "connectips" describe block of adapters.test.ts, plus .pfx loading and behaviour cases. */
+/** Port of scripts/ts/test/providers/connectips.test.ts, plus .pfx loading and behaviour cases. */
 class ConnectIpsTest {
     private static KeyPair kp;
     private static String pem;

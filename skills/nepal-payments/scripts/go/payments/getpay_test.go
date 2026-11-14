@@ -1,6 +1,6 @@
 package payments
 
-// Ported from scripts/ts/test/adapters.test.ts: describe("getpay").
+// Ported from scripts/ts/test/providers/getpay.test.ts.
 
 import (
 	"context"

@@ -24,12 +24,25 @@ console.log("eSewa (rc sandbox)");
   const e = esewa({ env: "sandbox", ...ESEWA_SANDBOX });
   const id = newOrderId();
   await check("signed form accepted (302 to login)", async () => {
-    const f = await e.initiate({ orderId: id, amountPaisa: 11050, taxPaisa: 1000, description: "smoke", returnUrl: `https://example.com/payments/esewa/return/${id}` });
+    const f = await e.initiate({
+      orderId: id,
+      amountPaisa: 11050,
+      taxPaisa: 1000,
+      description: "smoke",
+      returnUrl: `https://example.com/payments/esewa/return/${id}`,
+    });
     assert(f.kind === "form", "expected form");
     if (f.kind !== "form") return "";
-    const r = await fetch(f.action, { method: "POST", body: new URLSearchParams(f.fields), redirect: "manual" });
+    const r = await fetch(f.action, {
+      method: "POST",
+      body: new URLSearchParams(f.fields),
+      redirect: "manual",
+    });
     const loc = r.headers.get("location") ?? "";
-    assert(r.status === 302 && loc.includes("bookingId="), `got ${r.status} ${loc} ${(await r.text()).slice(0, 200)}`);
+    assert(
+      r.status === 302 && loc.includes("bookingId="),
+      `got ${r.status} ${loc} ${(await r.text()).slice(0, 200)}`,
+    );
     return loc;
   });
   await check("status API: unpaid -> pending", async () => {
@@ -44,7 +57,12 @@ console.log("eSewa (rc sandbox)");
   });
   await check("intent book -> status -> cancel", async () => {
     const oid = newOrderId("I");
-    const b = await e.intentBook({ orderId: oid, amountPaisa: 10000, callbackUrl: "https://example.com/cb", redirectUrl: "https://example.com/done" });
+    const b = await e.intentBook({
+      orderId: oid,
+      amountPaisa: 10000,
+      callbackUrl: "https://example.com/cb",
+      redirectUrl: "https://example.com/done",
+    });
     const s = await e.intentVerify(oid, b.providerRef);
     assert(s.status === "pending", `status ${s.status}`);
     const c: any = await e.intentCancel(b.providerRef);
@@ -55,23 +73,44 @@ console.log("eSewa (rc sandbox)");
 
 console.log("Fonepay (dev gateway, public sample merchant NBQM)");
 {
-  const fp = fonepay({ env: "sandbox", merchantCode: "NBQM", secretKey: "a7e3512f5032480a83137793cb2021dc" });
+  const fp = fonepay({
+    env: "sandbox",
+    merchantCode: "NBQM",
+    secretKey: "a7e3512f5032480a83137793cb2021dc",
+  });
   await check("signed redirect accepted (303 to payment page)", async () => {
-    const r = await fp.initiate({ orderId: newOrderId(), amountPaisa: 1050, description: "smoke", returnUrl: "https://example.com/payments/fonepay/return" });
+    const r = await fp.initiate({
+      orderId: newOrderId(),
+      amountPaisa: 1050,
+      description: "smoke",
+      returnUrl: "https://example.com/payments/fonepay/return",
+    });
     if (r.kind !== "redirect") throw new Error("expected redirect");
     const res = await fetch(r.url, { redirect: "manual" });
     const loc = res.headers.get("location") ?? "";
-    assert(res.status >= 300 && res.status < 400 && loc.includes("fonepay.com"), `got ${res.status} ${loc} ${(await res.text()).slice(0, 200)}`);
+    assert(
+      res.status >= 300 && res.status < 400 && loc.includes("fonepay.com"),
+      `got ${res.status} ${loc} ${(await res.text()).slice(0, 200)}`,
+    );
     return loc;
   });
 }
 
 if (process.env.KHALTI_SECRET_KEY) {
   console.log("Khalti (dev.khalti.com)");
-  const k = khalti({ env: "sandbox", secretKey: process.env.KHALTI_SECRET_KEY, websiteUrl: "https://example.com" });
+  const k = khalti({
+    env: "sandbox",
+    secretKey: process.env.KHALTI_SECRET_KEY,
+    websiteUrl: "https://example.com",
+  });
   await check("initiate -> lookup (Initiated)", async () => {
     const oid = newOrderId();
-    const r = await k.initiate({ orderId: oid, amountPaisa: 1000, description: "smoke", returnUrl: "https://example.com/payments/khalti/return" });
+    const r = await k.initiate({
+      orderId: oid,
+      amountPaisa: 1000,
+      description: "smoke",
+      returnUrl: "https://example.com/payments/khalti/return",
+    });
     if (r.kind !== "redirect") throw new Error("expected redirect");
     const v = await k.verify({ orderId: oid, amountPaisa: 1000, providerRef: r.providerRef });
     assert(v.status === "pending", `got ${v.status}`);

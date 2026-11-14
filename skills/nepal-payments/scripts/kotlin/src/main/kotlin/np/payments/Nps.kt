@@ -1,5 +1,5 @@
 /*
- * Nepal Payment Solution (NPS / NPX) OnePG. Port of scripts/ts/src/nps.ts.
+ * Nepal Payment Solution (NPS / NPX) OnePG. Port of scripts/ts/src/providers/nps/.
  * Source: "DEVELOPER GUIDELINES – API DOCUMENT – GATEWAY 2025" (given to merchants at onboarding).
  *
  * Auth: Basic base64(apiUsername:apiPassword) on every API call.

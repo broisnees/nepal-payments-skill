@@ -2,32 +2,80 @@
  * nepal-payments — one interface over Nepali payment providers.
  *
  *   const payments = createPayments(paymentsConfigFromEnv());
- *   const r = await payments.get("khalti").initiate({ orderId, amountPaisa, description, returnUrl });
- *   const v = await payments.get("khalti").verify({ orderId, amountPaisa, providerRef });
+ *   const khalti = payments.get("khalti");
+ *   const r = await khalti.initiate({ orderId, amountPaisa, description, returnUrl });
+ *   const v = await khalti.verify({ orderId, amountPaisa, providerRef });
+ *
+ * Adding a provider: see CONTRIBUTING.md. In this file it is one line in each of
+ * PaymentsConfig, ADAPTER_FACTORIES and ENV_READERS, plus its public exports below.
  */
-export * from "./core.ts";
-export { esewa, esewaSign, ESEWA_SANDBOX, type EsewaConfig } from "./esewa.ts";
-export { khalti, type KhaltiConfig } from "./khalti.ts";
-export { fonepay, fonepayHmac, fonepayDate, type FonepayConfig } from "./fonepay.ts";
-export { connectips, connectIpsTokenString, connectIpsDate, type ConnectIpsConfig } from "./connectips.ts";
-export { cybersource, cybersourceSign, signedDateTime, type CyberSourceConfig, type BillTo } from "./cybersource.ts";
-export { nps, npsSign, type NpsConfig } from "./nps.ts";
-export { imepay, type ImePayConfig } from "./imepay.ts";
-export { hamropay, hamroPaySign, HAMROPAY_MIN_PAISA, HAMROPAY_MAX_PAISA, type HamroPayConfig } from "./hamropay.ts";
-export { getpay, getPayOprSecret, getPayDecodeToken, type GetPayConfig } from "./getpay.ts";
-export { nepalpay, nepalPayTokenString, nepalPayConfirmationString, type NepalPayConfig, type NepalPayTxn } from "./nepalpay.ts";
+export * from "./core/index.ts";
+export { esewa, esewaSign, ESEWA_SANDBOX, type EsewaConfig } from "./providers/esewa/index.ts";
+export { khalti, type KhaltiConfig } from "./providers/khalti/index.ts";
+export {
+  fonepay,
+  fonepayHmac,
+  fonepayDate,
+  type FonepayConfig,
+} from "./providers/fonepay/index.ts";
+export {
+  connectips,
+  connectIpsTokenString,
+  connectIpsDate,
+  type ConnectIpsConfig,
+} from "./providers/connectips/index.ts";
+export {
+  cybersource,
+  cybersourceSign,
+  signedDateTime,
+  type CyberSourceConfig,
+  type BillTo,
+} from "./providers/cybersource/index.ts";
+export { nps, npsSign, type NpsConfig } from "./providers/nps/index.ts";
+export { imepay, type ImePayConfig } from "./providers/imepay/index.ts";
+export {
+  hamropay,
+  hamroPaySign,
+  HAMROPAY_MIN_PAISA,
+  HAMROPAY_MAX_PAISA,
+  type HamroPayConfig,
+} from "./providers/hamropay/index.ts";
+export {
+  getpay,
+  getPayOprSecret,
+  getPayDecodeToken,
+  type GetPayConfig,
+} from "./providers/getpay/index.ts";
+export {
+  nepalpay,
+  nepalPayTokenString,
+  nepalPayConfirmationString,
+  type NepalPayConfig,
+  type NepalPayTxn,
+} from "./providers/nepalpay/index.ts";
 
-import type { PaymentAdapter, ProviderId } from "./core.ts";
-import { esewa, type EsewaConfig } from "./esewa.ts";
-import { khalti, type KhaltiConfig } from "./khalti.ts";
-import { fonepay, type FonepayConfig } from "./fonepay.ts";
-import { connectips, type ConnectIpsConfig } from "./connectips.ts";
-import { cybersource, type CyberSourceConfig } from "./cybersource.ts";
-import { nps, type NpsConfig } from "./nps.ts";
-import { imepay, type ImePayConfig } from "./imepay.ts";
-import { nepalpay, type NepalPayConfig } from "./nepalpay.ts";
-import { hamropay, type HamroPayConfig } from "./hamropay.ts";
-import { getpay, type GetPayConfig } from "./getpay.ts";
+import type { EnvVars } from "./core/env.ts";
+import type { PaymentAdapter, ProviderId } from "./core/types.ts";
+import { connectips, type ConnectIpsConfig } from "./providers/connectips/index.ts";
+import { connectIpsConfigFromEnv } from "./providers/connectips/config.ts";
+import { cybersource, type CyberSourceConfig } from "./providers/cybersource/index.ts";
+import { cyberSourceConfigFromEnv } from "./providers/cybersource/config.ts";
+import { esewa, type EsewaConfig } from "./providers/esewa/index.ts";
+import { esewaConfigFromEnv } from "./providers/esewa/config.ts";
+import { fonepay, type FonepayConfig } from "./providers/fonepay/index.ts";
+import { fonepayConfigFromEnv } from "./providers/fonepay/config.ts";
+import { getpay, type GetPayConfig } from "./providers/getpay/index.ts";
+import { getPayConfigFromEnv } from "./providers/getpay/config.ts";
+import { hamropay, type HamroPayConfig } from "./providers/hamropay/index.ts";
+import { hamroPayConfigFromEnv } from "./providers/hamropay/config.ts";
+import { imepay, type ImePayConfig } from "./providers/imepay/index.ts";
+import { imePayConfigFromEnv } from "./providers/imepay/config.ts";
+import { khalti, type KhaltiConfig } from "./providers/khalti/index.ts";
+import { khaltiConfigFromEnv } from "./providers/khalti/config.ts";
+import { nepalpay, type NepalPayConfig } from "./providers/nepalpay/index.ts";
+import { nepalPayConfigFromEnv } from "./providers/nepalpay/config.ts";
+import { nps, type NpsConfig } from "./providers/nps/index.ts";
+import { npsConfigFromEnv } from "./providers/nps/config.ts";
 
 export interface PaymentsConfig {
   esewa?: EsewaConfig;
@@ -42,177 +90,112 @@ export interface PaymentsConfig {
   getpay?: GetPayConfig;
 }
 
-type Adapters = {
-  esewa: ReturnType<typeof esewa>;
-  khalti: ReturnType<typeof khalti>;
-  fonepay: ReturnType<typeof fonepay>;
-  connectips: ReturnType<typeof connectips>;
-  cybersource: ReturnType<typeof cybersource>;
-  nps: ReturnType<typeof nps>;
-  imepay: ReturnType<typeof imepay>;
-  nepalpay: ReturnType<typeof nepalpay>;
-  hamropay: ReturnType<typeof hamropay>;
-  getpay: ReturnType<typeof getpay>;
+// ---------------------------------------------------------------------------
+// Provider registry. Key order is the order of `enabled` and of paymentsConfigFromEnv's keys.
+// ---------------------------------------------------------------------------
+
+const FACTORIES = {
+  esewa,
+  khalti,
+  fonepay,
+  connectips,
+  cybersource,
+  nps,
+  imepay,
+  nepalpay,
+  hamropay,
+  getpay,
 };
+
+/** What each factory returns, including its provider-specific extras (intentBook, refund, ...). */
+type Adapters = { [P in ProviderId]: ReturnType<(typeof FACTORIES)[P]> };
+
+/** Typed so a provider missing from ProviderId, PaymentsConfig or FACTORIES fails to compile. */
+const ADAPTER_FACTORIES: {
+  [P in ProviderId]: (config: NonNullable<PaymentsConfig[P]>) => Adapters[P];
+} = FACTORIES;
+
+const ENV_READERS: { [P in ProviderId]: (env: EnvVars) => PaymentsConfig[P] | undefined } = {
+  esewa: esewaConfigFromEnv,
+  khalti: khaltiConfigFromEnv,
+  fonepay: fonepayConfigFromEnv,
+  connectips: connectIpsConfigFromEnv,
+  cybersource: cyberSourceConfigFromEnv,
+  nps: npsConfigFromEnv,
+  imepay: imePayConfigFromEnv,
+  nepalpay: nepalPayConfigFromEnv,
+  hamropay: hamroPayConfigFromEnv,
+  getpay: getPayConfigFromEnv,
+};
+
+// Object.keys loses the key type; FACTORIES has exactly the ProviderId keys (checked above).
+const PROVIDER_IDS = Object.keys(FACTORIES) as ProviderId[];
+
+const isProviderId = (id: string): id is ProviderId => Object.hasOwn(FACTORIES, id);
+
+const notConfigured = (id: string) => new Error(`payment provider "${id}" is not configured`);
 
 export function createPayments(cfg: PaymentsConfig) {
   const built: Partial<Adapters> = {};
-  if (cfg.esewa) built.esewa = esewa(cfg.esewa);
-  if (cfg.khalti) built.khalti = khalti(cfg.khalti);
-  if (cfg.fonepay) built.fonepay = fonepay(cfg.fonepay);
-  if (cfg.connectips) built.connectips = connectips(cfg.connectips);
-  if (cfg.cybersource) built.cybersource = cybersource(cfg.cybersource);
-  if (cfg.nps) built.nps = nps(cfg.nps);
-  if (cfg.imepay) built.imepay = imepay(cfg.imepay);
-  if (cfg.nepalpay) built.nepalpay = nepalpay(cfg.nepalpay);
-  if (cfg.hamropay) built.hamropay = hamropay(cfg.hamropay);
-  if (cfg.getpay) built.getpay = getpay(cfg.getpay);
+  const build = <P extends ProviderId>(id: P) => {
+    const config = cfg[id];
+    if (config) built[id] = ADAPTER_FACTORIES[id](config);
+  };
+  for (const id of PROVIDER_IDS) build(id);
 
   return {
     /** Typed access to a configured provider (throws if not configured). */
     get<P extends ProviderId>(id: P): Adapters[P] {
-      const a = built[id];
-      if (!a) throw new Error(`payment provider "${id}" is not configured`);
-      return a as Adapters[P];
+      const adapter = built[id];
+      if (!adapter) throw notConfigured(id);
+      return adapter;
     },
     /** Untyped access for generic handlers keyed by a route param. */
     adapter(id: string): PaymentAdapter {
-      if (!Object.hasOwn(built, id)) throw new Error(`payment provider "${id}" is not configured`);
-      return built[id as ProviderId] as PaymentAdapter;
+      // Own-property check: "constructor" / "__proto__" must not reach Object.prototype.
+      const adapter = isProviderId(id) && Object.hasOwn(built, id) ? built[id] : undefined;
+      if (!adapter) throw notConfigured(id);
+      return adapter;
     },
     enabled: Object.keys(built) as ProviderId[],
   };
 }
 
+/** process.env where it exists (Node, Bun, Deno compat), else empty. Typed without @types/node. */
+function processEnv(): EnvVars {
+  const host = globalThis as { process?: { env?: EnvVars } };
+  return host.process?.env ?? {};
+}
+
 /**
- * Build config from environment variables. A provider is enabled when its required vars are present.
- * See references/env.md for the full list.
+ * Build config from environment variables. A provider is enabled when its required vars are
+ * present. See references/env.md for the full list.
  */
-export function paymentsConfigFromEnv(env: Record<string, string | undefined> = (globalThis as any).process?.env ?? {}): PaymentsConfig {
-  const mode = (v?: string): "sandbox" | "production" => (v === "production" || v === "live" ? "production" : "sandbox");
+export function paymentsConfigFromEnv(
+  env: Record<string, string | undefined> = processEnv(),
+): PaymentsConfig {
   const cfg: PaymentsConfig = {};
-  if (env.ESEWA_PRODUCT_CODE && env.ESEWA_SECRET_KEY) {
-    cfg.esewa = {
-      env: mode(env.ESEWA_ENV),
-      productCode: env.ESEWA_PRODUCT_CODE,
-      secretKey: env.ESEWA_SECRET_KEY,
-      ...(env.ESEWA_INTENT_PRODUCT_CODE &&
-        env.ESEWA_INTENT_ACCESS_KEY && {
-          intent: { productCode: env.ESEWA_INTENT_PRODUCT_CODE, accessKey: env.ESEWA_INTENT_ACCESS_KEY, baseUrl: env.ESEWA_INTENT_BASE_URL },
-        }),
-    };
-  }
-  if (env.KHALTI_SECRET_KEY && env.KHALTI_WEBSITE_URL) {
-    cfg.khalti = { env: mode(env.KHALTI_ENV), secretKey: env.KHALTI_SECRET_KEY, websiteUrl: env.KHALTI_WEBSITE_URL };
-  }
-  if (env.FONEPAY_MERCHANT_CODE && env.FONEPAY_SECRET_KEY) {
-    cfg.fonepay = {
-      env: mode(env.FONEPAY_ENV),
-      merchantCode: env.FONEPAY_MERCHANT_CODE,
-      secretKey: env.FONEPAY_SECRET_KEY,
-      username: env.FONEPAY_USERNAME,
-      password: env.FONEPAY_PASSWORD,
-    };
-  }
-  if (env.CONNECTIPS_MERCHANT_ID && env.CONNECTIPS_APP_ID && env.CONNECTIPS_PRIVATE_KEY_PEM) {
-    cfg.connectips = {
-      env: mode(env.CONNECTIPS_ENV),
-      merchantId: env.CONNECTIPS_MERCHANT_ID,
-      appId: env.CONNECTIPS_APP_ID,
-      appName: env.CONNECTIPS_APP_NAME ?? "",
-      appPassword: env.CONNECTIPS_APP_PASSWORD ?? "",
-      privateKeyPem: env.CONNECTIPS_PRIVATE_KEY_PEM.replace(/\\n/g, "\n"),
-    };
-  }
-  if (env.CYBERSOURCE_PROFILE_ID && env.CYBERSOURCE_ACCESS_KEY && env.CYBERSOURCE_SECRET_KEY) {
-    cfg.cybersource = {
-      env: mode(env.CYBERSOURCE_ENV),
-      profileId: env.CYBERSOURCE_PROFILE_ID,
-      accessKey: env.CYBERSOURCE_ACCESS_KEY,
-      secretKey: env.CYBERSOURCE_SECRET_KEY,
-      currency: env.CYBERSOURCE_CURRENCY ?? "NPR",
-    };
-  }
-  if (env.NPS_MERCHANT_ID && env.NPS_SECRET_KEY) {
-    cfg.nps = {
-      env: mode(env.NPS_ENV),
-      merchantId: env.NPS_MERCHANT_ID,
-      merchantName: env.NPS_MERCHANT_NAME ?? "",
-      apiUsername: env.NPS_API_USERNAME ?? "",
-      apiPassword: env.NPS_API_PASSWORD ?? "",
-      secretKey: env.NPS_SECRET_KEY,
-    };
-  }
-  if (env.IMEPAY_MERCHANT_CODE && env.IMEPAY_USERNAME) {
-    cfg.imepay = {
-      env: mode(env.IMEPAY_ENV),
-      merchantCode: env.IMEPAY_MERCHANT_CODE,
-      username: env.IMEPAY_USERNAME,
-      password: env.IMEPAY_PASSWORD ?? "",
-      module: env.IMEPAY_MODULE ?? "",
-    };
-  }
-  if (env.NEPALPAY_ACQUIRER_ID && env.NEPALPAY_MERCHANT_ID && env.NEPALPAY_USERNAME && env.NEPALPAY_PRIVATE_KEY_PEM) {
-    cfg.nepalpay = {
-      env: mode(env.NEPALPAY_ENV),
-      acquirerId: env.NEPALPAY_ACQUIRER_ID,
-      merchantId: env.NEPALPAY_MERCHANT_ID,
-      merchantName: env.NEPALPAY_MERCHANT_NAME ?? "",
-      merchantCategoryCode: env.NEPALPAY_MCC ?? "",
-      merchantCity: env.NEPALPAY_MERCHANT_CITY ?? "Kathmandu",
-      merchantPostalCode: env.NEPALPAY_MERCHANT_POSTAL_CODE ?? "44600",
-      storeLabel: env.NEPALPAY_STORE_LABEL ?? "Store1",
-      terminalLabel: env.NEPALPAY_TERMINAL_LABEL,
-      username: env.NEPALPAY_USERNAME,
-      password: env.NEPALPAY_PASSWORD ?? "",
-      privateKeyPem: env.NEPALPAY_PRIVATE_KEY_PEM.replace(/\\n/g, "\n"),
-      ...(env.NEPALPAY_CLIENT_ID && { auth: "oauth" as const, clientId: env.NEPALPAY_CLIENT_ID, clientSecret: env.NEPALPAY_CLIENT_SECRET ?? "" }),
-      ...(env.NEPALPAY_NCHL_PUBLIC_KEY_PEM && { nchlPublicKeyPem: env.NEPALPAY_NCHL_PUBLIC_KEY_PEM.replace(/\\n/g, "\n") }),
-      ...(env.NEPALPAY_WS_URL && { wsUrl: env.NEPALPAY_WS_URL, wsUsername: env.NEPALPAY_WS_USERNAME, wsApiToken: env.NEPALPAY_WS_API_TOKEN }),
-    };
-  }
-  if (env.HAMROPAY_MERCHANT_ID && env.HAMROPAY_CLIENT_ID && env.HAMROPAY_CLIENT_API_KEY && env.HAMROPAY_CLIENT_SECRET) {
-    cfg.hamropay = {
-      env: mode(env.HAMROPAY_ENV),
-      merchantId: env.HAMROPAY_MERCHANT_ID,
-      clientId: env.HAMROPAY_CLIENT_ID,
-      clientApiKey: env.HAMROPAY_CLIENT_API_KEY,
-      clientSecret: env.HAMROPAY_CLIENT_SECRET,
-      webhookSecret: env.HAMROPAY_WEBHOOK_SECRET,
-      apiBaseUrl: env.HAMROPAY_API_BASE_URL,
-      gatewayUrl: env.HAMROPAY_GATEWAY_URL,
-    };
-  }
-  if (env.GETPAY_PAP_INFO && env.GETPAY_OPR_KEY && env.GETPAY_WEBSITE_DOMAIN) {
-    cfg.getpay = {
-      env: mode(env.GETPAY_ENV),
-      papInfo: env.GETPAY_PAP_INFO,
-      oprKey: env.GETPAY_OPR_KEY,
-      insKey: env.GETPAY_INS_KEY,
-      websiteDomain: env.GETPAY_WEBSITE_DOMAIN,
-      businessName: env.GETPAY_BUSINESS_NAME ?? "",
-      imageUrl: env.GETPAY_IMAGE_URL ?? "",
-      currency: env.GETPAY_CURRENCY,
-      bundleUrl: env.GETPAY_BUNDLE_URL,
-      baseUrl: env.GETPAY_BASE_URL,
-    };
-  }
+  const read = <P extends ProviderId>(id: P) => {
+    const config = ENV_READERS[id](env);
+    if (config) cfg[id] = config;
+  };
+  for (const id of PROVIDER_IDS) read(id);
   return cfg;
 }
 
 /**
- * Short, provider-safe attempt id: <= 20 chars, [A-Za-z0-9] (fits connectIPS TXNID 20, Fonepay PRN 25,
- * eSewa uuid charset, Khalti/NPS/IME/CyberSource limits). Example: "P1KX3M9Q2ZAB7C4D8E".
+ * Short, provider-safe attempt id: <= 20 chars, [A-Za-z0-9] (fits connectIPS TXNID 20, Fonepay
+ * PRN 25, eSewa uuid charset, Khalti/NPS/IME/CyberSource limits). Example: "P1KX3M9Q2ZAB7C4D8E".
  */
 export function newOrderId(prefix = "P"): string {
   const time = Date.now().toString(36).toUpperCase(); // 8–9 chars
-  const rand = new Uint8Array(10);
+  const randomBytes = new Uint8Array(10);
   const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   let tail = "";
   while (tail.length < 10) {
-    globalThis.crypto.getRandomValues(rand);
+    globalThis.crypto.getRandomValues(randomBytes);
     // 252 = 7 * 36: dropping bytes >= 252 removes the modulo bias toward the first 4 symbols.
-    for (const b of rand) if (b < 252 && tail.length < 10) tail += alphabet[b % 36];
+    for (const b of randomBytes) if (b < 252 && tail.length < 10) tail += alphabet[b % 36];
   }
   return (prefix + time + tail).slice(0, 20);
 }

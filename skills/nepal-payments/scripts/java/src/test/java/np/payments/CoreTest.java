@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Port of the "core" describe block of scripts/ts/test/adapters.test.ts, plus Python-only and Java-only cases. */
+/** Port of scripts/ts/test/core/, plus Python-only and Java-only cases. */
 class CoreTest {
     private static final long H = 60 * 60_000L;
 

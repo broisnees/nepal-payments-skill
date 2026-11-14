@@ -1,5 +1,5 @@
 /*
- * Fonepay — Web payment (redirect) + Dynamic QR. Port of scripts/ts/src/fonepay.ts.
+ * Fonepay — Web payment (redirect) + Dynamic QR. Port of scripts/ts/src/providers/fonepay/.
  * Source: "Technical Specification Document (Fonepay Web Integration) v2.0" + Dynamic QR spec v1.1 (2024).
  *
  * Signatures: HMAC-SHA512(secretKey UTF-8, comma-joined values) as HEX. Compare case-insensitively.

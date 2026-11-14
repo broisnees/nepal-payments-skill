@@ -17,7 +17,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Port of the "getpay" describe block of adapters.test.ts. */
+/** Port of scripts/ts/test/providers/getpay.test.ts. */
 class GetPayTest {
     private static final String OPR_KEY = "4fa4c6b9-3f91-43e5-9b4f-319f68187ba5";
     private static final String PAP_INFO = btoa("{\"institutionId\":\"122\",\"mid\":\"123123451770986\",\"tid\":\"12358762\"}");

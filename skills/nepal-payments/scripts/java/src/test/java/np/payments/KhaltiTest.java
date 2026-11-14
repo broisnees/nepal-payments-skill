@@ -12,7 +12,7 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Port of the "khalti" describe block of adapters.test.ts, plus Python-only and behaviour cases. */
+/** Port of scripts/ts/test/providers/khalti.test.ts, plus Python-only and behaviour cases. */
 class KhaltiTest {
     private final MockTransport http = new MockTransport();
     private final Khalti k = new Khalti(Khalti.Config.of(Environment.SANDBOX, "live_secret_key_test", "https://shop.example"), http);

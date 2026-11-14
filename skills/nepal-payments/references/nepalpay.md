@@ -3,7 +3,7 @@
 NCHL's national QR scheme (NepalQR / EMVCo merchant-presented). A dynamic QR carries the amount and a bill number, and any NEPALPAY QR enabled mobile banking app or wallet can pay it: NCHL lists 20+ banks, and the scheme interoperates with the other domestic QR networks. It's the bank-run equivalent of Fonepay Dynamic QR, and it suits POS, kiosks, billing software and "scan to pay" on desktop checkout.
 
 Official docs (public): https://doc.connectips.com/docs/NepalPAY-QR/Merchant-QR-generation/introduction, plus the [transaction report](https://doc.connectips.com/docs/NepalPAY-QR/Transaction-Report/transaction_report), [payment confirmation](https://doc.connectips.com/docs/NepalPAY-QR/QR-Merchant-Bulk-Enrollment/payment_confirmation_api) and [WebSocket](https://doc.connectips.com/docs/NepalPAY-QR/NEPALPAY-QR-Websocket/api_specification) pages. Checked 2026-11 against those docs, one working C# client (`anish-maharzan/ConnectIPS.Integration`) and live host probes.
-Adapters: `scripts/ts/src/nepalpay.ts`, plus the matching file in each port (`nepalpay.py`, `NepalPay.java`, `NepalPay.kt`, `src/NepalPay/`, `nepalpay.go`).
+Adapters: `scripts/ts/src/providers/nepalpay/`, plus the matching file in each port (`providers/nepalpay/` in Python, `NepalPay.java`, `NepalPay.kt`, `src/NepalPay/`, `nepalpay.go`).
 
 ## Contents
 1. Environments and onboarding

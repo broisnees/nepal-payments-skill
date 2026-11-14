@@ -18,7 +18,7 @@ Production integrations for Nepali payment providers. Everything here was checke
 1. **Pick providers** (table below). If the user didn't say, recommend **eSewa + Khalti** (largest wallets), then **NPS or Fonepay** to cover banks with one integration, then **connectIPS** for direct bank debit, and **CyberSource** or **GetPay** (whichever the merchant's bank offers) only for card acquiring. Add **Hamro Pay** for Hamro Patro's wallet users. For in-person or POS QR, use **Fonepay Dynamic QR** or **NEPALPAY QR** (whichever network the merchant's bank acquires on).
 2. **Detect the stack** (`package.json`, `pyproject.toml`/`requirements.txt`, `composer.json`, `pubspec.yaml`, `go.mod`, …) and where server routes and DB models live.
 3. **Install the adapters**:
-   - TypeScript/JavaScript: copy `scripts/ts/src/` into the project's server code (e.g. `src/server/payments/`), keeping only the providers needed plus `core.ts` and `index.ts`. The files import each other with `.ts` extensions (runs natively on Node ≥ 22.18, Bun, Deno). If the project's tsconfig lacks `allowImportingTsExtensions`, rewrite `./x.ts` imports to match its module resolution (`./x.js` for NodeNext, extensionless for bundlers).
+   - TypeScript/JavaScript: copy `scripts/ts/src/` into the project's server code (e.g. `src/server/payments/`), keeping `core/`, `index.ts` and only the `providers/<id>/` folders needed (drop the others from the registry in `index.ts`); `scripts/ts/CONTRIBUTING.md` explains the layout. The files import each other with `.ts` extensions (runs natively on Node ≥ 22.18, Bun, Deno). If the project's tsconfig lacks `allowImportingTsExtensions`, rewrite `./x.ts` imports to match its module resolution (`./x.js` for NodeNext, extensionless for bundlers).
    - Python: copy `scripts/python/nepal_payments/` as a package (stdlib only; add `cryptography` for connectIPS).
    - Java (Spring Boot, Quarkus, Micronaut): copy `scripts/java/src/main/java/np/payments/` (JDK 17+, no dependencies; blocking API, fine on virtual threads).
    - Kotlin (Ktor, Spring Boot): copy `scripts/kotlin/src/main/kotlin/np/payments/` (kotlin-stdlib only; `suspend` API). Server-side only: never put it in an Android app.
@@ -103,7 +103,7 @@ Provider extras: `esewa.intentBook/intentVerify/intentCancel`, `khalti.refund`, 
 - [references/mobile.md](references/mobile.md): read for Flutter, React Native/Expo, Android or iOS (native SDKs, the universal WebView pattern, deep links).
 - [references/env.md](references/env.md): read when adding env vars or `.env.example`.
 - [references/testing.md](references/testing.md): read when testing or going live (sandbox credentials, test plan, go-live per provider).
-- `scripts/ts/`: adapters (`src/`), 67 offline tests (`npm test`), live sandbox check (`node test/sandbox.ts`), runnable demo (`node examples/server.ts`).
+- `scripts/ts/`: adapters (`src/`), 73 offline tests (`npm test`), live sandbox check (`node test/sandbox.ts`), runnable demo (`node examples/server.ts`).
 - `scripts/python/`: adapters (`nepal_payments/`) + 53 tests (`python -m unittest discover -s tests`).
 - `scripts/java/` (132 tests), `scripts/kotlin/` (106 tests): `./gradlew test`, live check `./gradlew sandbox`.
 - `scripts/php/` (90 tests, PHP 8.1–8.5): `composer install && vendor/bin/phpunit`, live check `php tests/sandbox.php`.

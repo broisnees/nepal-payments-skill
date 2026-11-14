@@ -27,7 +27,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Port of the "nepalpay" describe block of adapters.test.ts. */
+/** Port of scripts/ts/test/providers/nepalpay.test.ts. */
 class NepalPayTest {
     private static KeyPair kp;
     private static String pem;

@@ -31,7 +31,11 @@ const PUBLIC_URL = (process.env.PUBLIC_URL ?? `http://localhost:${PORT}`).replac
 // Sandbox defaults so the demo works with no setup. Real deployments use env vars only.
 const cfg = paymentsConfigFromEnv();
 cfg.esewa ??= { env: "sandbox", ...ESEWA_SANDBOX };
-cfg.fonepay ??= { env: "sandbox", merchantCode: "NBQM", secretKey: "a7e3512f5032480a83137793cb2021dc" };
+cfg.fonepay ??= {
+  env: "sandbox",
+  merchantCode: "NBQM",
+  secretKey: "a7e3512f5032480a83137793cb2021dc",
+};
 const payments = createPayments(cfg);
 
 // ---------------------------------------------------------------- "database"
@@ -48,11 +52,23 @@ interface Attempt {
   /** Set on amount mismatch / missing amount / reconciliation cutoff: a human decides; automation stops. */
   reviewRequired?: boolean;
 }
-const PRODUCTS: Record<string, { name: string; pricePaisa: number }> = { "tshirt": { name: "Everest T-shirt", pricePaisa: 150000 } };
-const orders = new Map<string, { productId: string; status: "unpaid" | "paid"; paidByAttempt?: string }>();
+const PRODUCTS: Record<string, { name: string; pricePaisa: number }> = {
+  tshirt: { name: "Everest T-shirt", pricePaisa: 150000 },
+};
+const orders = new Map<
+  string,
+  { productId: string; status: "unpaid" | "paid"; paidByAttempt?: string }
+>();
 const attempts = new Map<string, Attempt>();
 const OPEN = OPEN_STATUSES;
-const FINAL: Attempt["status"][] = ["paid", "failed", "canceled", "expired", "refunded", "partially_refunded"];
+const FINAL: Attempt["status"][] = [
+  "paid",
+  "failed",
+  "canceled",
+  "expired",
+  "refunded",
+  "partially_refunded",
+];
 const RECONCILE_CUTOFF_MS = 3 * 86_400_000;
 const SESSION_WINDOW_MS = 60 * 60_000; // longest provider session (Khalti pidx ~60 min, eSewa ~50 min)
 
@@ -61,7 +77,10 @@ function fulfil(a: Attempt) {
   if (!o) return;
   if (o.status === "paid") {
     // Idempotent for the same attempt; a DIFFERENT paid attempt means the customer paid twice.
-    if (o.paidByAttempt !== a.id) console.error(`[alert] duplicate payment: order ${a.orderId} already paid by ${o.paidByAttempt}; refund ${a.provider} ${a.id}`);
+    if (o.paidByAttempt !== a.id)
+      console.error(
+        `[alert] duplicate payment: order ${a.orderId} already paid by ${o.paidByAttempt}; refund ${a.provider} ${a.id}`,
+      );
     return;
   }
   o.status = "paid";
@@ -84,10 +103,17 @@ async function verifyAndTransition(a: Attempt, callback?: Record<string, string>
   // No await between the decision and the write => atomic in a single Node process. With a DB, apply it with
   // one conditional UPDATE guarded by the previous status (architecture.md §4).
   const prev = a.status;
-  const d = decideTransition(prev, result, a.amountPaisa, Date.now() - a.createdAt, SESSION_WINDOW_MS);
+  const d = decideTransition(
+    prev,
+    result,
+    a.amountPaisa,
+    Date.now() - a.createdAt,
+    SESSION_WINDOW_MS,
+  );
   if (!d.next) return { attempt: a, changed: false };
   if (d.reviewRequired) console.error(`[alert] ${a.provider} ${a.id}: ${d.reason} — manual review`);
-  if (d.latePaid && !d.reviewRequired) console.warn(`[alert] ${a.provider} ${a.id}: ${d.reason} — recovering`);
+  if (d.latePaid && !d.reviewRequired)
+    console.warn(`[alert] ${a.provider} ${a.id}: ${d.reason} — recovering`);
   a.status = d.next;
   a.reviewRequired = d.reviewRequired || a.reviewRequired;
   a.providerTxnId = result.transactionId ?? a.providerTxnId;
@@ -109,13 +135,36 @@ async function createAttempt(orderId: string, provider: ProviderId): Promise<Att
   if (!order) throw new Error("order not found");
   if (order.status === "paid") throw new Error("order already paid");
   const product = PRODUCTS[order.productId];
-  const a: Attempt = { id: newOrderId(), orderId, provider, amountPaisa: product.pricePaisa, status: "initiated", createdAt: Date.now() };
-  const input = { orderId: a.id, amountPaisa: a.amountPaisa, description: product.name, returnUrl: returnUrlFor(provider, a.id) };
+  const a: Attempt = {
+    id: newOrderId(),
+    orderId,
+    provider,
+    amountPaisa: product.pricePaisa,
+    status: "initiated",
+    createdAt: Date.now(),
+  };
+  const input = {
+    orderId: a.id,
+    amountPaisa: a.amountPaisa,
+    description: product.name,
+    returnUrl: returnUrlFor(provider, a.id),
+  };
   const extra =
     provider === "cybersource"
-      ? { billTo: { forename: "Test", surname: "Customer", email: "test@example.com", addressLine1: "Thamel", city: "Kathmandu", country: "NP" } }
+      ? {
+          billTo: {
+            forename: "Test",
+            surname: "Customer",
+            email: "test@example.com",
+            addressLine1: "Thamel",
+            city: "Kathmandu",
+            country: "NP",
+          },
+        }
       : {};
-  a.initiate = await (payments.adapter(provider).initiate as (i: unknown) => Promise<InitiateResult>)({ ...input, ...extra });
+  a.initiate = await (
+    payments.adapter(provider).initiate as (i: unknown) => Promise<InitiateResult>
+  )({ ...input, ...extra });
   a.providerRef = a.initiate.providerRef; // Khalti pidx / NPS ProcessId / IME TokenId — persist!
   attempts.set(a.id, a);
   return a;
@@ -141,9 +190,17 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const orderId = crypto.randomUUID();
     orders.set(orderId, { productId: "tshirt", status: "unpaid" });
     const buttons = payments.enabled
-      .map((p) => `<form method="POST" action="/payments" style="display:inline"><input type="hidden" name="orderId" value="${orderId}"><input type="hidden" name="provider" value="${p}"><button>Pay with ${p}</button></form>`)
+      .map(
+        (p) =>
+          `<form method="POST" action="/payments" style="display:inline"><input type="hidden" name="orderId" value="${orderId}"><input type="hidden" name="provider" value="${p}"><button>Pay with ${p}</button></form>`,
+      )
       .join("");
-    return send(200, page(`<h1>Everest T-shirt — Rs 1,500</h1><p>Order <code>${orderId}</code></p>${buttons}<p><small>eSewa sandbox login: 9806800001 / Nepal@123 / token 123456</small></p>`));
+    return send(
+      200,
+      page(
+        `<h1>Everest T-shirt — Rs 1,500</h1><p>Order <code>${orderId}</code></p>${buttons}<p><small>eSewa sandbox login: 9806800001 / Nepal@123 / token 123456</small></p>`,
+      ),
+    );
   }
 
   // Create attempt (client sends only orderId + provider; amount comes from the server)
@@ -151,7 +208,15 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const body = await readBody(req);
     const a = await createAttempt(body.orderId, body.provider as ProviderId);
     if (req.headers.accept?.includes("application/json")) {
-      return send(201, JSON.stringify({ attemptId: a.id, startUrl: `${PUBLIC_URL}/payments/${a.id}/start`, providerRef: a.providerRef }), "application/json");
+      return send(
+        201,
+        JSON.stringify({
+          attemptId: a.id,
+          startUrl: `${PUBLIC_URL}/payments/${a.id}/start`,
+          providerRef: a.providerRef,
+        }),
+        "application/json",
+      );
     }
     return redirect(`/payments/${a.id}/start`);
   }
@@ -162,14 +227,28 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const a = attempts.get(m[1]);
     if (!a?.initiate) return send(404, "unknown attempt");
     // Never replay a stale or closed attempt's signed form: the user must start a new attempt.
-    if (!OPEN.includes(a.status) || Date.now() - a.createdAt > SESSION_WINDOW_MS) return redirect(`/orders/${a.orderId}?attempt=${a.id}`);
+    if (!OPEN.includes(a.status) || Date.now() - a.createdAt > SESSION_WINDOW_MS)
+      return redirect(`/orders/${a.orderId}?attempt=${a.id}`);
     if (a.initiate.kind === "qr") {
       // NEPALPAY QR: the payer scans from their own app; "I've paid" runs the same verify as a return URL.
-      const img = a.initiate.qrImage ? `<img alt="NEPALPAY QR" width="280" height="280" src="data:image/png;base64,${a.initiate.qrImage}">` : "";
-      return send(200, page(`<h1>Scan to pay</h1>${img}<p><code style="word-break:break-all">${escapeHtml(a.initiate.qrString)}</code></p><p><a href="/payments/${a.provider}/return/${a.id}">I've paid</a></p>`));
+      const img = a.initiate.qrImage
+        ? `<img alt="NEPALPAY QR" width="280" height="280" src="data:image/png;base64,${a.initiate.qrImage}">`
+        : "";
+      return send(
+        200,
+        page(
+          `<h1>Scan to pay</h1>${img}<p><code style="word-break:break-all">${escapeHtml(a.initiate.qrString)}</code></p><p><a href="/payments/${a.provider}/return/${a.id}">I've paid</a></p>`,
+        ),
+      );
     }
-    if (a.initiate.kind === "sdk") return send(200, payments.get("getpay").checkoutPage(a.initiate, `/payments/getpay/pay/${a.id}`));
-    return a.initiate.kind === "redirect" ? redirect(a.initiate.url) : send(200, renderAutoSubmitForm(a.initiate));
+    if (a.initiate.kind === "sdk")
+      return send(
+        200,
+        payments.get("getpay").checkoutPage(a.initiate, `/payments/getpay/pay/${a.id}`),
+      );
+    return a.initiate.kind === "redirect"
+      ? redirect(a.initiate.url)
+      : send(200, renderAutoSubmitForm(a.initiate));
   }
 
   // Status (apps poll this)
@@ -177,7 +256,11 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (req.method === "GET" && m) {
     const a = attempts.get(m[1]);
     if (!a) return send(404, "{}", "application/json");
-    return send(200, JSON.stringify({ status: a.status, amountPaisa: a.amountPaisa }), "application/json");
+    return send(
+      200,
+      JSON.stringify({ status: a.status, amountPaisa: a.amountPaisa }),
+      "application/json",
+    );
   }
 
   // NPS notification URL (configured with NPS)
@@ -195,7 +278,10 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   m = url.pathname.match(/^\/payments\/([a-z]+)\/return(?:\/([A-Z0-9]+))?$/);
   if (m) {
     const provider = m[1] as ProviderId;
-    const params = { ...Object.fromEntries(url.searchParams), ...(req.method === "POST" ? await readBody(req) : {}) };
+    const params = {
+      ...Object.fromEntries(url.searchParams),
+      ...(req.method === "POST" ? await readBody(req) : {}),
+    };
     const id = payments.adapter(provider).orderIdFromCallback(params) ?? m[2];
     const a = id ? attempts.get(id) : undefined;
     if (!a || a.provider !== provider) return send(404, page("<h1>Unknown payment</h1>"));
@@ -203,7 +289,10 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       await verifyAndTransition(a, Object.keys(params).length ? params : undefined);
     } catch (e) {
       // Network/5xx/invalid signature: leave the attempt open; reconciliation settles it.
-      console.error(`[return] ${provider} ${a.id}:`, e instanceof PaymentError ? `${e.code} ${e.message}` : e);
+      console.error(
+        `[return] ${provider} ${a.id}:`,
+        e instanceof PaymentError ? `${e.code} ${e.message}` : e,
+      );
     }
     return redirect(`/orders/${a.orderId}?attempt=${a.id}`);
   }
@@ -212,7 +301,10 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   m = url.pathname.match(/^\/payments\/getpay\/(pay|landing)\/([A-Z0-9]+)$/);
   if (req.method === "GET" && m && attempts.get(m[2])?.provider === "getpay") {
     const g = payments.get("getpay");
-    return send(200, m[1] === "pay" ? g.paymentPage() : g.returnPage(`/payments/getpay/return/${m[2]}`));
+    return send(
+      200,
+      m[1] === "pay" ? g.paymentPage() : g.returnPage(`/payments/getpay/return/${m[2]}`),
+    );
   }
 
   // Receipt page (and mobile "done" URL the WebView intercepts)
@@ -221,8 +313,18 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const o = orders.get(m[1]);
     const a = attempts.get(url.searchParams.get("attempt") ?? "");
     if (!o) return send(404, "unknown order");
-    const msg = o.status === "paid" ? "✅ Payment received. Thank you!" : a?.status === "pending" || a?.status === "unknown" || a?.status === "initiated" ? "⏳ We're confirming your payment…" : `❌ Payment ${a?.status ?? "not completed"}.`;
-    return send(200, page(`<h1>${msg}</h1><p>Attempt <code>${a?.id}</code> via ${a?.provider}: <b>${a?.status}</b></p><p><a href="/">Start over</a></p>`));
+    const msg =
+      o.status === "paid"
+        ? "✅ Payment received. Thank you!"
+        : a?.status === "pending" || a?.status === "unknown" || a?.status === "initiated"
+          ? "⏳ We're confirming your payment…"
+          : `❌ Payment ${a?.status ?? "not completed"}.`;
+    return send(
+      200,
+      page(
+        `<h1>${msg}</h1><p>Attempt <code>${a?.id}</code> via ${a?.provider}: <b>${a?.status}</b></p><p><a href="/">Start over</a></p>`,
+      ),
+    );
   }
 
   send(404, "not found", "text/plain");
@@ -237,7 +339,8 @@ async function readBody(req: IncomingMessage): Promise<Record<string, string>> {
     chunks.push(c as Buffer);
   }
   const raw = Buffer.concat(chunks).toString("utf8");
-  if ((req.headers["content-type"] ?? "").includes("application/json")) return raw ? JSON.parse(raw) : {};
+  if ((req.headers["content-type"] ?? "").includes("application/json"))
+    return raw ? JSON.parse(raw) : {};
   return Object.fromEntries(new URLSearchParams(raw));
 }
 
@@ -251,7 +354,9 @@ setInterval(async () => {
   const stale = open.filter((a) => !a.reviewRequired && Date.now() - a.createdAt > 2 * 60_000);
   for (const a of stale.slice(0, 50)) {
     if (a.provider === "cybersource") continue; // SA has no status API; rely on Merchant POST / REST search
-    await verifyAndTransition(a).catch((e) => console.error(`[reconcile] ${a.id}:`, e instanceof Error ? e.message : e));
+    await verifyAndTransition(a).catch((e) =>
+      console.error(`[reconcile] ${a.id}:`, e instanceof Error ? e.message : e),
+    );
   }
 }, 60_000).unref();
 
@@ -261,4 +366,6 @@ createServer((req, res) => {
     if (!res.headersSent) res.writeHead(500, { "Content-Type": "text/plain" });
     res.end("internal error");
   });
-}).listen(PORT, () => console.log(`demo on ${PUBLIC_URL}  (providers: ${payments.enabled.join(", ")})`));
+}).listen(PORT, () =>
+  console.log(`demo on ${PUBLIC_URL}  (providers: ${payments.enabled.join(", ")})`),
+);

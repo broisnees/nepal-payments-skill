@@ -1,5 +1,5 @@
 /*
- * eSewa — https://developer.esewa.com.np. Port of scripts/ts/src/esewa.ts.
+ * eSewa — https://developer.esewa.com.np. Port of scripts/ts/src/providers/esewa/.
  *
  *  1. ePay v2 (web, also in a mobile WebView): signed form POST -> eSewa -> success_url?data=<base64 JSON>
  *     -> verify response signature -> status API (authoritative).

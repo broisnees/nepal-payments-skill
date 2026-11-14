@@ -132,7 +132,8 @@ public final class GetPay implements PaymentAdapter {
     public static Optional<Token> decodeToken(String token) {
         String text;
         try {
-            text = Codec.decodeUtf8(Codec.fromBase64(Js.trim(token).replace(' ', '+')));
+            // fromBase64 turns spaces back into "+" before trimming, so pass the token untouched.
+            text = Codec.decodeUtf8(Codec.fromBase64(token));
         } catch (IllegalArgumentException e) {
             return Optional.empty();
         }

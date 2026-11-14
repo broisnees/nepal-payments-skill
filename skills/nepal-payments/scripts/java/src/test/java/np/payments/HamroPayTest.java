@@ -27,7 +27,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Port of the "hamropay" describe block of adapters.test.ts. */
+/** Port of scripts/ts/test/providers/hamropay.test.ts. */
 class HamroPayTest {
     private static final String MID = "PN_-Nd99TBnAlBjCgl8ef_b";
     private static final HamroPay.Config CFG = HamroPay.Config.of(Environment.SANDBOX, MID, "client@123", "merchant-api-key-test", "abcdefg")

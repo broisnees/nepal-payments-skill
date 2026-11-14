@@ -1,6 +1,6 @@
 /*
  * GetPay (NCHL card gateway for Nepali banks: Visa/Mastercard with 3-D Secure): https://getpay.global/web-integration/
- * Port of scripts/ts/src/getpay.ts. Credentials come from the acquiring bank: papInfo (base64 {institutionId, mid,
+ * Port of scripts/ts/src/providers/getpay/. Credentials come from the acquiring bank: papInfo (base64 {institutionId, mid,
  * tid}), oprKey, insKey (blank when operator-hosted), the bundle URL and the base URL.
  *
  * Flow (browser SDK, four pages): checkout page loads bundle.js and runs new GetPay(options).initialize()

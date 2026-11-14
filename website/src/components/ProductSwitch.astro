@@ -16,12 +16,13 @@ const { variant = "nav" } = Astro.props;
 </div>
 
 <style>
+  /* Plain text items; the product this page belongs to gets ink text and a 2px brand bar. Tokens fall back to
+     Starlight's on docs pages. */
   .ps {
-    --ps-line: var(--line, var(--sl-color-gray-5));
     --ps-ink: var(--ink, var(--sl-color-white));
     --ps-muted: var(--muted, var(--sl-color-gray-3));
+    --ps-subtle: var(--subtle, var(--sl-color-gray-4));
     --ps-hover: var(--hover, var(--sl-color-gray-6));
-    --ps-bg: var(--bg, var(--sl-color-black));
     display: flex;
     align-items: stretch;
   }
@@ -31,19 +32,21 @@ const { variant = "nav" } = Astro.props;
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding-inline: 18px;
-    font-size: 15px;
+    padding-inline: 12px;
+    font-size: 14px;
     color: var(--ps-muted);
     text-decoration: none;
     white-space: nowrap;
-    background: var(--ps-bg);
     transition-property: background-color, color;
     transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
   }
 
-  .ps-item:hover {
-    color: var(--ps-ink);
-    background: var(--ps-hover);
+  @media (hover: hover) and (pointer: fine) {
+    .ps-item:hover {
+      color: var(--ps-ink);
+      background: var(--ps-hover);
+    }
   }
 
   .ps-item[aria-current] {
@@ -51,51 +54,40 @@ const { variant = "nav" } = Astro.props;
     font-weight: 500;
   }
 
-  /* A 2px bar marks the product this page belongs to. */
   .ps-item[aria-current]::after {
     content: "";
     position: absolute;
-    inset-inline: 18px;
+    inset-inline: 12px;
     bottom: -1px;
     height: 2px;
     background: var(--brand, #c8102e);
   }
 
   .ps-name {
-    font: 12px var(--mono, var(--sl-font-mono));
-    color: var(--subtle, var(--sl-color-gray-4));
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--ps-subtle);
   }
 
-  .ps-item + .ps-item {
-    border-inline-start: 1px solid var(--ps-line);
-  }
-
-  /* Landing and blog nav: the group is one bordered nav cell. */
-  .ps-nav {
-    border: 1px solid var(--ps-line);
-  }
-
-  /* Docs header: a compact segmented control next to the social icons. */
+  /* Docs header: same items, sized to Starlight's header controls. */
   .ps-header {
     height: 2.25rem;
-    border: 1px solid var(--ps-line);
   }
 
   .ps-header .ps-item {
-    padding-inline: 12px;
     font-size: var(--sl-text-sm, 14px);
   }
 
   .ps-header .ps-item[aria-current]::after {
-    inset-inline: 12px;
+    bottom: 0;
   }
 
   @media (max-width: 639px) {
     .ps-item {
-      padding-inline: 12px;
+      padding-inline: 8px;
     }
     .ps-item[aria-current]::after {
-      inset-inline: 12px;
+      inset-inline: 8px;
     }
     .ps-name {
       display: none;

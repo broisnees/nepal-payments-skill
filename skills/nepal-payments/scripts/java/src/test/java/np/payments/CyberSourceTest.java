@@ -13,7 +13,7 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Port of the "cybersource" describe block of adapters.test.ts, plus the Python-only case. */
+/** Port of scripts/ts/test/providers/cybersource.test.ts, plus the Python-only case. */
 class CyberSourceTest {
     private final CyberSource cs = new CyberSource(CyberSource.Config.of(Environment.SANDBOX, "P", "A", "S"));
 
