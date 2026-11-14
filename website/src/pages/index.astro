@@ -33,7 +33,7 @@ const words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "e
 const langCount = words[languages.length] ?? String(languages.length);
 const tsTests = languages.find((l) => l.name === "TypeScript")!.tests;
 const byKind = checkoutKinds.map((k) => ({ ...k, providers: providers.filter((p) => p.checkout === k.kind) }));
-const description = `An Agent Skill with tested adapters for eSewa, Khalti, Fonepay, connectIPS, CyberSource, NPS, IME Pay, NEPALPAY QR, Hamro Pay and GetPay in six languages. ${totalTests} tests, zero runtime dependencies.`;
+const description = `An Agent Skill for ten Nepali payment gateways, eSewa and Khalti to NEPALPAY QR and GetPay, with adapters in six languages. ${totalTests} tests, zero dependencies.`;
 
 const site = new URL("/", Astro.site).href;
 const jsonLd = [

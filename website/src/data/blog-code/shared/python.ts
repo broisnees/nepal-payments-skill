@@ -40,7 +40,7 @@ class Start:
 
 @dataclass
 class Outcome:
-    status: str                    # paid | pending | failed | canceled | refunded | not_found
+    status: str                    # paid | pending | failed | canceled | expired | refunded | partially_refunded | not_found | unknown
     provider_ref: str | None = None
 
 
@@ -55,7 +55,7 @@ def settle(attempt: store.Attempt, outcome: Outcome) -> None:
     # Safe to call any number of times for the same attempt (return route hit
     # twice, reconcile job racing the buyer): transition() lets exactly one
     # caller move the attempt out of an open state, so fulfil() runs once.
-    if outcome.status in ("paid", "failed", "canceled"):
+    if outcome.status in ("paid", "failed", "canceled", "expired"):
         if store.transition(attempt.id, OPEN, outcome.status) and outcome.status == "paid":
             # Keep the gateway's transaction id (refunds, support). A ref saved at start
             # (Khalti pidx, IME TokenId, NPS ProcessId) stays: confirm looks the payment up with it.
@@ -64,7 +64,9 @@ def settle(attempt: store.Attempt, outcome: Outcome) -> None:
             store.fulfil(attempt.order_id)
     elif outcome.status == "pending":
         store.transition(attempt.id, ["initiated"], "pending")
-    # not_found: leave it open. The reconcile job expires it after an hour.
+    # not_found and unknown: leave it open. The reconcile job re-checks it and expires a
+    # not_found after an hour; an unknown status needs a person. refunded and
+    # partially_refunded come after paid: nothing to do.
 
 
 def auto_post_page(action: str, fields: dict[str, str], enctype: str | None = None) -> str:

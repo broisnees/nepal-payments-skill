@@ -42,7 +42,7 @@ sealed interface Start {
     ) : Start
 }
 
-// status: paid, pending, failed, canceled, refunded or not_found
+// status: paid, pending, failed, canceled, expired, refunded, partially_refunded, not_found or unknown
 data class Outcome(val status: String, val providerRef: String? = null)
 
 interface Gateway {
@@ -63,7 +63,7 @@ val OPEN = listOf("initiated", "pending")
 // transition() only succeeds once, so fulfil() runs once per order.
 fun settle(store: Store, attempt: Attempt, outcome: Outcome) {
     when (outcome.status) {
-        "paid", "failed", "canceled" ->
+        "paid", "failed", "canceled", "expired" ->
             if (store.transition(attempt.id, OPEN, outcome.status) && outcome.status == "paid") {
                 // Keep the gateway's transaction id (refunds, support). A ref saved at start
                 // (Khalti pidx, IME TokenId, NPS ProcessId) stays: confirm looks the payment up with it.
@@ -73,7 +73,9 @@ fun settle(store: Store, attempt: Attempt, outcome: Outcome) {
                 store.fulfil(attempt.orderId)
             }
         "pending" -> store.transition(attempt.id, listOf("initiated"), "pending")
-        // not_found: leave it, the reconcile job expires it after an hour.
+        // not_found and unknown: leave it open. The reconcile job re-checks it and expires a
+        // not_found after an hour; an unknown status needs a person. refunded and
+        // partially_refunded come after paid: nothing to do.
     }
 }
 `,

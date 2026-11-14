@@ -14,7 +14,7 @@ Talk to your agent normally. The skill loads when you mention a provider, NPR or
   {prompts.map((p) => <li><q>{p}</q></li>)}
 </ul>
 
-Name the providers and your stack when you know them. If you don't name a provider, the skill recommends eSewa and Khalti first, then NPS or Fonepay to cover banks, connectIPS for direct bank debit and CyberSource only for card acquiring through a bank.
+Name the providers and your stack when you know them. If you don't name a provider, the skill recommends eSewa and Khalti first (plus Hamro Pay for Hamro Patro's wallet users), then NPS or Fonepay to cover banks and connectIPS for direct bank debit. For cards it picks GetPay or CyberSource, whichever your bank offers, and for in-person or point-of-sale QR it picks Fonepay Dynamic QR or NEPALPAY QR.
 
 ## What the agent does
 

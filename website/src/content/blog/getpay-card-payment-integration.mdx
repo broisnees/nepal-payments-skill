@@ -1,12 +1,12 @@
 ---
-title: "GetPay Card Payment Integration: NCHL Card Checkout Step by Step in Any Framework"
+title: "GetPay Card Payment Integration: NCHL Card Checkout"
 description: "Take Visa and Mastercard through GetPay, NCHL's card gateway for Nepali banks, in Express, Laravel, Django, Go, Spring or Ktor: SDK pages, token, status API."
 label: GetPay (cards)
 provider: getpay
 published: 2026-11-06
 order: 100
 stack: true
-stackTitle: "GetPay Card Payment Integration in {stack}: Step by Step"
+stackTitle: "GetPay Card Payment Integration in {stack}"
 stackDescription: "Integrate GetPay, NCHL's card checkout for Nepali banks, in {stack}: the four SDK pages, the oprSecret token check, merchant-status and reconciliation."
 faq:
   - q: "What is GetPay?"
@@ -128,7 +128,7 @@ This file is the only GetPay code in the project. It builds the SDK options, ren
 
 ### Configuration
 
-The module reads the variables above and refuses to start without the five your bank must give you. There are no public test values to fall back on. `startPayment` returns its own `CardStart` type, not the shared redirect-or-form `Start`: the script URL and the options object for the SDK.
+The module reads the variables above and refuses to start without these five settings. There are no public test values to fall back on. `startPayment` returns its own `CardStart` type, not the shared redirect-or-form `Start`: the script URL and the options object for the SDK.
 
 <CodeGroup by="lang" blocks={part(getpay, "config")} />
 
@@ -210,7 +210,7 @@ An unknown id comes back as HTTP 400 with `status: -1`, which the module reads a
 | `SUCCESS` with another `clientId`, or a different amount | `PaymentError`, the route answers 400 |
 | `FAILED`, `FAILURE`, `DECLINED` | `failed` |
 | `CANCELLED` | `canceled` |
-| `PENDING`, or a value the module doesn't know | `pending` |
+| `PENDING`, or a value the module doesn't know | `pending` (the skill's adapters report an unrecognised value as `unknown` and alert; both keep the attempt open) |
 | `status: -1` "not found" | `not_found` |
 | A token that won't decode, or a wrong `oprSecret` | `PaymentError`, the route answers 400 |
 

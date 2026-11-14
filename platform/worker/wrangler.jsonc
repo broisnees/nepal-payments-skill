@@ -1,6 +1,7 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "paynp",
+  "account_id": "8886776a39863c14da28dfc1d5cb74c3", // nepali-payment
   "main": "src/index.ts",
   "compatibility_date": "2026-11-05",
   "compatibility_flags": ["nodejs_compat"],
@@ -16,7 +17,7 @@
   // Workers AI: Ask paynp and incident summaries when no ANTHROPIC_API_KEY secret is set (src/ai/model.ts).
   "ai": { "binding": "AI" },
   "d1_databases": [
-    { "binding": "DB", "database_name": "paynp", "database_id": "90432197-a1ce-436a-bb1d-24ff35c054df", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "paynp", "database_id": "60de52b7-fc41-4c9a-8a42-e54054ab0087", "migrations_dir": "migrations" }
   ],
   "durable_objects": {
     "bindings": [

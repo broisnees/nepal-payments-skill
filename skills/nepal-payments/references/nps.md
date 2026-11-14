@@ -3,7 +3,7 @@
 One integration routes to ~29 banks' mobile banking, e-banking, card checkouts (including HBL Card Checkout) and wallets (Khalti, MORU, MyPay, Hamro Pay). It's the cheapest way to cover "all banks" plus cards without per-bank contracts.
 
 Source: "DEVELOPER GUIDELINES – API DOCUMENT – GATEWAY 2025" (given to merchants at onboarding; not public), cross-checked against ~10 community implementations and live host probes (2026-11). NPS has rebranded to "NPX" (nepalpayment.com).
-Adapters: `scripts/ts/src/providers/nps/`, `scripts/python/nepal_payments/providers/nps/`.
+Adapters: `scripts/ts/src/providers/nps/`, plus the matching code in each port (`nepal_payments/providers/nps/`, `Nps.java`, `Nps.kt`, `src/Nps/`, `nps.go`).
 
 ## Environments and credentials
 

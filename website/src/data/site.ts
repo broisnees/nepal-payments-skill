@@ -104,9 +104,10 @@ export const snippets = [
     code: `import { createPayments, paymentsConfigFromEnv, newOrderId } from "./payments/index.ts";
 
 const payments = createPayments(paymentsConfigFromEnv());
+const attemptId = newOrderId(); // store it on a new payment_attempts row
 const init = await payments.get("khalti").initiate({
-  orderId: newOrderId(), amountPaisa: 150000, description: "Order #42",
-  returnUrl: "https://shop.example.com/payments/khalti/return",
+  orderId: attemptId, amountPaisa: 150000, description: "Order #42",
+  returnUrl: "https://shop.example.com/payments/khalti/return/" + attemptId,
 });
 
 // later, in the return handler: verify with values from YOUR database
@@ -120,9 +121,10 @@ const result = await payments.get("khalti").verify({
     code: `from nepal_payments import create_payments, config_from_env, new_order_id
 
 payments = create_payments(config_from_env())
+attempt_id = new_order_id()  # store it on a new payment_attempts row
 init = payments["khalti"].initiate(
-    order_id=new_order_id(), amount_paisa=150000, description="Order #42",
-    return_url="https://shop.example.com/payments/khalti/return",
+    order_id=attempt_id, amount_paisa=150000, description="Order #42",
+    return_url=f"https://shop.example.com/payments/khalti/return/{attempt_id}",
 )
 
 # later, in the return handler: verify with values from YOUR database
@@ -135,9 +137,10 @@ result = payments["khalti"].verify(attempt.id, attempt.amount_paisa, provider_re
 if err != nil {
 	log.Fatal(err)
 }
+attemptID := payments.NewOrderID() // store it on a new payment_attempts row
 init, err := p.Khalti.Initiate(ctx, payments.InitiateInput{
-	OrderID: payments.NewOrderID(), AmountPaisa: 150000, Description: "Order #42",
-	ReturnURL: "https://shop.example.com/payments/khalti/return",
+	OrderID: attemptID, AmountPaisa: 150000, Description: "Order #42",
+	ReturnURL: "https://shop.example.com/payments/khalti/return/" + attemptID,
 })
 
 // later, in the return handler: verify with values from YOUR database
@@ -149,8 +152,9 @@ res, err := p.Khalti.Verify(ctx, payments.VerifyInput{
     lang: "java",
     label: "Java",
     code: `Payments payments = Payments.create(Payments.configFromEnv());
+String attemptId = Payments.newOrderId(); // store it on a new payment_attempts row
 InitiateResult init = payments.khalti().initiate(InitiateInput.of(
-    Payments.newOrderId(), 150_000, "Order #42", "https://shop.example.com/payments/khalti/return"));
+    attemptId, 150_000, "Order #42", "https://shop.example.com/payments/khalti/return/" + attemptId));
 
 // later, in the return handler: verify with values from YOUR database
 VerifyResult result = payments.khalti().verify(
@@ -160,9 +164,10 @@ VerifyResult result = payments.khalti().verify(
     lang: "kotlin",
     label: "Kotlin",
     code: `val payments = Payments.create(paymentsConfigFromEnv())
+val attemptId = newOrderId() // store it on a new payment_attempts row
 val init = payments.khalti.initiate(InitiateInput(
-    orderId = newOrderId(), amountPaisa = 150_000, description = "Order #42",
-    returnUrl = "https://shop.example.com/payments/khalti/return",
+    orderId = attemptId, amountPaisa = 150_000, description = "Order #42",
+    returnUrl = "https://shop.example.com/payments/khalti/return/" + attemptId,
 ))
 
 // later, in the return handler (suspend): verify with values from YOUR database
@@ -174,9 +179,10 @@ val result = payments.khalti.verify(VerifyInput(attempt.id, attempt.amountPaisa,
     code: `use NepalPayments\\{InitiateInput, Payments, VerifyInput};
 
 $payments = Payments::create(Payments::configFromEnv());
+$attemptId = Payments::newOrderId(); // store it on a new payment_attempts row
 $init = $payments->khalti()->initiate(new InitiateInput(
-    orderId: Payments::newOrderId(), amountPaisa: 150000, description: 'Order #42',
-    returnUrl: 'https://shop.example.com/payments/khalti/return',
+    orderId: $attemptId, amountPaisa: 150000, description: 'Order #42',
+    returnUrl: 'https://shop.example.com/payments/khalti/return/' . $attemptId,
 ));
 
 // later, in the return handler: verify with values from YOUR database

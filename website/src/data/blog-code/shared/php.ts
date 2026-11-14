@@ -69,7 +69,7 @@ final class Start
 final class Outcome
 {
     public function __construct(
-        public readonly string $status, // paid | pending | failed | canceled | refunded | not_found
+        public readonly string $status, // paid | pending | failed | canceled | expired | refunded | partially_refunded | not_found | unknown
         public readonly ?string $providerRef = null,
     ) {
     }
@@ -87,7 +87,7 @@ const OPEN = ['initiated', 'pending'];
 // transition() only succeeds once, so fulfil() runs once per order.
 function settle(Store $store, array $attempt, Outcome $outcome): void
 {
-    if (in_array($outcome->status, ['paid', 'failed', 'canceled'], true)) {
+    if (in_array($outcome->status, ['paid', 'failed', 'canceled', 'expired'], true)) {
         if ($store->transition($attempt['id'], OPEN, $outcome->status) && $outcome->status === 'paid') {
             // Keep the gateway's transaction id (refunds, support). A ref saved at start
             // (Khalti pidx, IME TokenId, NPS ProcessId) stays: confirm looks the payment up with it.
@@ -99,7 +99,9 @@ function settle(Store $store, array $attempt, Outcome $outcome): void
     } elseif ($outcome->status === 'pending') {
         $store->transition($attempt['id'], ['initiated'], 'pending');
     }
-    // not_found: leave it, the reconcile job expires it after an hour.
+    // not_found and unknown: leave it open. The reconcile job re-checks it and expires a
+    // not_found after an hour; an unknown status needs a person. refunded and
+    // partially_refunded come after paid: nothing to do.
 }
 
 // HTML page that auto-posts a form to the gateway.

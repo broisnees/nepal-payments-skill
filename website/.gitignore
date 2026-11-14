@@ -4,3 +4,4 @@ dist/
 # generated from skills/nepal-payments/references by scripts/sync-docs.mjs
 src/content/docs/docs/providers/
 src/content/docs/docs/guides/
+.wrangler/

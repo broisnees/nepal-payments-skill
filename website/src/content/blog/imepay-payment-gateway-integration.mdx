@@ -1,12 +1,12 @@
 ---
-title: "IME Pay Payment Gateway Integration: Step by Step in Any Framework"
+title: "IME Pay Payment Gateway Integration: Step by Step"
 description: "Build IME Pay web checkout in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: GetToken, checkout redirect, unsigned callback and Recheck."
 label: IME Pay
 provider: imepay
 published: 2026-11-05
 order: 70
 stack: true
-stackTitle: "IME Pay Payment Gateway Integration in {stack}: Step by Step"
+stackTitle: "IME Pay Payment Gateway Integration in {stack}"
 stackDescription: "Integrate IME Pay web checkout in {stack}: GetToken, checkout redirect, unsigned callback, Recheck and reconciliation, with code you can run."
 faq:
   - q: "Does IME Pay still work after the Khalti merger?"
@@ -241,7 +241,7 @@ Buyers close the tab after paying, lose signal, or never get sent back. IME Pay 
 
 <CodeGroup by="lang" blocks={code.reconcile} />
 
-There's one IME Pay quirk to know. No Recheck answer means "never paid" for certain, so the module never returns `not_found` for an attempt that has a token: anything but 0 stays `pending`, and only the three-day review cutoff above takes it out of the loop. I checked this with the TypeScript job against the mock: a two-hour-old attempt with a token stayed `pending`, one without a token was marked `expired`, and a paid one was settled. When the job flags an IME Pay attempt for review, alert someone and check it in the IME merchant portal instead of marking it failed.
+There's one IME Pay quirk to know. No Recheck code reliably means "never paid", so the module never returns `not_found` for an attempt that has a token: anything but 0 stays `pending`, and only the three-day review cutoff above takes it out of the loop. I checked this with the TypeScript job against the mock: a two-hour-old attempt with a token stayed `pending`, one without a token was marked `expired`, and a paid one was settled. When the job flags an IME Pay attempt for review, alert someone and check it in the IME merchant portal instead of marking it failed.
 
 ## Step 5: Pay on the IME Pay test server
 

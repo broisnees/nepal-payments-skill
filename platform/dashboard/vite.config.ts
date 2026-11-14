@@ -26,7 +26,7 @@ function docsMarkdown(): Plugin {
   };
 }
 
-const backend = "http://localhost:8787";
+const backend = process.env.PAYNP_BACKEND ?? "http://localhost:8787";
 const proxy = (ws = false) => ({ target: backend, changeOrigin: false, ws });
 
 export default defineConfig({

@@ -50,7 +50,7 @@ public sealed interface Start {
     lang: "java",
     code: `package payments;
 
-// status: paid, pending, failed, canceled, refunded or not_found
+// status: paid, pending, failed, canceled, expired, refunded, partially_refunded, not_found or unknown
 public record Outcome(String status, String providerRef) {}
 `,
   },
@@ -100,7 +100,7 @@ public final class Payments {
     // transition() only succeeds once, so fulfil() runs once per order.
     public static void settle(Store store, Store.Attempt attempt, Outcome outcome) {
         switch (outcome.status()) {
-            case "paid", "failed", "canceled" -> {
+            case "paid", "failed", "canceled", "expired" -> {
                 if (store.transition(attempt.id(), OPEN, outcome.status()) && outcome.status().equals("paid")) {
                     // Keep the gateway's transaction id (refunds, support). A ref saved at start
                     // (Khalti pidx, IME TokenId, NPS ProcessId) stays: confirm looks the payment up with it.
@@ -111,7 +111,10 @@ public final class Payments {
                 }
             }
             case "pending" -> store.transition(attempt.id(), List.of("initiated"), "pending");
-            default -> {} // not_found: leave it, the reconcile job expires it after an hour
+            // not_found and unknown: leave it open. The reconcile job re-checks it and expires a
+            // not_found after an hour; an unknown status needs a person. refunded and
+            // partially_refunded come after paid: nothing to do.
+            default -> {}
         }
     }
 }

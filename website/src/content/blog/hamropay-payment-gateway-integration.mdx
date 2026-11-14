@@ -1,12 +1,12 @@
 ---
-title: "Hamro Pay Payment Gateway Integration: Step by Step in Any Framework"
+title: "Hamro Pay Payment Gateway Integration: Step by Step"
 description: "Build Hamro Pay checkout in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: HMAC-SHA512 session, signed form, Get Transaction, UAT."
 label: Hamro Pay
 provider: hamropay
 published: 2026-11-06
 order: 90
 stack: true
-stackTitle: "Hamro Pay Payment Gateway Integration in {stack}: Step by Step"
+stackTitle: "Hamro Pay Payment Gateway Integration in {stack}"
 stackDescription: "Integrate Hamro Pay Checkout in {stack}: signed Create Session, the gateway form, Get Transaction, reconciliation and UAT testing, with code that runs."
 faq:
   - q: "What are the Hamro Pay sandbox (UAT) credentials?"
@@ -22,7 +22,7 @@ faq:
   - q: "Does Hamro Pay have webhooks?"
     a: "Yes, optionally. Save a webhook URL in the merchant portal and Hamro Pay POSTs a signed JSON body with a Signature header, keyed with a separate webhook secret. Treat it as a trigger: verify the signature, then run Get Transaction before you fulfil."
   - q: "What are the Hamro Pay amount limits?"
-    a: "Rs 10 to Rs 50,000 per transaction, and only from KYC-verified Hamro Pay users. Amounts outside the range come back as code 11 OUT_OF_RANGE."
+    a: "Rs 10 to Rs 50,000 per transaction, and only from KYC-verified Hamro Pay users. The module rejects amounts outside that range before it calls Hamro Pay; sent anyway, they come back as code 11 OUT_OF_RANGE."
 ---
 
 import CodeGroup from "../../components/blog/CodeGroup.astro";
@@ -151,7 +151,7 @@ Check your signing code against this vector from my Hamro Pay reference before y
 From a terminal:
 
 ```bash
-printf 'T1,1000,M,C,K' | openssl dgst -sha512 -hmac abcdefg -binary | base64 -w0
+printf 'T1,1000,M,C,K' | openssl dgst -sha512 -hmac abcdefg -binary | openssl base64 -A
 # 7MhTBtP9MzyiNUg7P/ljNqxHxrUPQSAHhNpAD9bPlacsF2lMj8GAka1pVKD7MSMnNdBLqCwz9SoY4l+2RHdpxA==
 ```
 
@@ -222,6 +222,8 @@ This is what Get Transaction returns for a paid Rs 89.92 attempt:
 | `FAILED` | The payment failed | `failed` |
 | `NOT_INITIATED` | "TRANSACTION NOT INITIATED YET": the buyer never paid | `not_found` |
 | anything else | Unknown to me | `pending`, so the reconcile job keeps asking |
+
+The adapters in the skill report an unrecognised status as `unknown` and alert, because it usually means Hamro Pay added a value. Both keep the attempt open.
 
 `amount` is `0` until the payment finishes, so the module only reads it on `COMPLETED`. A `401`, an error code or a body that isn't JSON is not an answer: the module throws a plain error, the route answers 502, and the reconcile job asks again later.
 

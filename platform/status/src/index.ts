@@ -8,7 +8,7 @@ import { esc, renderDevelopers, renderGateway, renderNotFound, renderOverview, s
 import { OPENAPI } from "./openapi.ts";
 
 /** Pages and API answers are rebuilt at most this often per location. */
-export const MAX_AGE = 30;
+const MAX_AGE = 30;
 
 const app = new Hono<{ Bindings: Env }>();
 

@@ -1,9 +1,9 @@
 """connectIPS credentials: the CONNECTIPS_* variables read by config_from_env().
 
-NCHL issues MERCHANTID, APPID, APPNAME, the app password and the creditor .pfx. Load the key once:
-    pem = load_pfx_private_key_pem(
-        open("CREDITOR.pfx", "rb").read(), os.environ["CONNECTIPS_PFX_PASSWORD"]
-    )
+NCHL issues MERCHANTID, APPID, APPNAME, the app password and the creditor .pfx. The adapter reads
+the key as PKCS#8 PEM from CONNECTIPS_PRIVATE_KEY_PEM (references/env.md). To convert the creditor
+.pfx in code instead of with openssl:
+    pem = load_pfx_private_key_pem(open("CREDITOR.pfx", "rb").read(), pfx_password)
 """
 
 from __future__ import annotations

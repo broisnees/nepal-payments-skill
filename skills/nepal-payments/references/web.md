@@ -5,14 +5,14 @@ Every framework needs the same five routes (see `mobile.md` §3, which reuses th
 | Route | Purpose |
 |---|---|
 | `POST /payments` `{orderId, provider}` | load the order, compute the amount **server-side**, insert the attempt, `adapter.initiate()`, persist `providerRef` |
-| `GET /payments/:attemptId/start` | 302 to `url`, or `renderAutoSubmitForm()` for form providers |
+| `GET /payments/:attemptId/start` | by `init.kind`: 302 to `url` (redirect), `renderAutoSubmitForm()` (form), a QR page (qr), `getpay.checkoutPage()` (sdk); see "QR and SDK results" below |
 | `GET+POST /payments/:provider/return[/:attemptId]` | `orderIdFromCallback()` → load attempt → `verify()` → conditional transition → redirect to the receipt page |
 | `GET /payments/:attemptId` | status for polling (mobile, SPA) |
-| provider notifications | NPS `GET /payments/nps/notify`, CyberSource Merchant POST URL, eSewa Intent `callback_url` |
+| provider notifications | NPS `GET /payments/nps/notify`, CyberSource Merchant POST URL, eSewa Intent `callback_url`, Hamro Pay webhook `POST`, NEPALPAY payment confirmation `POST` (when registered with NCHL) |
 
 The full reference implementation is `scripts/ts/examples/server.ts` (zero deps; run it with `node examples/server.ts`). The snippets below show how the same pieces map onto each framework. `verifyAndTransition` is the function from `architecture.md` §4.
 
-**POST callbacks need CSRF exemptions**: CyberSource receipt + Merchant POST, IME Pay `RespUrl`, eSewa Intent callback. They're cross-site POSTs without your CSRF token. Their integrity comes from signature verification and the server-side status check, never from the request itself.
+**POST callbacks need CSRF exemptions**: CyberSource receipt + Merchant POST, IME Pay `RespUrl`, eSewa Intent callback, Hamro Pay webhook, NEPALPAY payment confirmation. They're cross-site POSTs without your CSRF token. Their integrity comes from signature verification and the server-side status check, never from the request itself.
 
 ## Contents
 1. Frontend (any framework)
@@ -30,7 +30,8 @@ The full reference implementation is `scripts/ts/examples/server.ts` (zero deps;
 
 ```tsx
 // The browser sends ONLY orderId + provider. No amounts, no signatures, no secrets.
-async function pay(orderId: string, provider: "esewa" | "khalti" | "fonepay" | "connectips" | "nps" | "cybersource") {
+type Provider = "esewa" | "khalti" | "fonepay" | "connectips" | "nps" | "cybersource" | "imepay" | "nepalpay" | "hamropay" | "getpay";
+async function pay(orderId: string, provider: Provider) {
   const res = await fetch("/payments", {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -38,9 +39,16 @@ async function pay(orderId: string, provider: "esewa" | "khalti" | "fonepay" | "
   });
   if (!res.ok) throw new Error("Could not start payment");
   const { startUrl } = await res.json();
-  window.location.assign(startUrl); // server redirects or auto-submits the provider form
+  window.location.assign(startUrl); // server redirects, auto-submits the form, shows the QR, or serves GetPay's page
 }
 ```
+
+### QR and SDK results
+
+Two providers return something other than a redirect or a form, so `/start` needs two more branches (`scripts/ts/examples/server.ts` has all four):
+
+- **`kind: "qr"` (NEPALPAY QR).** There's no return URL: the payer scans with their own bank app. Serve a page with `<img src="data:image/png;base64,${init.qrImage}">` (or render `init.qrString` with any QR library) and poll `GET /payments/:attemptId` every 3-5 s; that route calls `verify()` while the attempt is open. A "I've paid" link to the return route runs the same check.
+- **`kind: "sdk"` (GetPay).** Serve `getpay.checkoutPage(init, "/payments/getpay/pay/:attemptId")` from `/start`, `getpay.paymentPage()` from that pay route, and point both `returnUrl` and `failureUrl` at a route serving `getpay.returnPage("/payments/getpay/return/:attemptId")`. That page breaks out of GetPay's iframe and forwards the token (which can sit in the URL `#hash`) to your return route as `?token=`, where `verify()` runs as usual.
 For the receipt page, poll `GET /payments/:attemptId` while the status is `pending`/`initiated` (1 s, 2 s, 4 s … about 1 min), then show "We'll email you when it's confirmed".
 
 ## 2. Express
@@ -67,6 +75,7 @@ app.post("/payments", requireUser, async (req, res) => {
 app.get("/payments/:id/start", async (req, res) => {
   const a = await db.attempts.get(req.params.id);
   if (!a) return res.sendStatus(404);
+  // NEPALPAY QR and GetPay need the "qr" and "sdk" branches from "QR and SDK results" above.
   a.initiate.kind === "redirect" ? res.redirect(a.initiate.url) : res.type("html").send(renderAutoSubmitForm(a.initiate));
 });
 
@@ -433,4 +442,4 @@ suspend fun verifyAndTransition(a: Attempt, params: Map<String, String>?) {
 
 Go: use `scripts/go/payments/` (stdlib only). `payments.New(payments.ConfigFromEnv())`, then in a Go 1.22 `http.ServeMux` handler for `GET /payments/{provider}/return` and `POST /payments/{provider}/return`: flatten `r.URL.Query()` and `r.PostForm` into a `map[string]string`, call `p.Adapter(r.PathValue("provider"))`, `OrderIDFromCallback`, `Verify(r.Context(), …)`, then `payments.DecideTransition` and the guarded `UPDATE` exactly as in §8. The same applies to chi and Gin.
 
-C#, Ruby, Rust, Dart (server): port from `scripts/ts/src/<provider>.ts`. Each provider reference has signature snippets for PHP, Python, Go and Java, plus **test vectors**. Write the vector tests first and port until they pass, then run the sandbox checks in `testing.md`.
+C#, Ruby, Rust, Dart (server): port from the provider's TypeScript folder in `scripts/ts/src/providers/` (for example `scripts/ts/src/providers/esewa/`). Each provider reference has signature snippets for PHP, Python, Go and Java, plus **test vectors**. Write the vector tests first and port until they pass, then run the sandbox checks in `testing.md`.

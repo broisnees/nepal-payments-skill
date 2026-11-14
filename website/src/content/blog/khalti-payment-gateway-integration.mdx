@@ -1,12 +1,12 @@
 ---
-title: "Khalti Payment Gateway Integration: Step by Step in Any Framework"
+title: "Khalti Payment Gateway Integration: Step by Step"
 description: "Build Khalti KPG-2 checkout in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: initiate in paisa, lookup by pidx, reconcile, sandbox."
 label: Khalti
 provider: khalti
 published: 2026-11-05
 order: 20
 stack: true
-stackTitle: "Khalti Payment Gateway Integration in {stack}: Step by Step"
+stackTitle: "Khalti Payment Gateway Integration in {stack}"
 stackDescription: "Integrate Khalti KPG-2 in {stack}: initiate in paisa, lookup by the stored pidx, reconciliation and sandbox testing, with code you can run."
 faq:
   - q: "What are the Khalti sandbox credentials?"
@@ -186,8 +186,8 @@ On cancel, `status` is `User canceled` and `transaction_id`, `tidx` and `mobile`
 | `Pending` | 200 | Not final. Sandbox payments sometimes stick here. | `pending` |
 | `Initiated` | 200 | Payment page opened, nothing paid yet | `pending` |
 | `Refunded` | 200 | Refunded through Khalti | `refunded` |
-| `Partially Refunded` | 200 | Part refunded. The docs also write "Partially refunded", so the module compares in lower case. | `refunded` |
-| `Expired` | **400** | The link expired unpaid | `failed` |
+| `Partially Refunded` | 200 | Part refunded. The docs also write "Partially refunded", so the module compares in lower case. | `partially_refunded` |
+| `Expired` | **400** | The link expired unpaid | `expired` |
 | `User canceled` | **400** | The buyer canceled on Khalti | `canceled` |
 | `{"detail": "Not found."}` | 404 | Unknown `pidx`, or a `pidx` from the other environment | `not_found` |
 
@@ -219,7 +219,7 @@ The attempt id lives in the path, so the route never has to trust `purchase_orde
 
 Buyers close the tab after paying, lose signal, or never get redirected. Khalti has **no webhooks**, so nothing tells your server. The reconcile job fixes that: every minute it finds attempts still open after two minutes and runs `confirmPayment` on them with no callback data, which goes straight to lookup with the stored `pidx`. Paid ones get settled. Anything still open after three days drops out of the loop: the job logs it as needing manual review, because a payment that old needs a person, not another status call.
 
-Abandoned Khalti payments mostly close themselves: lookup says `Initiated` until the link expires (60 minutes by default in production; the sandbox sample shows 1800 seconds), then `Expired`, which settles the attempt as `failed`. The one-hour `not_found` rule catches the rest: attempts whose initiate failed, or a `pidx` looked up with the other environment's key.
+Abandoned Khalti payments mostly close themselves: lookup says `Initiated` until the link expires (60 minutes by default in production; the sandbox sample shows 1800 seconds), then `Expired`, which settles the attempt as `expired`. The one-hour `not_found` rule catches the rest: attempts whose initiate failed, or a `pidx` looked up with the other environment's key.
 
 <CodeGroup by="lang" blocks={code.reconcile} />
 

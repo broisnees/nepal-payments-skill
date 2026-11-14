@@ -1,12 +1,12 @@
 ---
-title: "connectIPS Payment Gateway Integration: Step by Step in Any Framework"
+title: "connectIPS Payment Gateway Integration: Step by Step"
 description: "Build connectIPS checkout in Express, Next.js, Laravel, Django, FastAPI, Go, Spring or Ktor: RSA TOKEN from your .pfx, registered return URL and validatetxn."
 label: connectIPS
 provider: connectips
 published: 2026-11-05
 order: 40
 stack: true
-stackTitle: "connectIPS Payment Gateway Integration in {stack}: Step by Step"
+stackTitle: "connectIPS Payment Gateway Integration in {stack}"
 stackDescription: "Integrate connectIPS in {stack}: RSA-signed form from your .pfx key, the registered return URL, validatetxn, reconciliation and the errors that break it."
 faq:
   - q: "What are the connectIPS sandbox (UAT) credentials?"
@@ -181,7 +181,7 @@ connectIPS publishes no test key, so there's no official signature to check agai
 
 ```bash
 printf '%s' 'MERCHANTID=550,APPID=MER-550-APP-1,REFERENCEID=txn123,TXNAMT=500' \
-  | openssl dgst -sha256 -sign creditor.key.pem | base64 -w0
+  | openssl dgst -sha256 -sign creditor.key.pem | openssl base64 -A
 ```
 
 To check your code before NCHL sends a key, use mine. I generated this throwaway 2048-bit key only for these vectors and it signs nothing real. All six modules on this page reproduce the three signatures below, which came from the `openssl` command above.

@@ -43,7 +43,8 @@ type Start struct {
 	Enctype     string // "" posts urlencoded (the browser default); NPS needs "multipart/form-data"
 }
 
-// Outcome.Status is paid, pending, failed, canceled, refunded or not_found.
+// Outcome.Status is paid, pending, failed, canceled, expired, refunded,
+// partially_refunded, not_found or unknown.
 type Outcome struct {
 	Status      string
 	ProviderRef string
@@ -80,7 +81,7 @@ var Open = []string{"initiated", "pending"}
 // Transition only succeeds once, so Fulfil runs once per order.
 func Settle(s *Store, a Attempt, o Outcome) {
 	switch o.Status {
-	case "paid", "failed", "canceled":
+	case "paid", "failed", "canceled", "expired":
 		if s.Transition(a.ID, Open, o.Status) && o.Status == "paid" {
 			// Keep the gateway's transaction id (refunds, support). A ref saved at start
 			// (Khalti pidx, IME TokenId, NPS ProcessId) stays: confirm looks the payment up with it.
@@ -92,7 +93,9 @@ func Settle(s *Store, a Attempt, o Outcome) {
 	case "pending":
 		s.Transition(a.ID, []string{"initiated"}, "pending")
 	}
-	// not_found: leave it, the reconcile job expires it after an hour.
+	// not_found and unknown: leave it open. The reconcile job re-checks it and expires a
+	// not_found after an hour; an unknown status needs a person. refunded and
+	// partially_refunded come after paid: nothing to do.
 }
 `,
   },
