@@ -1,0 +1,51 @@
+[project]
+name = "nepal-payments"
+version = "1.0.0"
+description = "One interface over Nepali payment gateways (stdlib only; cryptography for RSA providers)"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+rsa = ["cryptography"]  # connectIPS and NEPALPAY QR only
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["__pycache__"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # import sorting
+    "B",    # bugbear
+    "UP",   # pyupgrade (within py310)
+    "SIM",  # simplifications
+    "C4",   # comprehensions
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "UP006",   # keep typing.Mapping/Optional style consistent across the package
+    "UP007",   # Optional[X] / Union[X, Y] read fine and match the docs
+    "UP035",   # typing.Mapping import
+    "UP045",   # Optional[X]
+    "RUF001",  # en dashes and ellipses in messages are intentional
+    "RUF002",
+    "RUF003",
+    "SIM105",  # explicit try/except/pass is clearer to non-Python readers
+    "SIM108",  # an if/else block often reads better than a long ternary
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nepal_payments", "helpers"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "E501",    # signature test vectors are long literal strings
+    "RUF012",  # class-level fixtures in TestCase
+    "SIM117",  # nested with: mock first, then assertRaises
+]
+
+[tool.ruff.format]
+quote-style = "double"
